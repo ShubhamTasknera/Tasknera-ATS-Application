@@ -21,13 +21,13 @@
 
 html {
   scroll-behavior: smooth;
-  background-color: var(--navy);
+  background-color: #060C1A;
 }
 
 body {
-  background-color: var(--navy);
-  color: var(--white-ui);
-  font-family: 'DM Sans', sans-serif;
+  background-color: #060C1A;
+  color: #E8ECF1;
+  font-family: 'DM Sans', 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;

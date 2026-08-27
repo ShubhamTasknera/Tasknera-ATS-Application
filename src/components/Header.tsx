@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 const Header: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
@@ -12,89 +13,82 @@ const Header: React.FC = () => {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  return (
-    <nav
-      className={`fixed top-0 w-full z-[150] transition-all duration-500 ${
-        scrolled 
-          ? 'bg-slate-950/70 backdrop-blur-2xl border-b border-white/10 shadow-2xl shadow-primary-500/10' 
-          : 'bg-transparent'
-      }`}
-    >
-      <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-        {/* Logo with colorful gradient */}
-        <div className="flex items-center gap-3 group cursor-pointer">
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-primary-600 via-primary-600 to-primary-800 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity" />
-            <div className="relative w-11 h-11 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-800 rounded-2xl flex items-center justify-center shadow-2xl ring-2 ring-white/20 group-hover:scale-110 transition-transform">
-              <span className="text-white font-bold text-xl">T</span>
-            </div>
-          </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-white via-primary-100 to-primary-700 bg-clip-text text-transparent">
-            Tasknera
-          </span>
-        </div>
+  const navLinks = [
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Jobs', href: '/jobs' },
+    { label: 'Candidates', href: '/candidates' },
+    { label: 'Analytics', href: '/analytics' },
+  ];
 
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-8">
-          {['Features', 'Pricing', 'Solutions', 'Resources'].map((item) => (
-            <a
-              key={item}
-              href={`#${item.toLowerCase()}`}
-              className="relative text-slate-300 hover:text-white font-medium transition-colors group"
+  return (
+    <nav className={`fixed top-0 w-full z-[150] transition-all duration-300 ${
+      scrolled
+        ? 'bg-[#0A0F1E]/95 backdrop-blur-xl border-b border-gray-800 shadow-lg'
+        : 'bg-transparent'
+    }`}>
+      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+
+        {/* Logo */}
+        <Link href="/home" className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center shadow-md">
+            <span className="text-white font-black text-base">T</span>
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="text-white font-bold text-base tracking-tight">Tasknera</span>
+            <span className="text-[9px] text-gray-500 tracking-widest uppercase">Candidate Intelligence</span>
+          </div>
+        </Link>
+
+        {/* Nav Links */}
+        <div className="hidden md:flex items-center gap-1">
+          {navLinks.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-lg font-medium transition-all duration-150"
             >
-              {item}
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-primary-500 via-primary-600 to-primary-800 group-hover:w-full transition-all duration-300 rounded-full" />
-            </a>
+              {item.label}
+            </Link>
           ))}
         </div>
 
-        {/* CTA Buttons */}
-        <div className="hidden md:flex items-center gap-4">
-          <button className="px-5 py-2.5 text-slate-300 hover:text-white font-medium transition-colors">
+        {/* Actions */}
+        <div className="hidden md:flex items-center gap-3">
+          <button className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors font-medium">
             Sign In
           </button>
-          <button className="relative px-6 py-2.5 bg-gradient-to-r from-primary-600 via-primary-600 to-primary-800 text-white font-semibold rounded-xl overflow-hidden group shadow-lg shadow-primary-600/30 hover:shadow-primary-600/50 transition-shadow">
-            <span className="relative z-10">Get Started</span>
-            <div className="absolute inset-0 bg-gradient-to-r from-primary-700 via-primary-600 to-primary-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+          <Link
+            href="/jobs/create"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors shadow-md shadow-blue-900/40"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            New Evaluation
+          </Link>
         </div>
 
-        {/* Mobile menu button */}
-        <button
-          className="md:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {mobileMenuOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            )}
+        {/* Mobile toggle */}
+        <button className="md:hidden text-gray-400 p-2 hover:bg-gray-800 rounded-lg" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {mobileMenuOpen
+              ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
           </svg>
         </button>
       </div>
 
-      {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-slate-950/95 backdrop-blur-2xl border-t border-white/10 shadow-2xl">
-          <div className="px-6 py-6 space-y-4">
-            {['Features', 'Pricing', 'Solutions', 'Resources'].map((item) => (
-              <a
-                key={item}
-                href={`#${item.toLowerCase()}`}
-                className="block text-slate-300 hover:text-white font-medium transition-colors py-2"
-              >
-                {item}
-              </a>
-            ))}
-            <div className="pt-4 space-y-3 border-t border-white/10">
-              <button className="w-full px-4 py-2.5 text-slate-300 hover:text-white font-medium transition-colors text-left rounded-lg hover:bg-white/5">
-                Sign In
-              </button>
-              <button className="w-full px-6 py-3 bg-gradient-to-r from-primary-600 via-primary-600 to-primary-800 text-white font-semibold rounded-xl shadow-lg shadow-primary-600/30">
-                Get Started
-              </button>
-            </div>
+        <div className="md:hidden bg-[#0A0F1E] border-t border-gray-800 px-6 py-4 space-y-1">
+          {navLinks.map((item) => (
+            <Link key={item.label} href={item.href} className="block px-4 py-2.5 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg text-sm font-medium">
+              {item.label}
+            </Link>
+          ))}
+          <div className="pt-3 border-t border-gray-800 mt-3">
+            <Link href="/jobs/create" className="block w-full text-center px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold">
+              New Evaluation
+            </Link>
           </div>
         </div>
       )}
