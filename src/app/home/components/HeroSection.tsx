@@ -1,262 +1,203 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-
-/* ── Floating candidate card data ── */
-const FLOATING_CARDS = [
-  {
-    id: 1,
-    name: 'Jordan Malik',
-    role: 'Sr. Product Manager',
-    match: 97,
-    skills: ['Roadmapping', 'SQL', 'Agile'],
-    yoe: '8 yrs',
-    style: { top: '18%', left: '6%', '--rot': '-4deg', animationDelay: '0s' } as React.CSSProperties,
-  },
-  {
-    id: 2,
-    name: 'Priya Nair',
-    role: 'Growth Engineer',
-    match: 94,
-    skills: ['Python', 'A/B Testing'],
-    yoe: '5 yrs',
-    style: { top: '12%', right: '8%', '--rot': '3deg', animationDelay: '1.2s' } as React.CSSProperties,
-  },
-  {
-    id: 3,
-    name: 'Marcus Chen',
-    role: 'Revenue Operations',
-    match: 91,
-    skills: ['Salesforce', 'HubSpot'],
-    yoe: '6 yrs',
-    style: { bottom: '28%', left: '4%', '--rot': '-2deg', animationDelay: '2.1s' } as React.CSSProperties,
-  },
-  {
-    id: 4,
-    name: 'Aaliya Osei',
-    role: 'Customer Success Lead',
-    match: 89,
-    skills: ['NPS', 'Churn Analysis', 'Gainsight'],
-    yoe: '4 yrs',
-    style: { bottom: '22%', right: '5%', '--rot': '5deg', animationDelay: '0.7s' } as React.CSSProperties,
-  },
-  {
-    id: 5,
-    name: 'Tomás Rivera',
-    role: 'Backend Engineer',
-    match: 88,
-    skills: ['Go', 'Kubernetes', 'gRPC'],
-    yoe: '7 yrs',
-    style: { top: '52%', left: '2%', '--rot': '-6deg', animationDelay: '3.0s' } as React.CSSProperties,
-  },
-];
-
-/* ── Mini résumé fragment cards ── */
-const FRAGMENT_CARDS = [
-  {
-    id: 'f1',
-    label: 'PARSED IN',
-    value: '0.4s',
-    sub: '47 signal types extracted',
-    style: { top: '38%', right: '3%', '--rot': '2deg', animationDelay: '1.6s' } as React.CSSProperties,
-  },
-  {
-    id: 'f2',
-    label: 'QUEUE',
-    value: '10,247',
-    sub: 'résumés screened today',
-    style: { top: '68%', left: '10%', '--rot': '-3deg', animationDelay: '2.5s' } as React.CSSProperties,
-  },
-];
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 
 const HeroSection: React.FC = () => {
-  const heroRef = useRef<HTMLDivElement>(null);
-  const headlineRef = useRef<HTMLHeadingElement>(null);
-  const subRef = useRef<HTMLParagraphElement>(null);
-  const ctaRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    let gsap: typeof import('gsap').gsap;
-    const init = async () => {
-      const mod = await import('gsap');
-      gsap = mod.gsap;
-
-      // Hero entrance
-      gsap.fromTo(
-        '.hero-card',
-        { opacity: 0, y: 40, scale: 0.9 },
-        { opacity: 1, y: 0, scale: 1, duration: 1.4, stagger: 0.15, ease: 'elastic.out(1, 0.75)', delay: 0.3 }
-      );
-      gsap.fromTo(
-        headlineRef.current,
-        { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, duration: 1.2, ease: 'power4.out', delay: 0.6 }
-      );
-      gsap.fromTo(
-        subRef.current,
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 1, ease: 'power3.out', delay: 1 }
-      );
-      gsap.fromTo(
-        ctaRef.current,
-        { opacity: 0, y: 16 },
-        { opacity: 1, y: 0, duration: 0.9, ease: 'power3.out', delay: 1.3 }
-      );
-    };
-    init();
+    setIsVisible(true);
   }, []);
 
+  const candidates = [
+    {
+      name: 'Sarah Mitchell',
+      role: 'SAP CO Consultant',
+      match: 94,
+      decision: 'SUBMIT',
+      decisionColor: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30',
+      skills: ['SAP CO', 'S/4HANA', 'Manufacturing'],
+      mandatory: '5/5',
+    },
+    {
+      name: 'Michael Chen',
+      role: 'SAP Consultant',
+      match: 76,
+      decision: 'REVIEW',
+      decisionColor: 'text-amber-400 bg-amber-400/10 border-amber-400/30',
+      skills: ['SAP FI', 'SAP CO', 'S/4HANA'],
+      mandatory: '4/5',
+    },
+    {
+      name: 'Jennifer Lopez',
+      role: 'Junior SAP Analyst',
+      match: 52,
+      decision: 'DO NOT SUBMIT',
+      decisionColor: 'text-red-400 bg-red-400/10 border-red-400/30',
+      skills: ['SAP CO', 'Excel'],
+      mandatory: '1/5',
+    },
+  ];
+
+  const steps = [
+    { num: '01', title: 'Upload JD', desc: 'Paste or upload your job description', color: 'text-blue-400', border: 'border-blue-400/30 bg-blue-400/5' },
+    { num: '02', title: 'Review Requirements', desc: 'Confirm mandatory vs preferred', color: 'text-indigo-400', border: 'border-indigo-400/30 bg-indigo-400/5' },
+    { num: '03', title: 'Upload CVs', desc: 'Single or bulk upload', color: 'text-gray-400', border: 'border-gray-600/40 bg-gray-700/20' },
+    { num: '04', title: 'Get Scores', desc: 'Evidence-based, deterministic', color: 'text-gray-400', border: 'border-gray-600/40 bg-gray-700/20' },
+  ];
+
   return (
-    <section
-      ref={heroRef}
-      id="hero"
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: 'var(--navy)' }}
-    >
-      {/* Radial glow */}
-      <div className="hero-glow" aria-hidden="true" />
+    <section className="relative min-h-screen bg-[#060C1A] overflow-hidden">
 
-      {/* Secondary ambient glow rings */}
-      <div
-        className="absolute top-1/2 left-1/2 pointer-events-none"
+      {/* Subtle background grid */}
+      <div className="absolute inset-0"
         style={{
-          transform: 'translate(-50%, -50%)',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          border: '1px solid rgba(0,212,255,0.06)',
-          animation: 'pulse-glow 6s ease-in-out infinite 1s',
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
         }}
-        aria-hidden="true"
-      />
-      <div
-        className="absolute top-1/2 left-1/2 pointer-events-none"
-        style={{
-          transform: 'translate(-50%, -50%)',
-          width: 380,
-          height: 380,
-          borderRadius: '50%',
-          border: '1px solid rgba(0,212,255,0.1)',
-          animation: 'pulse-glow 6s ease-in-out infinite 0.5s',
-        }}
-        aria-hidden="true"
       />
 
-      {/* Floating candidate cards */}
-      {FLOATING_CARDS.map((card) => (
-        <div
-          key={card.id}
-          className="candidate-card hero-card hidden lg:block"
-          style={card.style}
-          aria-hidden="true"
-        >
-          <div className="flex items-start justify-between gap-8 mb-2">
-            <div>
-              <p className="text-[13px] font-600 text-ui-white leading-tight">{card.name}</p>
-              <p className="text-[11px] text-ui-muted mt-0.5">{card.role}</p>
-            </div>
-            <span className="match-badge flex-shrink-0">{card.match}%</span>
-          </div>
-          <div className="flex flex-wrap gap-1 mt-3">
-            {card.skills.map((s) => (
-              <span key={s} className="skill-tag">{s}</span>
-            ))}
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="micro-bar flex-1">
-              <div className="micro-bar-fill good" style={{ width: `${card.match}%` }} />
-            </div>
-            <span className="text-[10px] text-ui-faint">{card.yoe}</span>
+      {/* Single subtle blue glow — top left only */}
+      <div className="absolute top-0 left-0 w-[600px] h-[400px] bg-blue-600/8 rounded-full blur-[120px] pointer-events-none" />
+
+      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-36 pb-24">
+
+        {/* Top badge */}
+        <div className={`flex justify-center mb-8 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'}`}>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gray-800/80 border border-gray-700 text-gray-300 text-xs font-medium tracking-wide">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Standardized Candidate–JD Matching & Submission Evaluation
           </div>
         </div>
-      ))}
 
-      {/* Fragment cards */}
-      {FRAGMENT_CARDS.map((card) => (
-        <div
-          key={card.id}
-          className="candidate-card hero-card hidden lg:block"
-          style={card.style}
-          aria-hidden="true"
-        >
-          <p className="section-label mb-1">{card.label}</p>
-          <p className="text-[22px] font-800 text-cyan-DEFAULT leading-none">{card.value}</p>
-          <p className="text-[10px] text-ui-muted mt-1">{card.sub}</p>
-        </div>
-      ))}
-
-      {/* Streaming data line */}
-      <div
-        className="absolute bottom-8 left-0 right-0 overflow-hidden opacity-40"
-        ref={streamRef}
-        aria-hidden="true"
-      >
-        <div className="stream-line">
-          PARSING · candidate_0x4F2A · SKILLS_EXTRACTED[47] · MATCH_SCORE:94.2 · BIAS_AUDIT:PASS · RANK_POSITION:3 · PARSING · candidate_0x3B1C · SKILLS_EXTRACTED[39] · MATCH_SCORE:88.7 · BIAS_AUDIT:PASS · RANK_POSITION:5 ·
-        </div>
-      </div>
-
-      {/* Hero content */}
-      <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
-        {/* Eyebrow */}
-        <div className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full border border-cyan-DEFAULT/20 bg-gunmetal/40 backdrop-blur-sm">
-          <span className="w-2 h-2 rounded-full bg-cyan-DEFAULT animate-pulse" />
-          <span className="text-[12px] font-600 text-ui-muted tracking-widest uppercase">
-            AI Screening · Live
-          </span>
+        {/* Main headline */}
+        <div className={`text-center mb-6 transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.1] tracking-tight mb-6">
+            <span className="text-white">Evaluate Candidates</span>
+            <br />
+            <span className="text-white">With </span>
+            <span className="text-blue-400">Evidence.</span>
+            <span className="text-gray-500"> Not Guesswork.</span>
+          </h1>
+          <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+            A fixed scoring framework that produces the same result every time.
+            Every score is backed by evidence extracted directly from the CV.
+          </p>
         </div>
 
-        <h1
-          ref={headlineRef}
-          className="font-display text-[clamp(2.6rem,7vw,5.5rem)] font-900 leading-[1.05] tracking-[-0.03em] text-ui-white mb-6"
-          style={{ opacity: 1 }}
-        >
-          Ten thousand applicants.{' '}
-          <span className="text-cyan-DEFAULT text-glow italic">Five perfect fits.</span>
-          <br />
-          One click.
-        </h1>
-
-        <p
-          ref={subRef}
-          className="text-[1.15rem] md:text-[1.3rem] text-ui-muted font-400 max-w-2xl mx-auto leading-relaxed mb-10"
-          style={{ opacity: 1 }}
-        >
-          Screen reads every résumé before the hiring manager finishes their morning coffee — surfacing the candidates who actually fit the role, not just the keywords.
-        </p>
-
-        <div
-          ref={ctaRef}
-          id="demo-cta"
-          className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          style={{ opacity: 1 }}
-        >
-          <button className="btn-cyan px-8 py-4 text-[15px] font-700 flex items-center gap-3">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M6.5 6.5l5 2.5-5 2.5V6.5z" fill="currentColor"/>
+        {/* CTAs */}
+        <div className={`flex items-center justify-center gap-4 mb-20 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <Link
+            href="/jobs/create"
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-blue-900/40 text-sm"
+          >
+            Start Evaluating
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
-            See Your Candidate Stack
-          </button>
-          <button className="btn-ghost px-6 py-4 text-[14px] font-500">
-            Watch 90-second demo
-          </button>
+          </Link>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold rounded-lg transition-colors border border-gray-700 text-sm"
+          >
+            View Dashboard
+          </Link>
         </div>
 
-        {/* Social proof micro */}
-        <div className="mt-10 flex items-center justify-center gap-6 flex-wrap">
-          {[
-            { v: '500+', l: 'TA teams' },
-            { v: '4.2s', l: 'avg time-to-rank' },
-            { v: '99.1%', l: 'audit pass rate' },
-          ].map((item) => (
-            <div key={item.l} className="flex items-center gap-2">
-              <span className="text-[15px] font-700 text-cyan-DEFAULT">{item.v}</span>
-              <span className="text-[12px] text-ui-faint">{item.l}</span>
+        {/* Workflow Steps */}
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-20 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          {steps.map((step, i) => (
+            <div key={i} className={`rounded-xl p-4 border ${step.border}`}>
+              <div className={`text-xs font-bold mb-2 ${step.color}`}>{step.num}</div>
+              <div className="text-white text-sm font-semibold mb-1">{step.title}</div>
+              <div className="text-gray-500 text-xs leading-relaxed">{step.desc}</div>
             </div>
           ))}
         </div>
+
+        {/* Candidate Cards — demo output */}
+        <div className={`transition-all duration-700 delay-400 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+
+          {/* Section label */}
+          <div className="flex items-center gap-3 mb-5 max-w-5xl mx-auto">
+            <div className="h-px flex-1 bg-gray-800" />
+            <span className="text-gray-600 text-xs font-medium tracking-widest uppercase">Live Evaluation Output</span>
+            <div className="h-px flex-1 bg-gray-800" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+            {candidates.map((c, i) => (
+              <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition-colors">
+
+                {/* Header row */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gray-700 flex items-center justify-center text-gray-300 font-bold text-sm">
+                      {c.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="text-white font-semibold text-sm">{c.name}</div>
+                      <div className="text-gray-500 text-xs">{c.role}</div>
+                    </div>
+                  </div>
+                  {/* Score circle */}
+                  <div className="text-right">
+                    <div className={`text-xl font-bold ${c.match >= 80 ? 'text-white' : c.match >= 65 ? 'text-amber-400' : 'text-red-400'}`}>
+                      {c.match}
+                    </div>
+                    <div className="text-gray-600 text-xs">/100</div>
+                  </div>
+                </div>
+
+                {/* Score bar */}
+                <div className="w-full h-1.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${
+                      c.match >= 80 ? 'bg-blue-500' : c.match >= 65 ? 'bg-amber-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${c.match}%` }}
+                  />
+                </div>
+
+                {/* Mandatory */}
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-gray-500 text-xs">Mandatory</span>
+                  <span className="text-gray-300 text-xs font-semibold">{c.mandatory}</span>
+                </div>
+
+                {/* Skills */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {c.skills.map((s, j) => (
+                    <span key={j} className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-gray-400 text-xs">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Decision */}
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${c.decisionColor}`}>
+                  {c.decision}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className={`mt-20 flex flex-wrap items-center justify-center gap-12 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+          {[
+            { value: '100%', label: 'Deterministic Scoring' },
+            { value: 'Evidence-Based', label: 'Every match explained' },
+            { value: 'No AI Guessing', label: 'Fixed framework always' },
+          ].map((stat, i) => (
+            <div key={i} className="text-center">
+              <div className="text-white font-bold text-xl mb-1">{stat.value}</div>
+              <div className="text-gray-600 text-sm">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
       </div>
     </section>
   );
