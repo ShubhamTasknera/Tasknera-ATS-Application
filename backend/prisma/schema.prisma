@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  jobs      Job[]
+
+  @@map("users")
+}
+
+model Job {
+  id                    String   @id @default(uuid()) @db.Uuid
+  client                String
+  position              String
+  jd_file_url           String?  @map("jd_file_url")
+  jd_text               String?  @map("jd_text")
+  location              String?
+  work_mode             String?  @map("work_mode")
+  salary                String?
+  status                String   @default("draft")
+  evaluation_profile_id String?  @map("evaluation_profile_id") @db.Uuid
+  created_by            String   @map("created_by") @db.Uuid
+  created_at            DateTime @default(now()) @map("created_at")
+  updated_at            DateTime @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  requirements Requirement[]
+
+  @@index([created_by], map: "idx_jobs_created_by")
+  @@index([status], map: "idx_jobs_status")
+  @@map("jobs")
+}
+
+model Requirement {
+  id                  String   @id @default(uuid()) @db.Uuid
+  job_id              String   @map("job_id") @db.Uuid
+  requirement         String
+  category            String?
+  weight              Float    @default(1.0)
+  is_mandatory        Boolean  @default(false) @map("is_mandatory")
+  evidence_required   Boolean  @default(false) @map("evidence_required")
+  recruiter_confirmed Boolean  @default(false) @map("recruiter_confirmed")
+  created_at          DateTime @default(now()) @map("created_at")
+  updated_at          DateTime @updatedAt @map("updated_at")
+
+  job Job @relation(fields: [job_id], references: [id], onDelete: Cascade)
+
+  @@index([job_id], map: "idx_requirements_job_id")
+  @@index([category], map: "idx_requirements_category")
+  @@map("requirements")
+}

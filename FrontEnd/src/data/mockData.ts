@@ -1097,15 +1097,15 @@ export function getCandidateById(id: string): CandidateCV | undefined {
 }
 
 export function getEvaluationById(id: string): CandidateEvaluation | undefined {
-  return sampleEvaluations.find((eval) => eval.id === id);
+  return sampleEvaluations.find((item) => item.id === id);
 }
 
 export function getEvaluationsByJobId(jobId: string): CandidateEvaluation[] {
-  return sampleEvaluations.filter((eval) => eval.jobId === jobId);
+  return sampleEvaluations.filter((item) => item.jobId === jobId);
 }
 
 export function getEvaluationsByCandidateId(candidateId: string): CandidateEvaluation[] {
-  return sampleEvaluations.filter((eval) => eval.candidateId === candidateId);
+  return sampleEvaluations.filter((item) => item.candidateId === candidateId);
 }
 
 export function getClientProfileById(id: string): ClientProfile | undefined {

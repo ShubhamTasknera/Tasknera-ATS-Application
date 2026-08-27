@@ -174,7 +174,7 @@ export interface CandidateExperience {
   company: string;
   location?: string;
   startDate: string;
-  endDate?: string; // null if current
+  endDate?: string | null; // null if current
   isCurrent: boolean;
   duration: string; // e.g., "2 years 3 months"
   responsibilities: string[];
