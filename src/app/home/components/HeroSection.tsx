@@ -1,263 +1,244 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-
-/* ── Floating candidate card data ── */
-const FLOATING_CARDS = [
-  {
-    id: 1,
-    name: 'Jordan Malik',
-    role: 'Sr. Product Manager',
-    match: 97,
-    skills: ['Roadmapping', 'SQL', 'Agile'],
-    yoe: '8 yrs',
-    style: { top: '18%', left: '6%', '--rot': '-4deg', animationDelay: '0s' } as React.CSSProperties,
-  },
-  {
-    id: 2,
-    name: 'Priya Nair',
-    role: 'Growth Engineer',
-    match: 94,
-    skills: ['Python', 'A/B Testing'],
-    yoe: '5 yrs',
-    style: { top: '12%', right: '8%', '--rot': '3deg', animationDelay: '1.2s' } as React.CSSProperties,
-  },
-  {
-    id: 3,
-    name: 'Marcus Chen',
-    role: 'Revenue Operations',
-    match: 91,
-    skills: ['Salesforce', 'HubSpot'],
-    yoe: '6 yrs',
-    style: { bottom: '28%', left: '4%', '--rot': '-2deg', animationDelay: '2.1s' } as React.CSSProperties,
-  },
-  {
-    id: 4,
-    name: 'Aaliya Osei',
-    role: 'Customer Success Lead',
-    match: 89,
-    skills: ['NPS', 'Churn Analysis', 'Gainsight'],
-    yoe: '4 yrs',
-    style: { bottom: '22%', right: '5%', '--rot': '5deg', animationDelay: '0.7s' } as React.CSSProperties,
-  },
-  {
-    id: 5,
-    name: 'Tomás Rivera',
-    role: 'Backend Engineer',
-    match: 88,
-    skills: ['Go', 'Kubernetes', 'gRPC'],
-    yoe: '7 yrs',
-    style: { top: '52%', left: '2%', '--rot': '-6deg', animationDelay: '3.0s' } as React.CSSProperties,
-  },
-];
-
-/* ── Mini résumé fragment cards ── */
-const FRAGMENT_CARDS = [
-  {
-    id: 'f1',
-    label: 'PARSED IN',
-    value: '0.4s',
-    sub: '47 signal types extracted',
-    style: { top: '38%', right: '3%', '--rot': '2deg', animationDelay: '1.6s' } as React.CSSProperties,
-  },
-  {
-    id: 'f2',
-    label: 'QUEUE',
-    value: '10,247',
-    sub: 'résumés screened today',
-    style: { top: '68%', left: '10%', '--rot': '-3deg', animationDelay: '2.5s' } as React.CSSProperties,
-  },
-];
+import React, { useEffect, useState } from 'react';
 
 const HeroSection: React.FC = () => {
-  const heroRef = useRef<HTMLDivElement>(null);
-  const headlineRef = useRef<HTMLHeadingElement>(null);
-  const subRef = useRef<HTMLParagraphElement>(null);
-  const ctaRef = useRef<HTMLDivElement>(null);
-  const streamRef = useRef<HTMLDivElement>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    let gsap: typeof import('gsap').gsap;
-    const init = async () => {
-      const mod = await import('gsap');
-      gsap = mod.gsap;
-
-      // Hero entrance
-      gsap.fromTo(
-        '.hero-card',
-        { opacity: 0, y: 40, scale: 0.9 },
-        { opacity: 1, y: 0, scale: 1, duration: 1.4, stagger: 0.15, ease: 'elastic.out(1, 0.75)', delay: 0.3 }
-      );
-      gsap.fromTo(
-        headlineRef.current,
-        { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, duration: 1.2, ease: 'power4.out', delay: 0.6 }
-      );
-      gsap.fromTo(
-        subRef.current,
-        { opacity: 0, y: 20 },
-        { opacity: 1, y: 0, duration: 1, ease: 'power3.out', delay: 1 }
-      );
-      gsap.fromTo(
-        ctaRef.current,
-        { opacity: 0, y: 16 },
-        { opacity: 1, y: 0, duration: 0.9, ease: 'power3.out', delay: 1.3 }
-      );
+    setIsVisible(true);
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
     };
-    init();
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  const candidates = [
+    { name: 'Sarah Johnson', role: 'Senior Developer', match: 98, skills: ['React', 'Node.js', 'TypeScript'], color: 'from-emerald-400 to-cyan-400' },
+    { name: 'Michael Chen', role: 'Product Manager', match: 95, skills: ['Strategy', 'Analytics', 'Agile'], color: 'from-primary-400 to-primary-700' },
+    { name: 'Emily Rodriguez', role: 'UX Designer', match: 92, skills: ['Figma', 'UI/UX', 'Design Systems'], color: 'from-amber-400 to-rose-400' },
+  ];
+
   return (
-    <section
-      ref={heroRef}
-      id="hero"
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: 'var(--navy)' }}
-    >
-      {/* Radial glow */}
-      <div className="hero-glow" aria-hidden="true" />
+    <section className="relative min-h-screen overflow-hidden bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950">
+      {/* Animated gradient orbs with better colors */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div 
+          className="absolute w-[500px] h-[500px] bg-gradient-to-r from-primary-500/30 via-primary-600/30 to-primary-800/30 rounded-full blur-3xl animate-float opacity-60"
+          style={{ top: '5%', left: '5%', animationDelay: '0s' }}
+        />
+        <div 
+          className="absolute w-[600px] h-[600px] bg-gradient-to-r from-cyan-500/25 via-blue-500/25 to-indigo-500/25 rounded-full blur-3xl animate-float opacity-50"
+          style={{ top: '40%', right: '5%', animationDelay: '2s' }}
+        />
+        <div 
+          className="absolute w-[450px] h-[450px] bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 rounded-full blur-3xl animate-float opacity-60"
+          style={{ bottom: '5%', left: '25%', animationDelay: '4s' }}
+        />
+        <div 
+          className="absolute w-[400px] h-[400px] bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 rounded-full blur-3xl animate-float opacity-50"
+          style={{ top: '60%', right: '30%', animationDelay: '3s' }}
+        />
+      </div>
 
-      {/* Secondary ambient glow rings */}
+      {/* Animated grid with better visibility */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.15]" />
+
+      {/* Mouse follower gradient with rainbow effect */}
       <div
-        className="absolute top-1/2 left-1/2 pointer-events-none"
+        className="absolute w-[500px] h-[500px] rounded-full pointer-events-none transition-all duration-500 ease-out blur-3xl opacity-40"
         style={{
-          transform: 'translate(-50%, -50%)',
-          width: 600,
-          height: 600,
-          borderRadius: '50%',
-          border: '1px solid rgba(0,212,255,0.06)',
-          animation: 'pulse-glow 6s ease-in-out infinite 1s',
+          background: 'radial-gradient(circle, rgba(167,139,250,0.6) 0%, rgba(236,72,153,0.4) 50%, transparent 70%)',
+          left: mousePosition.x - 250,
+          top: mousePosition.y - 250,
         }}
-        aria-hidden="true"
-      />
-      <div
-        className="absolute top-1/2 left-1/2 pointer-events-none"
-        style={{
-          transform: 'translate(-50%, -50%)',
-          width: 380,
-          height: 380,
-          borderRadius: '50%',
-          border: '1px solid rgba(0,212,255,0.1)',
-          animation: 'pulse-glow 6s ease-in-out infinite 0.5s',
-        }}
-        aria-hidden="true"
       />
 
-      {/* Floating candidate cards */}
-      {FLOATING_CARDS.map((card) => (
-        <div
-          key={card.id}
-          className="candidate-card hero-card hidden lg:block"
-          style={card.style}
-          aria-hidden="true"
-        >
-          <div className="flex items-start justify-between gap-8 mb-2">
-            <div>
-              <p className="text-[13px] font-600 text-ui-white leading-tight">{card.name}</p>
-              <p className="text-[11px] text-ui-muted mt-0.5">{card.role}</p>
-            </div>
-            <span className="match-badge flex-shrink-0">{card.match}%</span>
+      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-32 pb-20">
+        {/* Badge with shimmer effect - better colors */}
+        <div className={`flex justify-center mb-8 transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+          <div className="relative inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-primary-500/10 via-primary-600/10 to-primary-800/10 border border-primary-400/30 backdrop-blur-xl group hover:scale-105 transition-transform cursor-pointer shadow-lg shadow-primary-500/20">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-gradient-to-r from-primary-400 to-primary-700"></span>
+            </span>
+            <span className="text-sm font-semibold bg-gradient-to-r from-primary-200 via-primary-600 to-primary-800 bg-clip-text text-transparent">
+              AI-Powered Recruitment Platform
+            </span>
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-primary-400/0 via-primary-600/20 to-primary-800/0 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
           </div>
-          <div className="flex flex-wrap gap-1 mt-3">
-            {card.skills.map((s) => (
-              <span key={s} className="skill-tag">{s}</span>
+        </div>
+
+        {/* Main headline with better gradient */}
+        <div className={`text-center mb-12 transition-all duration-1000 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 leading-[1.1]">
+            <span className="inline-block bg-gradient-to-r from-slate-100 via-primary-100 to-primary-700 bg-clip-text text-transparent animate-gradient drop-shadow-2xl">
+              Find Perfect Candidates
+            </span>
+            <br />
+            <span className="inline-block bg-gradient-to-r from-primary-400 via-primary-600 to-primary-800 bg-clip-text text-transparent animate-gradient-slow mt-2">
+              10x Faster
+            </span>
+          </h1>
+          <p className="text-xl md:text-2xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-light">
+            Tasknera uses <span className="text-primary-300 font-medium">advanced AI</span> to match, rank, and manage candidates with 
+            <span className="text-primary-600 font-medium"> unprecedented accuracy</span>.
+          </p>
+        </div>
+
+        {/* CTA Buttons with better effects */}
+        <div className={`flex flex-col sm:flex-row items-center justify-center gap-4 mb-20 transition-all duration-1000 delay-400 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <button className="group relative px-8 py-4 bg-gradient-to-r from-primary-600 via-primary-600 to-primary-800 text-white font-semibold rounded-2xl overflow-hidden hover:scale-105 transition-all duration-300 shadow-2xl shadow-primary-600/50 hover:shadow-primary-600/70">
+            <span className="relative z-10 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+              </svg>
+              Start Free Trial
+              <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </span>
+            <div className="absolute inset-0 bg-gradient-to-r from-primary-700 via-primary-600 to-primary-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary-400/0 via-primary-600/50 to-primary-800/0 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+          </button>
+          <button className="px-8 py-4 bg-white/5 backdrop-blur-xl text-white font-semibold rounded-2xl border border-white/20 hover:bg-white/10 hover:scale-105 transition-all duration-300 hover:border-primary-400/50 shadow-lg hover:shadow-primary-500/30">
+            <span className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Watch Demo
+            </span>
+          </button>
+        </div>
+
+        {/* Floating candidate cards with individual color schemes */}
+        <div className={`relative transition-all duration-1000 delay-600 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {candidates.map((candidate, i) => (
+              <div
+                key={i}
+                className="group relative bg-white/[0.03] backdrop-blur-2xl rounded-3xl p-6 border border-white/10 hover:border-white/30 transition-all duration-500 hover:scale-105 hover:-translate-y-3 cursor-pointer"
+                style={{ animationDelay: `${i * 200}ms` }}
+              >
+                {/* Colorful glow effect on hover */}
+                <div className={`absolute -inset-1 bg-gradient-to-r ${candidate.color} rounded-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-500 blur-2xl -z-10`} />
+                
+                <div className="flex items-start justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className={`relative w-14 h-14 bg-gradient-to-br ${candidate.color} rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-2xl ring-2 ring-white/20`}>
+                      {candidate.name.charAt(0)}
+                      <div className={`absolute inset-0 bg-gradient-to-br ${candidate.color} rounded-2xl blur-lg opacity-50 group-hover:opacity-100 transition-opacity -z-10`} />
+                    </div>
+                    <div>
+                      <h3 className="text-white font-semibold text-lg">{candidate.name}</h3>
+                      <p className="text-slate-400 text-sm">{candidate.role}</p>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <svg className="w-16 h-16 transform -rotate-90">
+                      <defs>
+                        <linearGradient id={`gradient-${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" className="text-emerald-400" style={{ stopColor: 'currentColor' }} />
+                          <stop offset="50%" className="text-cyan-400" style={{ stopColor: 'currentColor' }} />
+                          <stop offset="100%" className="text-blue-400" style={{ stopColor: 'currentColor' }} />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,0.08)" strokeWidth="5" fill="none" />
+                      <circle 
+                        cx="32" 
+                        cy="32" 
+                        r="28" 
+                        stroke={`url(#gradient-${i})`}
+                        strokeWidth="5" 
+                        fill="none"
+                        strokeDasharray={`${candidate.match * 1.76}, 176`}
+                        strokeLinecap="round"
+                        className="transition-all duration-1000 filter drop-shadow-lg"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-white font-bold text-base">
+                      {candidate.match}%
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {candidate.skills.map((skill, j) => (
+                    <span 
+                      key={j} 
+                      className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-white/10 to-white/5 text-slate-200 rounded-lg border border-white/10 hover:border-white/30 transition-colors backdrop-blur-xl"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-lg shadow-emerald-400/50" />
+                  <span>Perfect Match</span>
+                </div>
+
+                {/* Hover arrow */}
+                <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </div>
+              </div>
             ))}
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <div className="micro-bar flex-1">
-              <div className="micro-bar-fill good" style={{ width: `${card.match}%` }} />
-            </div>
-            <span className="text-[10px] text-ui-faint">{card.yoe}</span>
+
+          {/* Stats bar with colorful gradients */}
+          <div className="mt-20 flex flex-wrap items-center justify-center gap-16">
+            {[
+              { value: '10,000+', label: 'Candidates Screened', color: 'from-primary-400 to-primary-700' },
+              { value: '4.2s', label: 'Avg. Processing Time', color: 'from-cyan-400 to-blue-400' },
+              { value: '98%', label: 'Match Accuracy', color: 'from-emerald-400 to-teal-400' },
+            ].map((stat, i) => (
+              <div key={i} className="text-center group cursor-pointer">
+                <div className={`text-4xl md:text-5xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent group-hover:scale-110 transition-transform drop-shadow-lg`}>
+                  {stat.value}
+                </div>
+                <div className="text-slate-400 text-sm mt-2 font-medium">{stat.label}</div>
+                <div className={`h-1 w-0 group-hover:w-full transition-all duration-500 mx-auto mt-2 rounded-full bg-gradient-to-r ${stat.color}`} />
+              </div>
+            ))}
           </div>
         </div>
-      ))}
-
-      {/* Fragment cards */}
-      {FRAGMENT_CARDS.map((card) => (
-        <div
-          key={card.id}
-          className="candidate-card hero-card hidden lg:block"
-          style={card.style}
-          aria-hidden="true"
-        >
-          <p className="section-label mb-1">{card.label}</p>
-          <p className="text-[22px] font-800 text-cyan-DEFAULT leading-none">{card.value}</p>
-          <p className="text-[10px] text-ui-muted mt-1">{card.sub}</p>
-        </div>
-      ))}
-
-      {/* Streaming data line */}
-      <div
-        className="absolute bottom-8 left-0 right-0 overflow-hidden opacity-40"
-        ref={streamRef}
-        aria-hidden="true"
-      >
-        <div className="stream-line">
-          PARSING · candidate_0x4F2A · SKILLS_EXTRACTED[47] · MATCH_SCORE:94.2 · BIAS_AUDIT:PASS · RANK_POSITION:3 · PARSING · candidate_0x3B1C · SKILLS_EXTRACTED[39] · MATCH_SCORE:88.7 · BIAS_AUDIT:PASS · RANK_POSITION:5 ·
-        </div>
       </div>
 
-      {/* Hero content */}
-      <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
-        {/* Eyebrow */}
-        <div className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full border border-cyan-DEFAULT/20 bg-gunmetal/40 backdrop-blur-sm">
-          <span className="w-2 h-2 rounded-full bg-cyan-DEFAULT animate-pulse" />
-          <span className="text-[12px] font-600 text-ui-muted tracking-widest uppercase">
-            AI Screening · Live
-          </span>
-        </div>
-
-        <h1
-          ref={headlineRef}
-          className="font-display text-[clamp(2.6rem,7vw,5.5rem)] font-900 leading-[1.05] tracking-[-0.03em] text-ui-white mb-6"
-          style={{ opacity: 1 }}
-        >
-          Ten thousand applicants.{' '}
-          <span className="text-cyan-DEFAULT text-glow italic">Five perfect fits.</span>
-          <br />
-          One click.
-        </h1>
-
-        <p
-          ref={subRef}
-          className="text-[1.15rem] md:text-[1.3rem] text-ui-muted font-400 max-w-2xl mx-auto leading-relaxed mb-10"
-          style={{ opacity: 1 }}
-        >
-          Screen reads every résumé before the hiring manager finishes their morning coffee — surfacing the candidates who actually fit the role, not just the keywords.
-        </p>
-
-        <div
-          ref={ctaRef}
-          id="demo-cta"
-          className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          style={{ opacity: 1 }}
-        >
-          <button className="btn-cyan px-8 py-4 text-[15px] font-700 flex items-center gap-3">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <circle cx="9" cy="9" r="8" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M6.5 6.5l5 2.5-5 2.5V6.5z" fill="currentColor"/>
-            </svg>
-            See Your Candidate Stack
-          </button>
-          <button className="btn-ghost px-6 py-4 text-[14px] font-500">
-            Watch 90-second demo
-          </button>
-        </div>
-
-        {/* Social proof micro */}
-        <div className="mt-10 flex items-center justify-center gap-6 flex-wrap">
-          {[
-            { v: '500+', l: 'TA teams' },
-            { v: '4.2s', l: 'avg time-to-rank' },
-            { v: '99.1%', l: 'audit pass rate' },
-          ].map((item) => (
-            <div key={item.l} className="flex items-center gap-2">
-              <span className="text-[15px] font-700 text-cyan-DEFAULT">{item.v}</span>
-              <span className="text-[12px] text-ui-faint">{item.l}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          33% { transform: translateY(-30px) rotate(2deg); }
+          66% { transform: translateY(15px) rotate(-2deg); }
+        }
+        .animate-float {
+          animation: float 8s ease-in-out infinite;
+        }
+        @keyframes gradient {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        .animate-gradient {
+          background-size: 200% auto;
+          animation: gradient 4s linear infinite;
+        }
+        .animate-gradient-slow {
+          background-size: 200% auto;
+          animation: gradient 6s linear infinite;
+        }
+        .bg-grid-pattern {
+          background-image: 
+            linear-gradient(rgba(167, 139, 250, 0.1) 1.5px, transparent 1.5px),
+            linear-gradient(90deg, rgba(167, 139, 250, 0.1) 1.5px, transparent 1.5px);
+          background-size: 60px 60px;
+          background-position: center center;
+        }
+      `}</style>
     </section>
   );
 };

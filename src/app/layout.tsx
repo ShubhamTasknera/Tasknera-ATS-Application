@@ -8,8 +8,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Screen — AI Résumé Screening That Actually Fits',
-  description: 'Screen reads 10,000 résumés in seconds and surfaces the five candidates who actually fit your role — built for TA leads, agency recruiters, and HR directors.',
+  title: 'Tasknera - Modern Applicant Tracking System',
+  description: 'Streamline your recruitment process with Tasknera ATS. Manage candidates, track applications, and make better hiring decisions efficiently.',
   icons: {
     icon: [
       { url: '/assets/images/app_logo.png', type: 'image/x-icon' }
@@ -24,10 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}
-
-        <script type="module" async src="https://static.rocket.new/rocket-web.js?_cfg=https%3A%2F%2Fscreen1789640back.builtwithrocket.new&_be=https%3A%2F%2Fappanalytics.rocket.new&_v=0.1.20" />
-        <script type="module" defer src="https://static.rocket.new/rocket-shot.js?v=0.0.2" /></body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
