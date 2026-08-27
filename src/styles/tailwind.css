@@ -1,0 +1,406 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ── */
+:root {
+  --navy:        #0A1628;
+  --navy-mid:    #0D1E38;
+  --gunmetal:    #1B2A4A;
+  --gunmetal-lt: #243452;
+  --cyan:        #00D4FF;
+  --cyan-dim:    rgba(0, 212, 255, 0.12);
+  --cyan-glow:   rgba(0, 212, 255, 0.25);
+  --cyan-ring:   rgba(0, 212, 255, 0.4);
+  --white-ui:    #E8ECF1;
+  --white-muted: #9BAABB;
+  --white-faint: #4A6080;
+  --danger:      #FF4D6D;
+  --success:     #00E5A0;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--navy);
+}
+
+body {
+  background-color: var(--navy);
+  color: var(--white-ui);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(0, 212, 255, 0.3);
+  color: #ffffff;
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--navy); }
+::-webkit-scrollbar-thumb { background: var(--gunmetal-lt); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 212, 255, 0.4); }
+
+/* ── Grain texture overlay ── */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.4'/%3E%3C/svg%3E");
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Radial hero glow ── */
+.hero-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 900px;
+  height: 900px;
+  background: radial-gradient(circle, rgba(0,212,255,0.12) 0%, rgba(0,212,255,0.04) 40%, transparent 70%);
+  pointer-events: none;
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  50%       { opacity: 0.7; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+/* ── Floating candidate cards ── */
+.candidate-card {
+  position: absolute;
+  background: rgba(27, 42, 74, 0.75);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 14px;
+  padding: 14px 18px;
+  pointer-events: none;
+  animation: float-drift 6s ease-in-out infinite;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+@keyframes float-drift {
+  0%, 100% { transform: translateY(0px) rotate(var(--rot, 0deg)); }
+  33%       { transform: translateY(-12px) rotate(var(--rot, 0deg)); }
+  66%       { transform: translateY(6px) rotate(var(--rot, 0deg)); }
+}
+
+/* ── Anchor nav ── */
+.anchor-nav {
+  background: rgba(10, 22, 40, 0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(27, 42, 74, 0.8);
+}
+
+.anchor-pill {
+  position: relative;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--white-muted);
+  transition: color 0.25s ease, background 0.25s ease;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+
+.anchor-pill::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  background: var(--cyan);
+  border-radius: 1px;
+  transform: scaleX(0);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.anchor-pill:hover { color: var(--white-ui); background: rgba(27,42,74,0.5); }
+.anchor-pill.active { color: var(--cyan); }
+.anchor-pill.active::after { transform: scaleX(1); }
+
+/* ── Section reveal ── */
+.reveal {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Comparison grid ── */
+.compare-cell-bad {
+  background: rgba(255, 77, 109, 0.06);
+  border: 1px solid rgba(255, 77, 109, 0.15);
+  border-radius: 10px;
+  padding: 20px 24px;
+}
+
+.compare-cell-good {
+  background: rgba(0, 212, 255, 0.05);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 10px;
+  padding: 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.compare-cell-good::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.6;
+}
+
+/* ── Micro bar chart ── */
+.micro-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.micro-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  width: 0%;
+  transition: width 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.micro-bar-fill.bad  { background: linear-gradient(90deg, #FF4D6D, #FF8FA3); }
+.micro-bar-fill.good { background: linear-gradient(90deg, #00D4FF, #00E5A0); }
+
+/* ── Stat interstitial ── */
+.stat-interstitial {
+  background: linear-gradient(135deg, rgba(27,42,74,0.6) 0%, rgba(10,22,40,0.8) 100%);
+  border-top: 1px solid rgba(0,212,255,0.08);
+  border-bottom: 1px solid rgba(0,212,255,0.08);
+}
+
+/* ── Cyan glow button ── */
+.btn-cyan {
+  background: var(--cyan);
+  color: #0A1628;
+  font-weight: 700;
+  border-radius: 8px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 20px rgba(0,212,255,0.25), 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.btn-cyan:hover {
+  background: #1ADCFF;
+  box-shadow: 0 0 32px rgba(0,212,255,0.5), 0 8px 24px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
+}
+
+.btn-cyan:active { transform: translateY(0); }
+
+/* ── Ghost button ── */
+.btn-ghost {
+  border: 1px solid rgba(0,212,255,0.3);
+  color: var(--cyan);
+  border-radius: 8px;
+  transition: all 0.25s ease;
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: rgba(0,212,255,0.08);
+  border-color: rgba(0,212,255,0.6);
+  box-shadow: 0 0 16px rgba(0,212,255,0.15);
+}
+
+/* ── Match badge ── */
+.match-badge {
+  background: rgba(0,229,160,0.12);
+  border: 1px solid rgba(0,229,160,0.3);
+  color: #00E5A0;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+}
+
+/* ── Skill tag ── */
+.skill-tag {
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.2);
+  color: rgba(0,212,255,0.85);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+/* ── Integration logo card ── */
+.integration-card {
+  background: rgba(27,42,74,0.5);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.integration-card:hover {
+  border-color: rgba(0,212,255,0.3);
+  background: rgba(27,42,74,0.8);
+  box-shadow: 0 0 20px rgba(0,212,255,0.08);
+  transform: translateY(-2px);
+}
+
+/* ── Testimonial card ── */
+.testimonial-card {
+  background: rgba(27,42,74,0.4);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  transition: border-color 0.3s ease;
+}
+
+.testimonial-card:hover {
+  border-color: rgba(0,212,255,0.2);
+}
+
+/* ── Persistent bottom bar ── */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: rgba(10,22,40,0.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0,212,255,0.15);
+  transform: translateY(100%);
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 14px 24px;
+}
+
+.bottom-bar.visible {
+  transform: translateY(0);
+}
+
+/* ── Counter number ── */
+.counter-num {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 800;
+  color: var(--cyan);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* ── Section label ── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  opacity: 0.8;
+}
+
+/* ── Divider line ── */
+.cyan-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,0.3), transparent);
+}
+
+/* ── Score ring ── */
+.score-ring {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid rgba(0,212,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.score-ring::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--cyan);
+  border-right-color: var(--cyan);
+  animation: spin-ring 3s linear infinite;
+}
+
+@keyframes spin-ring {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Ranking row ── */
+.rank-row {
+  background: rgba(27,42,74,0.35);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+}
+
+.rank-row:hover {
+  border-color: rgba(0,212,255,0.2);
+  background: rgba(27,42,74,0.6);
+}
+
+/* ── Bias indicator ── */
+.bias-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ── Fraunces font for display ── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Fraunces:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
+
+.font-display {
+  font-family: 'Fraunces', serif;
+}
+
+/* ── Glow text ── */
+.text-glow {
+  text-shadow: 0 0 30px rgba(0,212,255,0.4);
+}
+
+/* ── Streaming data line ── */
+@keyframes stream-left {
+  from { transform: translateX(100%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+.stream-line {
+  animation: stream-left 8s linear infinite;
+  white-space: nowrap;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: rgba(0,212,255,0.3);
+  letter-spacing: 0.05em;
+}
+
+/* ── Typing cursor ── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+  color: var(--cyan);
+}
