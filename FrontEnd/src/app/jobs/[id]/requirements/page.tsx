@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { sampleJobs } from '@/data/mockData';
@@ -40,7 +40,7 @@ export default function RequirementsReviewPage() {
           const reqs: Requirement[] = (data.job.requirements || []).map((r: any, idx: number) => ({
             id: r.id || `req-${idx}`,
             text: r.requirement,
-            category: (r.category as RequirementCategory) || RequirementCategory.GENERAL,
+            category: (r.category as RequirementCategory) || RequirementCategory.TECHNICAL,
             weight: r.weight || (r.is_mandatory ? 5 : 2),
             isMandatory: Boolean(r.is_mandatory),
             evidenceRequired: Boolean(r.evidence_required)
