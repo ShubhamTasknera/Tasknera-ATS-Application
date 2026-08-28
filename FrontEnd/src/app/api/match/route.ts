@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 // POST - Match candidates with job description
 export async function POST(request: NextRequest) {
   try {
