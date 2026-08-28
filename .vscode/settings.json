@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/document_processor/.venv/Scripts/python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/document_processor",
+    "${workspaceFolder}/document_processor/.venv/Lib/site-packages",
+    "C:/Users/Shubham/AppData/Local/Programs/Python/Python313/Lib/site-packages"
+  ]
+}

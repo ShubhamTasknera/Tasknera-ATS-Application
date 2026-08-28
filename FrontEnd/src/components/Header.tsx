@@ -24,7 +24,10 @@ const Header: React.FC = () => {
     { label: 'Dashboard', href: '/dashboard' },
     { label: 'Jobs', href: '/jobs' },
     { label: 'Candidates', href: '/candidates' },
-    { label: 'Analytics', href: '/analytics' },
+    { label: 'Evaluations', href: '/evaluations' },
+    { label: 'Client Profiles', href: '/clients' },
+    { label: 'Reports', href: '/reports' },
+    { label: 'Settings', href: '/settings' },
   ];
 
   const openAuthModal = (mode: 'signin' | 'signup') => {
@@ -52,18 +55,20 @@ const Header: React.FC = () => {
             </div>
           </Link>
 
-          {/* Nav Links */}
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-lg font-medium transition-all duration-150"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
+          {/* Nav Links - Visible only when logged in */}
+          {isAuthenticated && user && (
+            <div className="hidden md:flex items-center gap-1">
+              {navLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-lg font-medium transition-all duration-150"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="hidden md:flex items-center gap-3">
@@ -125,16 +130,6 @@ const Header: React.FC = () => {
                 </button>
               </>
             )}
-
-            <Link
-              href="/jobs/create"
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-sm font-semibold rounded-lg transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Evaluation
-            </Link>
           </div>
 
           {/* Mobile toggle */}
@@ -149,7 +144,7 @@ const Header: React.FC = () => {
 
         {mobileMenuOpen && (
           <div className="md:hidden bg-[#0A0F1E] border-t border-gray-800 px-6 py-4 space-y-2">
-            {navLinks.map((item) => (
+            {isAuthenticated && user && navLinks.map((item) => (
               <Link key={item.label} href={item.href} className="block px-4 py-2.5 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg text-sm font-medium">
                 {item.label}
               </Link>
