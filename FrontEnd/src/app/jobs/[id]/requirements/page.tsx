@@ -10,14 +10,52 @@ export default function RequirementsReviewPage() {
   const router = useRouter();
   const params = useParams();
   const jobId = params.id as string;
-  
-  // Get job data
-  const job = sampleJobs.find(j => j.id === jobId) || sampleJobs[0];
-  
+
+  // Get fallback mock job data
+  const mockJob = sampleJobs.find(j => j.id === jobId) || sampleJobs[0];
+
   // State for editable requirements
-  const [mandatoryReqs, setMandatoryReqs] = useState<Requirement[]>(job.mandatoryRequirements);
-  const [preferredReqs, setPreferredReqs] = useState<Requirement[]>(job.preferredRequirements);
+  const [jobTitle, setJobTitle] = useState<string>(mockJob.title);
+  const [mandatoryReqs, setMandatoryReqs] = useState<Requirement[]>(mockJob.mandatoryRequirements);
+  const [preferredReqs, setPreferredReqs] = useState<Requirement[]>(mockJob.preferredRequirements);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    async function fetchJobFromBackend() {
+      if (!jobId || jobId === 'job-1' || jobId === 'job-2') return;
+
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const token = localStorage.getItem('tasknera_token');
+
+        const res = await fetch(`${backendUrl}/jobs/${jobId}`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await res.json();
+        if (res.ok && data.job) {
+          setJobTitle(data.job.position);
+          const reqs: Requirement[] = (data.job.requirements || []).map((r: any, idx: number) => ({
+            id: r.id || `req-${idx}`,
+            text: r.requirement,
+            category: (r.category as RequirementCategory) || RequirementCategory.GENERAL,
+            weight: r.weight || (r.is_mandatory ? 5 : 2),
+            isMandatory: Boolean(r.is_mandatory),
+            evidenceRequired: Boolean(r.evidence_required)
+          }));
+
+          setMandatoryReqs(reqs.filter(r => r.isMandatory));
+          setPreferredReqs(reqs.filter(r => !r.isMandatory));
+        }
+      } catch (err) {
+        console.error('Error loading job requirements:', err);
+      }
+    }
+
+    fetchJobFromBackend();
+  }, [jobId]);
 
   const handleUpdateRequirement = (
     id: string,
@@ -37,14 +75,12 @@ export default function RequirementsReviewPage() {
 
   const handleToggleMandatory = (id: string, currentlyMandatory: boolean) => {
     if (currentlyMandatory) {
-      // Move from mandatory to preferred
       const req = mandatoryReqs.find(r => r.id === id);
       if (req) {
         setMandatoryReqs(prev => prev.filter(r => r.id !== id));
         setPreferredReqs(prev => [...prev, { ...req, isMandatory: false }]);
       }
     } else {
-      // Move from preferred to mandatory
       const req = preferredReqs.find(r => r.id === id);
       if (req) {
         setPreferredReqs(prev => prev.filter(r => r.id !== id));
@@ -55,10 +91,9 @@ export default function RequirementsReviewPage() {
 
   const handleSaveAndContinue = () => {
     setIsSaving(true);
-    // Simulate saving
     setTimeout(() => {
       router.push(`/jobs/${jobId}/upload-cvs`);
-    }, 1500);
+    }, 800);
   };
 
   const RequirementRow = ({ req, isMandatory }: { req: Requirement; isMandatory: boolean }) => (
@@ -174,7 +209,7 @@ export default function RequirementsReviewPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">{job.title}</h1>
+              <h1 className="text-3xl font-bold text-white mb-2">{jobTitle}</h1>
               <p className="text-slate-400">
                 Review and edit extracted requirements before candidate evaluation
               </p>

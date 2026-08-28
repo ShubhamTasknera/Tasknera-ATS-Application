@@ -10,8 +10,10 @@ const upload = multer({
 
 const router = Router();
 
-// Protect all job routes with JWT authentication middleware
-router.post('/parse', protect, upload.single('file'), parseJobDescriptionController);
+// Document parsing route (stateless document text extraction & analysis)
+router.post('/parse', upload.single('file'), parseJobDescriptionController);
+
+// Protect database routes with JWT authentication middleware
 router.post('/', protect, createJob);
 router.get('/', protect, getAllJobs);
 router.get('/:id', protect, getJobById);
