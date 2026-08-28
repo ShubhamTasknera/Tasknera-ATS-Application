@@ -1,0 +1,21 @@
+{
+  "include": [
+    "document_processor"
+  ],
+  "extraPaths": [
+    "./document_processor",
+    "./document_processor/.venv/Lib/site-packages",
+    "C:/Users/Shubham/AppData/Local/Programs/Python/Python313/Lib/site-packages"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "document_processor",
+      "pythonVersion": "3.13",
+      "extraPaths": [
+        "./document_processor",
+        "./document_processor/.venv/Lib/site-packages",
+        "C:/Users/Shubham/AppData/Local/Programs/Python/Python313/Lib/site-packages"
+      ]
+    }
+  ]
+}

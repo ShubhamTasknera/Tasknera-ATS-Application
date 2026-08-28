@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 
 interface AuthModalProps {
@@ -23,6 +24,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
 
   const { signin, signup } = useAuth();
+  const router = useRouter();
 
   if (!isOpen) return null;
 
@@ -44,6 +46,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         await signup(name, email, password);
       }
       onClose();
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || `Failed to ${mode === 'signin' ? 'sign in' : 'sign up'}`);
     } finally {

@@ -2,19 +2,27 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '../context/AuthContext';
 
 export default function RootPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
   
   useEffect(() => {
-    router.push('/home');
-  }, [router]);
+    if (!isLoading) {
+      if (isAuthenticated) {
+        router.push('/dashboard');
+      } else {
+        router.push('/home');
+      }
+    }
+  }, [router, isAuthenticated, isLoading]);
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#060C1A] flex items-center justify-center">
       <div className="text-center">
-        <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-500 mb-4"></div>
-        <p className="text-white text-lg">Loading...</p>
+        <div className="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <p className="text-gray-400 text-sm font-medium">Loading Tasknera...</p>
       </div>
     </div>
   );

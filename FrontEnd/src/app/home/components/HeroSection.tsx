@@ -1,14 +1,28 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { AuthModal } from '@/components/AuthModal';
 
 const HeroSection: React.FC = () => {
   const [isVisible, setIsVisible] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  const { isAuthenticated } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  const handleActionClick = (targetPath: string) => {
+    if (isAuthenticated) {
+      router.push(targetPath);
+    } else {
+      setAuthModalOpen(true);
+    }
+  };
 
   const candidates = [
     {
@@ -88,21 +102,21 @@ const HeroSection: React.FC = () => {
 
         {/* CTAs */}
         <div className={`flex items-center justify-center gap-4 mb-20 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <Link
-            href="/jobs/create"
+          <button
+            onClick={() => handleActionClick('/jobs/create')}
             className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-blue-900/40 text-sm"
           >
             Start Evaluating
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
-          </Link>
-          <Link
-            href="/dashboard"
+          </button>
+          <button
+            onClick={() => handleActionClick('/dashboard')}
             className="flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold rounded-lg transition-colors border border-gray-700 text-sm"
           >
             View Dashboard
-          </Link>
+          </button>
         </div>
 
         {/* Workflow Steps */}
@@ -199,6 +213,13 @@ const HeroSection: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode="signin"
+      />
     </section>
   );
 };

@@ -2,249 +2,224 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 
 export default function JobsPage() {
-  const jobs = [
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
+
+  const initialJobs = [
     {
-      id: 1,
-      title: 'Senior Full Stack Developer',
-      department: 'Engineering',
-      location: 'San Francisco, CA',
-      type: 'Full-time',
-      candidates: 145,
-      newCandidates: 12,
-      status: 'Active',
-      postedDate: '2 days ago',
-      gradient: 'from-primary-500 to-primary-700',
-      salary: '$120k - $180k',
-    },
-    {
-      id: 2,
-      title: 'Product Manager',
-      department: 'Product',
+      id: 'job-1',
+      title: 'SAP CO Consultant',
+      client: 'TechCorp Industries',
       location: 'New York, NY',
-      type: 'Full-time',
-      candidates: 89,
-      newCandidates: 8,
+      workMode: 'Hybrid',
+      salary: '$130,000 - $170,000',
+      candidatesCount: 42,
+      topMatch: 94,
       status: 'Active',
-      postedDate: '5 days ago',
-      gradient: 'from-cyan-500 to-blue-500',
-      salary: '$140k - $200k',
+      createdDate: '2026-08-26',
     },
     {
-      id: 3,
-      title: 'UX/UI Designer',
-      department: 'Design',
+      id: 'job-2',
+      title: 'Lead S/4HANA Architect',
+      client: 'Global Logistics Inc',
+      location: 'Chicago, IL',
+      workMode: 'Remote',
+      salary: '$160,000 - $200,000',
+      candidatesCount: 28,
+      topMatch: 88,
+      status: 'Active',
+      createdDate: '2026-08-25',
+    },
+    {
+      id: 'job-3',
+      title: 'Financial Systems Analyst',
+      client: 'Pinnacle Financial',
+      location: 'San Francisco, CA',
+      workMode: 'Onsite',
+      salary: '$110,000 - $140,000',
+      candidatesCount: 19,
+      topMatch: 76,
+      status: 'Active',
+      createdDate: '2026-08-24',
+    },
+    {
+      id: 'job-4',
+      title: 'Senior Software Engineer (Backend)',
+      client: 'Tasknera Enterprise',
       location: 'Remote',
-      type: 'Full-time',
-      candidates: 67,
-      newCandidates: 5,
+      workMode: 'Remote',
+      salary: '$140,000 - $180,000',
+      candidatesCount: 65,
+      topMatch: 91,
       status: 'Active',
-      postedDate: '1 week ago',
-      gradient: 'from-emerald-500 to-teal-500',
-      salary: '$90k - $130k',
+      createdDate: '2026-08-22',
     },
     {
-      id: 4,
-      title: 'DevOps Engineer',
-      department: 'Engineering',
-      location: 'Austin, TX',
-      type: 'Full-time',
-      candidates: 52,
-      newCandidates: 3,
-      status: 'Active',
-      postedDate: '3 days ago',
-      gradient: 'from-amber-500 to-orange-500',
-      salary: '$110k - $160k',
-    },
-    {
-      id: 5,
-      title: 'Marketing Manager',
-      department: 'Marketing',
-      location: 'Los Angeles, CA',
-      type: 'Contract',
-      candidates: 34,
-      newCandidates: 7,
-      status: 'Paused',
-      postedDate: '2 weeks ago',
-      gradient: 'from-primary-700 to-rose-500',
-      salary: '$80k - $120k',
-    },
-    {
-      id: 6,
-      title: 'Data Scientist',
-      department: 'Analytics',
-      location: 'Boston, MA',
-      type: 'Full-time',
-      candidates: 78,
-      newCandidates: 15,
-      status: 'Active',
-      postedDate: '4 days ago',
-      gradient: 'from-blue-500 to-indigo-500',
-      salary: '$130k - $190k',
+      id: 'job-5',
+      title: 'SAP FI Functional Lead',
+      client: 'Nexus Manufacturing',
+      location: 'Dallas, TX',
+      workMode: 'Hybrid',
+      salary: '$145,000 - $175,000',
+      candidatesCount: 12,
+      topMatch: 82,
+      status: 'Draft',
+      createdDate: '2026-08-20',
     },
   ];
 
+  const filteredJobs = initialJobs.filter((job) => {
+    const matchesSearch =
+      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.location.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = selectedFilter === 'All' || job.status === selectedFilter;
+    return matchesSearch && matchesFilter;
+  });
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-slate-950/80 backdrop-blur-2xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
-              <Link href="/home" className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-800 rounded-xl flex items-center justify-center shadow-lg">
-                  <span className="text-white font-bold text-lg">T</span>
-                </div>
-                <span className="text-xl font-bold text-white">Tasknera</span>
-              </Link>
-              <nav className="flex items-center gap-6">
-                <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">Dashboard</Link>
-                <Link href="/candidates" className="text-slate-400 hover:text-white transition-colors">Candidates</Link>
-                <Link href="/jobs" className="text-white font-medium flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm1 5a1 1 0 011-1h.01a1 1 0 110 2H10a1 1 0 01-1-1z" clipRule="evenodd" />
-                    <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
-                  </svg>
-                  Jobs
-                </Link>
-                <Link href="/analytics" className="text-slate-400 hover:text-white transition-colors">Analytics</Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </button>
-              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-full flex items-center justify-center cursor-pointer">
-                <span className="text-white font-semibold">JD</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col justify-between">
+      {/* Global Unified Navigation Header */}
+      <Header />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Page Header */}
-        <div className="mb-8 flex items-center justify-between">
+      <main className="max-w-7xl mx-auto px-6 pt-28 pb-16 flex-1 w-full">
+        {/* Page Title & Actions */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">Job Openings</h1>
-            <p className="text-slate-400 text-lg">Manage all your open positions and track applications</p>
+            <h1 className="text-3xl font-bold tracking-tight text-white mb-1">Job Specification Directory</h1>
+            <p className="text-gray-400 text-sm">Manage position requirements, candidate matching rules, and evaluation pipelines.</p>
           </div>
-          <button className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white font-semibold rounded-xl hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-primary-500/50">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          <Link
+            href="/jobs/create"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2 self-start sm:self-auto"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Post New Job
-          </button>
+            Create New Job
+          </Link>
         </div>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {[
-            { label: 'Active Jobs', value: '24', icon: '📋', color: 'from-primary-500 to-primary-700' },
-            { label: 'Total Applicants', value: '1,847', icon: '👥', color: 'from-cyan-500 to-blue-500' },
-            { label: 'Avg. Time to Hire', value: '18 days', icon: '⏱️', color: 'from-emerald-500 to-teal-500' },
-            { label: 'Acceptance Rate', value: '87%', icon: '✅', color: 'from-amber-500 to-orange-500' },
-          ].map((stat, i) => (
-            <div key={i} className="relative group">
-              <div className={`absolute -inset-0.5 bg-gradient-to-r ${stat.color} opacity-0 group-hover:opacity-30 blur-xl transition-opacity rounded-2xl`} />
-              <div className="relative bg-white/[0.03] backdrop-blur-xl rounded-2xl p-6 border border-white/10 hover:border-white/20 transition-all">
-                <div className="text-3xl mb-2">{stat.icon}</div>
-                <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
-                <div className="text-slate-400 text-sm">{stat.label}</div>
-              </div>
-            </div>
-          ))}
+        {/* Filter & Search Bar */}
+        <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+          {/* Search Input */}
+          <div className="relative w-full md:w-96">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by job title, client, or location..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+            />
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto">
+            {(['All', 'Active', 'Draft', 'Closed'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setSelectedFilter(status)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  selectedFilter === status
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Jobs List */}
+        {/* Jobs List Grid */}
         <div className="space-y-4">
-          {jobs.map((job) => (
-            <div key={job.id} className="group relative">
-              <div className={`absolute -inset-0.5 bg-gradient-to-r ${job.gradient} opacity-0 group-hover:opacity-20 blur-xl transition-opacity rounded-2xl`} />
-              <div className="relative bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-white/10 hover:border-white/20 transition-all p-6 cursor-pointer">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-start gap-4 mb-4">
-                      <div className={`w-16 h-16 bg-gradient-to-br ${job.gradient} rounded-xl flex items-center justify-center shadow-lg ring-2 ring-white/10 flex-shrink-0`}>
-                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-xl font-bold text-white mb-2 group-hover:text-primary-300 transition-colors">{job.title}</h3>
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-slate-400">
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                            {job.department}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {job.location}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {job.type}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {job.salary}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-6">
-                      <div className="flex items-center gap-2">
-                        <div className="text-2xl font-bold text-white">{job.candidates}</div>
-                        <div className="text-slate-400 text-sm">Candidates</div>
-                      </div>
-                      {job.newCandidates > 0 && (
-                        <div className="px-3 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-sm font-medium border border-emerald-500/30">
-                          +{job.newCandidates} new
-                        </div>
-                      )}
-                      <span className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                        job.status === 'Active' 
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
-                        {job.status}
-                      </span>
-                      <span className="text-slate-500 text-sm ml-auto">Posted {job.postedDate}</span>
-                    </div>
+          {filteredJobs.length > 0 ? (
+            filteredJobs.map((job) => (
+              <div
+                key={job.id}
+                className="bg-[#0F172A]/80 border border-gray-800 hover:border-gray-700/80 rounded-2xl p-6 transition-all shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6"
+              >
+                {/* Job Specs */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-lg font-bold text-white hover:text-blue-400 transition-colors">
+                      <Link href={`/jobs/${job.id}/requirements`}>{job.title}</Link>
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      {job.workMode}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                        job.status === 'Active'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      }`}
+                    >
+                      {job.status}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 ml-6">
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  <div className="flex items-center gap-4 text-xs text-gray-400 flex-wrap">
+                    <span className="flex items-center gap-1.5 text-gray-300 font-medium">
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
-                    </button>
-                    <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                      <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                      {job.client}
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                       </svg>
-                    </button>
+                      {job.location}
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {job.salary}
+                    </span>
                   </div>
                 </div>
+
+                {/* Job Metrics & Action */}
+                <div className="flex items-center gap-6 self-end md:self-auto">
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-white block">{job.candidatesCount} Candidates</span>
+                    <span className="text-xs text-emerald-400 font-medium">Top Match: {job.topMatch}%</span>
+                  </div>
+
+                  <Link
+                    href={`/jobs/${job.id}/requirements`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                  >
+                    <span>View Requirements</span>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                </div>
               </div>
+            ))
+          ) : (
+            <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-12 text-center text-gray-400">
+              No jobs found matching your criteria.
             </div>
-          ))}
+          )}
         </div>
       </main>
+
+      {/* Global Footer */}
+      <Footer />
     </div>
   );
 }

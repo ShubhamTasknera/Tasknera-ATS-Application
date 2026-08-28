@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
+import jobRoutes from './routes/jobRoutes';
 
 dotenv.config();
 
@@ -21,8 +22,9 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-// Authentication Routes
+// Authentication & Job Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/jobs', jobRoutes);
 
 app.listen(PORT, () => {
   console.log(`[Backend] Server listening on http://localhost:${PORT}`);
