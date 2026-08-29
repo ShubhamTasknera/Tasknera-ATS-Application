@@ -1,11 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
-const allJobs = [
+interface JobItem {
+  id: string;
+  title: string;
+  client: string;
+  location: string;
+  mode: string;
+  salary: string;
+  candidates: number;
+  topScore: number;
+  status: string;
+  created: string;
+}
+
+const defaultInitialJobs: JobItem[] = [
   { id: 'jd-1', title: 'SAP CO Consultant',         client: 'TechCorp Industries',  location: 'New York, NY',      mode: 'Hybrid',  salary: '$130k–$170k', candidates: 42, topScore: 94, status: 'Active',  created: '26 Aug 2026' },
   { id: 'jd-2', title: 'Lead S/4HANA Architect',    client: 'Global Logistics Inc', location: 'Chicago, IL',       mode: 'Remote',  salary: '$160k–$200k', candidates: 28, topScore: 88, status: 'Active',  created: '25 Aug 2026' },
   { id: 'jd-3', title: 'Financial Systems Analyst',  client: 'Pinnacle Financial',   location: 'San Francisco, CA', mode: 'Onsite',  salary: '$110k–$140k', candidates: 19, topScore: 76, status: 'Active',  created: '24 Aug 2026' },
@@ -27,9 +40,54 @@ const statusColors: Record<string, string> = {
 };
 
 export default function JobsPage() {
+  const [allJobs, setAllJobs] = useState<JobItem[]>(defaultInitialJobs);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadJobsFromBackend() {
+      try {
+        setIsLoading(true);
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+        const res = await fetch(`${backendUrl}/jobs`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.jobs) && data.jobs.length > 0) {
+            const mappedJobs: JobItem[] = data.jobs.map((j: any) => ({
+              id: j.id,
+              title: j.position || j.title || 'Untitled Position',
+              client: j.client || 'Client Not Specified',
+              location: j.location || 'Remote',
+              mode: j.work_mode || j.workMode || 'Remote',
+              salary: j.salary || 'Competitive',
+              candidates: j.candidatesCount || (j.id === 'jd-1' ? 42 : 0),
+              topScore: j.topScore || 90,
+              status: j.status || 'Active',
+              created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent'
+            }));
+
+            // Merge unique with default templates
+            const existingIds = new Set(mappedJobs.map(j => j.id));
+            const merged = [...mappedJobs, ...defaultInitialJobs.filter(dj => !existingIds.has(dj.id))];
+            setAllJobs(merged);
+          }
+        }
+      } catch (err) {
+        console.warn('Backend offline or error fetching jobs, using local defaults:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadJobsFromBackend();
+  }, []);
 
   const filtered = allJobs.filter(j => {
     const q = search.toLowerCase();
@@ -198,7 +256,7 @@ export default function JobsPage() {
                             Rubric
                           </Link>
                           <Link
-                            href={`/jobs/${j.id}/upload-cvs`}
+                            href={`/jobs/${j.id}/candidates`}
                             className="px-3 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
                           >
                             Evaluate CVs
@@ -250,7 +308,7 @@ export default function JobsPage() {
                     View Rubric
                   </Link>
                   <Link
-                    href={`/jobs/${j.id}/upload-cvs`}
+                    href={`/jobs/${j.id}/candidates`}
                     className="flex-1 text-center py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
                   >
                     Evaluate

@@ -1,11 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
-const allCandidates = [
+interface CandidateItem {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  location: string;
+  exp: string;
+  match: number;
+  decision: string;
+  jobs: number;
+  skills: string[];
+}
+
+const defaultInitialCandidates: CandidateItem[] = [
   { id: 'cv-1', name: 'Sarah Mitchell',  role: 'SAP CO Consultant',     email: 'sarah.m@email.com',    location: 'New York, NY',      exp: '8 yrs', match: 94, decision: 'SUBMIT',        jobs: 2, skills: ['SAP CO', 'S/4HANA', 'Manufacturing'] },
   { id: 'cv-2', name: 'Michael Chen',    role: 'SAP Consultant',         email: 'michael.c@email.com',  location: 'San Francisco, CA', exp: '7 yrs', match: 76, decision: 'REVIEW',        jobs: 1, skills: ['SAP FI', 'SAP CO', 'S/4HANA'] },
   { id: 'cv-3', name: 'Emily Rodriguez', role: 'UX Designer',            email: 'emily.r@email.com',    location: 'Austin, TX',        exp: '5 yrs', match: 92, decision: 'SUBMIT',        jobs: 1, skills: ['Figma', 'UI/UX', 'Design Systems'] },
@@ -33,13 +46,53 @@ const avatarColor = (name: string) => {
     'bg-rose-50 text-rose-600',
     'bg-teal-50 text-teal-600',
   ];
-  return colors[name.charCodeAt(0) % colors.length];
+  return colors[(name || 'A').charCodeAt(0) % colors.length];
 };
 
 export default function CandidatesPage() {
+  const [allCandidates, setAllCandidates] = useState<CandidateItem[]>(defaultInitialCandidates);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT'>('All');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadCandidatesFromBackend() {
+      try {
+        setIsLoading(true);
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const res = await fetch(`${backendUrl}/jobs/jd-1/candidates`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.candidates) && data.candidates.length > 0) {
+            const mapped: CandidateItem[] = data.candidates.map((c: any) => ({
+              id: c.id,
+              name: c.name || 'Candidate',
+              role: c.currentTitle || 'Applicant',
+              email: c.email || 'contact@example.com',
+              location: c.location || 'Remote',
+              exp: c.totalExperience || '3 yrs',
+              match: c.parsingStatus === 'FAILED' ? 35 : (c.skills?.length ? Math.min(96, 70 + c.skills.length * 3) : 85),
+              decision: c.parsingStatus === 'FAILED' ? 'DO NOT SUBMIT' : (c.skills?.length >= 5 ? 'SUBMIT' : 'REVIEW'),
+              jobs: 1,
+              skills: Array.isArray(c.skills) ? c.skills : []
+            }));
+
+            // Merge unique
+            const existingIds = new Set(mapped.map(c => c.id));
+            const merged = [...mapped, ...defaultInitialCandidates.filter(dc => !existingIds.has(dc.id))];
+            setAllCandidates(merged);
+          }
+        }
+      } catch (err) {
+        console.warn('Backend candidate fetch error, fallback to defaults:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadCandidatesFromBackend();
+  }, []);
 
   const filtered = allCandidates.filter(c => {
     const q = search.toLowerCase();

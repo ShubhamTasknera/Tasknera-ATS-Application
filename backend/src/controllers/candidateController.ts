@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { extractDocumentTextViaPython } from '../services/pythonDocumentClient';
+import { extractDocumentTextViaPython, PythonDocumentResponse } from '../services/pythonDocumentClient';
 import { extractStructuredCandidateFromText, CandidateParsedProfile } from '../services/cvParsingService';
 
 export interface CandidateRecord extends CandidateParsedProfile {
@@ -245,7 +245,7 @@ React, JavaScript, Redux, HTML5, CSS3, REST APIs, Git`,
  */
 export const getCandidatesForJob = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { jobId } = req.params;
+    const jobId = String(req.params.jobId || '');
 
     if (!jobId) {
       res.status(400).json({ error: 'Job ID is required' });
@@ -289,7 +289,8 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
  */
 export const getCandidateById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { jobId, candidateId } = req.params;
+    const jobId = String(req.params.jobId || '');
+    const candidateId = String(req.params.candidateId || '');
 
     let candidates = CANDIDATE_STORE.get(jobId);
     if (!candidates) {
@@ -323,7 +324,7 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
  */
 export const uploadCandidateCVs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { jobId } = req.params;
+    const jobId = String(req.params.jobId || '');
     const files = req.files as Express.Multer.File[];
 
     if (!jobId) {
@@ -360,11 +361,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         );
 
         let rawText = '';
-        let extractionMethod = pythonResult.extractionMethod || 'direct-buffer';
-        let pageCount = pythonResult.pageCount || 1;
-        let ocrUsed = pythonResult.ocrUsed || false;
-        let charCount = pythonResult.characterCount || 0;
-        let wordCount = pythonResult.wordCount || 0;
+        let extractionMethod = (pythonResult as any).extractionMethod || 'direct-buffer';
+        let pageCount = (pythonResult as any).pageCount || 1;
+        let ocrUsed = (pythonResult as any).ocrUsed || false;
+        let charCount = (pythonResult as any).characterCount || 0;
+        let wordCount = (pythonResult as any).wordCount || 0;
 
         if (pythonResult.success && pythonResult.text && pythonResult.text.trim().length > 10) {
           rawText = pythonResult.normalizedText || pythonResult.text;
@@ -503,7 +504,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
  */
 export const retryCandidateParsing = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { jobId, candidateId } = req.params;
+    const jobId = String(req.params.jobId || '');
+    const candidateId = String(req.params.candidateId || '');
 
     const candidates = CANDIDATE_STORE.get(jobId);
     if (!candidates) {
