@@ -143,3 +143,4 @@ const RankingSection: React.FC = () => {
 };
 
 export default RankingSection;
+

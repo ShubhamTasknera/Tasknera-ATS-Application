@@ -11,6 +11,8 @@ __pycache__/
 .next/
 **/dist/
 dist/
+*.tsbuildinfo
+**/*.tsbuildinfo
 
 # Environment files
 .env

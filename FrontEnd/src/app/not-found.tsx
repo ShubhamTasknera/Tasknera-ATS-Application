@@ -16,8 +16,8 @@ export default function NotFound() {
             </svg>
           </div>
           <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
-          <h2 className="text-2xl font-semibold text-gray-700 mb-4">Page Not Found</h2>
-          <p className="text-gray-600 mb-8 max-w-md mx-auto">
+          <h2 className="text-2xl font-semibold text-grey-light mb-4">Page Not Found</h2>
+          <p className="text-grey mb-8 max-w-md mx-auto">
             Sorry, we couldn't find the page you're looking for. It might have been moved or doesn't exist.
           </p>
         </div>
@@ -25,13 +25,13 @@ export default function NotFound() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <button 
             onClick={() => router.push('/home')}
-            className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-6 py-3 bg-orange text-charcoal font-semibold rounded-lg hover:bg-blue-700 transition-colors"
           >
             Go to Homepage
           </button>
           <button 
             onClick={() => window.history.back()} 
-            className="px-6 py-3 bg-white text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors border border-gray-300"
+            className="px-6 py-3 bg-white text-grey-light font-semibold rounded-lg hover:bg-gray-50 transition-colors border border-gray-300"
           >
             Go Back
           </button>
@@ -40,3 +40,4 @@ export default function NotFound() {
     </div>
   );
 }
+
