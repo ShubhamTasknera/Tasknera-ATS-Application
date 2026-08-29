@@ -1,323 +1,293 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import Footer from '@/components/Footer';
-import { useAuth } from '@/context/AuthContext';
 
-interface Job {
+interface UploadedFile {
   id: string;
-  client: string;
-  position: string;
-  location?: string;
-  requirements: Array<{
-    id: string;
-    requirement: string;
-    is_mandatory: boolean;
-  }>;
-}
-
-interface UploadedCvFile {
-  file: File;
-  id: string;
-  candidateName: string;
-  status: 'pending' | 'analyzing' | 'done' | 'error';
+  name: string;
+  size: string;
+  status: 'queued' | 'processing' | 'done' | 'error';
+  candidate?: string;
   score?: number;
-  decision?: 'APPROVED' | 'REJECTED' | 'SHORTLISTED';
+  decision?: string;
 }
 
-export default function UploadCvsPage() {
+const formatSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+export default function UploadCVsPage() {
   const params = useParams();
   const router = useRouter();
-  const { token } = useAuth();
   const jobId = params.id as string;
 
-  const [job, setJob] = useState<Job | null>(null);
-  const [loadingJob, setLoadingJob] = useState(true);
-
-  // CV Files state
-  const [cvFiles, setCvFiles] = useState<UploadedCvFile[]>([]);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
-  const [processingDone, setProcessingDone] = useState(false);
+  const [isDone, setIsDone] = useState(false);
 
-  useEffect(() => {
-    async function fetchJob() {
-      try {
-        setLoadingJob(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const authToken = token || localStorage.getItem('tasknera_token');
-
-        const res = await fetch(`${backendUrl}/jobs/${jobId}`, {
-          headers: {
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
-          }
-        });
-
-        const data = await res.json();
-        if (res.ok && data.job) {
-          setJob(data.job);
-        }
-      } catch (err) {
-        console.error('Failed to load job details:', err);
-      } finally {
-        setLoadingJob(false);
-      }
-    }
-
-    if (jobId) {
-      fetchJob();
-    }
-  }, [jobId, token]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const newCvList: UploadedCvFile[] = Array.from(files).map((f) => ({
-      file: f,
-      id: `cv-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      candidateName: f.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
-      status: 'pending'
+  const addFiles = (incoming: FileList | null) => {
+    if (!incoming) return;
+    const newFiles: UploadedFile[] = Array.from(incoming).map(f => ({
+      id: `${Date.now()}-${Math.random()}`,
+      name: f.name,
+      size: formatSize(f.size),
+      status: 'queued',
     }));
-
-    setCvFiles((prev) => [...prev, ...newCvList]);
+    setFiles(prev => [...prev, ...newFiles]);
   };
 
-  const handleRemoveCv = (id: string) => {
-    setCvFiles((prev) => prev.filter((c) => c.id !== id));
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(e.dataTransfer.files);
+  }, []);
+
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const handleStartEvaluation = async () => {
-    if (cvFiles.length === 0) return;
-
+  // Simulate processing
+  const handleEvaluate = async () => {
+    if (!files.length) return;
     setIsProcessing(true);
-    setProcessingDone(false);
 
-    setProcessingStep('Extracting text & running Quality Assessment on candidate CVs...');
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-
-    setProcessingStep('Evaluating mandatory criteria compliance...');
-    setCvFiles((prev) =>
-      prev.map((item, idx) => {
-        const mockScore = 75 + Math.floor(Math.random() * 23);
-        return {
-          ...item,
-          status: 'done',
-          score: mockScore,
-          decision: mockScore >= 80 ? 'SHORTLISTED' : mockScore >= 60 ? 'APPROVED' : 'REJECTED'
-        };
-      })
-    );
-
-    setProcessingStep('Generating candidate evidence reports & scoring summary...');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Simulate per-file processing
+    for (let i = 0; i < files.length; i++) {
+      await new Promise(r => setTimeout(r, 800));
+      const mockResults = [
+        { candidate: 'Sarah Mitchell', score: 94, decision: 'SUBMIT' },
+        { candidate: 'Michael Chen', score: 76, decision: 'REVIEW' },
+        { candidate: 'Jennifer Lopez', score: 52, decision: 'DO NOT SUBMIT' },
+      ];
+      const result = mockResults[i % mockResults.length];
+      setFiles(prev =>
+        prev.map((f, idx) =>
+          idx === i
+            ? { ...f, status: 'done', candidate: result.candidate, score: result.score, decision: result.decision }
+            : f
+        )
+      );
+    }
 
     setIsProcessing(false);
-    setProcessingDone(true);
+    setIsDone(true);
+  };
+
+  const decisionColor = (d?: string) => {
+    if (d === 'SUBMIT') return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
+    if (d === 'REVIEW') return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
+    return 'text-red-400 bg-red-500/10 border-red-500/30';
   };
 
   return (
-    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col justify-between">
+    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col">
       <Header />
 
-      <main className="max-w-5xl mx-auto px-6 pt-28 pb-16 w-full flex-1">
-        {/* Navigation Breadcrumbs */}
-        <div className="flex items-center justify-between mb-8">
-          <Link href={`/jobs/${jobId}`} className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Job Details
-          </Link>
+      <main className="max-w-4xl mx-auto px-6 pt-28 pb-20 flex-1 w-full">
 
-          <Link
-            href="/candidates"
-            className="px-4 py-2 bg-gray-800/80 hover:bg-gray-800 text-gray-300 text-xs font-semibold rounded-xl border border-gray-700 transition-colors"
-          >
-            View All Candidates →
-          </Link>
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
+          <Link href="/jobs" className="hover:text-gray-400">Jobs</Link>
+          <span>/</span>
+          <Link href={`/jobs/${jobId}`} className="hover:text-gray-400">Job Details</Link>
+          <span>/</span>
+          <span className="text-gray-400">Upload CVs</span>
         </div>
 
-        {/* Page Header Title */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-3">
-            <div className="w-12 h-12 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        {/* Progress Steps */}
+        <div className="flex items-center gap-4 mb-10">
+          {[
+            { n: '1', label: 'Upload JD', done: true },
+            { n: '2', label: 'Review Requirements', done: true },
+            { n: '3', label: 'Upload CVs', active: true },
+          ].map((s, i) => (
+            <React.Fragment key={i}>
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                  s.done ? 'bg-emerald-500 text-white' :
+                  s.active ? 'bg-blue-600 text-white' :
+                  'bg-gray-800 text-gray-500'
+                }`}>
+                  {s.done ? '✓' : s.n}
+                </div>
+                <span className={`text-sm font-medium ${s.active ? 'text-white' : s.done ? 'text-emerald-400' : 'text-gray-600'}`}>
+                  {s.label}
+                </span>
+              </div>
+              {i < 2 && <div className="flex-1 h-px bg-gray-800" />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-white mb-1">Upload Candidate CVs</h1>
+          <p className="text-gray-500 text-sm">Upload one or multiple CVs. System will extract candidate data and evaluate against the job requirements.</p>
+        </div>
+
+        {/* Upload Zone */}
+        {!isDone && (
+          <div
+            onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={onDrop}
+            className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all mb-6 ${
+              isDragging
+                ? 'border-blue-500 bg-blue-500/5'
+                : 'border-gray-800 bg-gray-900/30 hover:border-gray-700'
+            }`}
+          >
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.txt"
+              onChange={e => addFiles(e.target.files)}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            <div className="w-14 h-14 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white">Upload Candidate Resumes / CVs</h1>
-              <p className="text-gray-400 text-sm">
-                Target Position: <span className="text-white font-semibold">{job?.position || 'Loading position...'}</span> ({job?.client || 'Client'})
-              </p>
-            </div>
-          </div>
-
-          {/* Workflow Steps Indicator */}
-          <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-800/80">
-            <div className="flex items-center gap-2 text-emerald-400">
-              <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold text-xs flex items-center justify-center">
-                ✓
-              </div>
-              <span className="text-sm font-semibold">Job Specification</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-800" />
-            <div className="flex items-center gap-2 text-emerald-400">
-              <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold text-xs flex items-center justify-center">
-                ✓
-              </div>
-              <span className="text-sm font-semibold">Job Requirements</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-800" />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
-                3
-              </div>
-              <span className="text-sm font-semibold text-white">Candidate Evaluation</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          {/* Upload Dropzone */}
-          <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              Select PDF or Word Resumes / CVs
-            </h2>
-
-            <div className="relative border-2 border-dashed border-gray-800 hover:border-blue-500/50 rounded-2xl p-8 text-center transition-all bg-[#070B14]/60 group">
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleFileSelect}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="flex flex-col items-center justify-center">
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                <p className="text-white font-semibold text-sm mb-1">Click to browse or drop candidate resume files here</p>
-                <p className="text-gray-400 text-xs">Supports multiple PDF, DOCX, DOC files for batch candidate evaluation</p>
-              </div>
-            </div>
-
-            {/* Selected File List */}
-            {cvFiles.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-gray-800">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                    Selected Resumes ({cvFiles.length})
-                  </span>
-                  {!isProcessing && !processingDone && (
-                    <button
-                      type="button"
-                      onClick={() => setCvFiles([])}
-                      className="text-xs text-rose-400 hover:underline"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                  {cvFiles.map((cv) => (
-                    <div
-                      key={cv.id}
-                      className="p-3.5 rounded-xl bg-[#070B14] border border-gray-800 flex items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-base">📄</span>
-                        <div>
-                          <span className="text-xs font-medium text-white block capitalize">{cv.candidateName}</span>
-                          <span className="text-[10px] text-gray-500 font-mono">{cv.file.name} ({(cv.file.size / 1024).toFixed(1)} KB)</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {cv.status === 'done' && cv.score && (
-                          <div className="flex items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 text-xs font-bold">
-                              Score: {cv.score}%
-                            </span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                              cv.decision === 'SHORTLISTED'
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                : cv.decision === 'APPROVED'
-                                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                                : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                            }`}>
-                              {cv.decision}
-                            </span>
-                          </div>
-                        )}
-
-                        {!isProcessing && !processingDone && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveCv(cv.id)}
-                            className="text-gray-500 hover:text-rose-400 p-1"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <p className="text-white font-semibold mb-1">Drop CV files here or click to browse</p>
+            <p className="text-gray-500 text-sm">PDF, DOC, DOCX, TXT · Multiple files supported · Max 10MB each</p>
+            {files.length > 0 && (
+              <div className="mt-3 inline-flex items-center gap-1.5 bg-blue-600/10 text-blue-400 border border-blue-600/30 px-3 py-1 rounded-full text-xs font-semibold">
+                {files.length} file{files.length > 1 ? 's' : ''} selected
               </div>
             )}
+          </div>
+        )}
 
-            {/* Live Progress Bar */}
-            {isProcessing && (
-              <div className="mt-6 p-4 rounded-xl bg-blue-950/40 border border-blue-500/30 animate-pulse flex items-center gap-4">
-                <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                <div>
-                  <span className="text-blue-300 font-semibold text-xs block mb-0.5">Evaluation Pipeline Active</span>
-                  <span className="text-blue-200/80 text-xs font-mono">{processingStep}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-800">
-              <Link
-                href={`/jobs/${jobId}`}
-                className="px-5 py-2.5 bg-gray-800/80 hover:bg-gray-800 text-gray-300 text-xs font-semibold rounded-xl border border-gray-700 transition-colors"
-              >
-                Back to Job Details
-              </Link>
-
-              {processingDone ? (
-                <Link
-                  href="/candidates"
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-emerald-900/40 flex items-center gap-2"
-                >
-                  <span>View Candidate Results →</span>
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStartEvaluation}
-                  disabled={cvFiles.length === 0 || isProcessing}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/40 flex items-center gap-2"
-                >
-                  <span>⚡ Run AI Evaluation on {cvFiles.length} Resume(s)</span>
+        {/* File List */}
+        {files.length > 0 && (
+          <div className="bg-[#0F172A]/60 border border-gray-800 rounded-xl overflow-hidden mb-6">
+            <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">{files.length} CV{files.length > 1 ? 's' : ''}</span>
+              {!isProcessing && !isDone && (
+                <button onClick={() => setFiles([])} className="text-xs text-gray-600 hover:text-red-400 transition-colors">
+                  Clear all
                 </button>
               )}
             </div>
+            <div className="divide-y divide-gray-800/50">
+              {files.map(f => (
+                <div key={f.id} className="flex items-center gap-4 px-5 py-3.5">
+                  {/* Icon */}
+                  <div className="w-9 h-9 bg-gray-800 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+
+                  {/* File name + size */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{f.name}</p>
+                    <p className="text-gray-600 text-xs">{f.size}</p>
+                  </div>
+
+                  {/* Status / Result */}
+                  <div className="flex items-center gap-3">
+                    {f.status === 'queued' && (
+                      <span className="text-gray-600 text-xs">Queued</span>
+                    )}
+                    {f.status === 'processing' && (
+                      <svg className="animate-spin w-4 h-4 text-blue-400" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    )}
+                    {f.status === 'done' && f.score !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-xs">{f.candidate}</span>
+                        <span className={`text-sm font-bold ${f.score >= 80 ? 'text-emerald-400' : f.score >= 65 ? 'text-amber-400' : 'text-red-400'}`}>
+                          {f.score}/100
+                        </span>
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${decisionColor(f.decision)}`}>
+                          {f.decision}
+                        </span>
+                      </div>
+                    )}
+                    {f.status === 'error' && (
+                      <span className="text-red-400 text-xs">Error</span>
+                    )}
+                  </div>
+
+                  {/* Remove */}
+                  {!isProcessing && f.status === 'queued' && (
+                    <button onClick={() => removeFile(f.id)} className="text-gray-700 hover:text-red-400 transition-colors p-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Anti-hallucination notice */}
+        <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <svg className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="text-white text-xs font-semibold mb-1">Evidence-Based Evaluation</p>
+              <p className="text-gray-500 text-xs leading-relaxed">
+                The system will only extract information explicitly present in the CV. Skills, experience, and qualifications will never be invented or inferred without evidence. Every matched requirement will show its source.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-between">
+          <Link href={`/jobs/${jobId}/requirements`} className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium rounded-lg transition-colors border border-gray-700">
+            ← Back
+          </Link>
+          <div className="flex items-center gap-3">
+            {isDone && (
+              <Link
+                href="/evaluations"
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                View Results →
+              </Link>
+            )}
+            {!isDone && (
+              <button
+                onClick={handleEvaluate}
+                disabled={files.length === 0 || isProcessing}
+                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-blue-900/30"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Evaluating...
+                  </>
+                ) : (
+                  <>
+                    Evaluate {files.length > 0 ? `${files.length} CV${files.length > 1 ? 's' : ''}` : 'CVs'}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 }

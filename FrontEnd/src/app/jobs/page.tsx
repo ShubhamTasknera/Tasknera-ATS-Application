@@ -1,297 +1,278 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
-interface JobItem {
-  id: string;
-  title: string;
-  client: string;
-  location: string;
-  workMode: string;
-  salary: string;
-  candidatesCount: number;
-  topMatch: number;
-  status: string;
-  createdDate: string;
-  isCustom?: boolean;
-}
+const allJobs = [
+  { id: 'jd-1', title: 'SAP CO Consultant',         client: 'TechCorp Industries',  location: 'New York, NY',      mode: 'Hybrid',  salary: '$130k–$170k', candidates: 42, topScore: 94, status: 'Active',  created: '26 Aug 2026' },
+  { id: 'jd-2', title: 'Lead S/4HANA Architect',    client: 'Global Logistics Inc', location: 'Chicago, IL',       mode: 'Remote',  salary: '$160k–$200k', candidates: 28, topScore: 88, status: 'Active',  created: '25 Aug 2026' },
+  { id: 'jd-3', title: 'Financial Systems Analyst',  client: 'Pinnacle Financial',   location: 'San Francisco, CA', mode: 'Onsite',  salary: '$110k–$140k', candidates: 19, topScore: 76, status: 'Active',  created: '24 Aug 2026' },
+  { id: 'jd-4', title: 'Senior Backend Engineer',    client: 'TaskNera Enterprise',  location: 'Remote',            mode: 'Remote',  salary: '$140k–$180k', candidates: 65, topScore: 91, status: 'Active',  created: '22 Aug 2026' },
+  { id: 'jd-5', title: 'SAP FI Functional Lead',    client: 'Nexus Manufacturing',  location: 'Dallas, TX',        mode: 'Hybrid',  salary: '$145k–$175k', candidates: 12, topScore: 82, status: 'Draft',   created: '20 Aug 2026' },
+  { id: 'jd-6', title: 'DevOps Engineer',            client: 'CloudSystems Ltd',     location: 'Austin, TX',        mode: 'Remote',  salary: '$130k–$160k', candidates: 8,  topScore: 79, status: 'Closed',  created: '15 Aug 2026' },
+];
+
+const modeColors: Record<string, string> = {
+  Remote: 'bg-blue-50 text-blue-700 border-blue-200',
+  Hybrid: 'bg-purple-50 text-purple-700 border-purple-200',
+  Onsite: 'bg-brand-orange-pale text-brand-orange border-brand-orange-border',
+};
+
+const statusColors: Record<string, string> = {
+  Active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Draft:  'bg-amber-50 text-amber-700 border-amber-200',
+  Closed: 'bg-slate-100 text-slate-600 border-slate-200',
+};
 
 export default function JobsPage() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
-  const initialJobs: JobItem[] = [
-    {
-      id: 'job-1',
-      title: 'SAP CO Consultant',
-      client: 'TechCorp Industries',
-      location: 'New York, NY',
-      workMode: 'Hybrid',
-      salary: '$130,000 - $170,000',
-      candidatesCount: 42,
-      topMatch: 94,
-      status: 'Active',
-      createdDate: '2026-08-26',
-    },
-    {
-      id: 'job-2',
-      title: 'Lead S/4HANA Architect',
-      client: 'Global Logistics Inc',
-      location: 'Chicago, IL',
-      workMode: 'Remote',
-      salary: '$160,000 - $200,000',
-      candidatesCount: 28,
-      topMatch: 88,
-      status: 'Active',
-      createdDate: '2026-08-25',
-    },
-    {
-      id: 'job-3',
-      title: 'Financial Systems Analyst',
-      client: 'Pinnacle Financial',
-      location: 'San Francisco, CA',
-      workMode: 'Onsite',
-      salary: '$110,000 - $140,000',
-      candidatesCount: 19,
-      topMatch: 76,
-      status: 'Active',
-      createdDate: '2026-08-24',
-    },
-    {
-      id: 'job-4',
-      title: 'Senior Software Engineer (Backend)',
-      client: 'Tasknera Enterprise',
-      location: 'Remote',
-      workMode: 'Remote',
-      salary: '$140,000 - $180,000',
-      candidatesCount: 65,
-      topMatch: 91,
-      status: 'Active',
-      createdDate: '2026-08-22',
-    },
-    {
-      id: 'job-5',
-      title: 'SAP FI Functional Lead',
-      client: 'Nexus Manufacturing',
-      location: 'Dallas, TX',
-      workMode: 'Hybrid',
-      salary: '$145,000 - $175,000',
-      candidatesCount: 12,
-      topMatch: 82,
-      status: 'Draft',
-      createdDate: '2026-08-20',
-    },
-  ];
-
-  const [jobsList, setJobsList] = useState<JobItem[]>(initialJobs);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    async function fetchJobs() {
-      try {
-        setLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const token = localStorage.getItem('tasknera_token');
-
-        const res = await fetch(`${backendUrl}/jobs`, {
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          }
-        });
-
-        const data = await res.json();
-        if (res.ok && Array.isArray(data.jobs) && data.jobs.length > 0) {
-          const apiJobs: JobItem[] = data.jobs.map((j: any) => ({
-            id: j.id,
-            title: j.position,
-            client: j.client,
-            location: j.location || 'Remote / Unspecified',
-            workMode: j.work_mode || 'Hybrid',
-            salary: j.salary || 'Competitive',
-            candidatesCount: (j.requirements?.length || 0) * 3 + 4,
-            topMatch: 85 + (j.position.length % 12),
-            status: j.status === 'draft' ? 'Draft' : 'Active',
-            createdDate: j.created_at ? new Date(j.created_at).toISOString().split('T')[0] : '2026-08-28',
-            isCustom: true
-          }));
-
-          // Avoid duplicating initial mock jobs if api contains them
-          setJobsList([...apiJobs, ...initialJobs]);
-        }
-      } catch (err) {
-        console.error('Failed to load dynamic jobs:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchJobs();
-  }, []);
-
-  const filteredJobs = jobsList.filter((job) => {
-    const matchesSearch =
-      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.location.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = selectedFilter === 'All' || job.status === selectedFilter;
-    return matchesSearch && matchesFilter;
+  const filtered = allJobs.filter(j => {
+    const q = search.toLowerCase();
+    const matchQ = j.title.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.location.toLowerCase().includes(q);
+    const matchF = filter === 'All' || j.status === filter;
+    return matchQ && matchF;
   });
 
-  return (
-    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col justify-between">
-      {/* Global Unified Navigation Header */}
-      <Header />
+  const counts = {
+    All:    allJobs.length,
+    Active: allJobs.filter(j => j.status === 'Active').length,
+    Draft:  allJobs.filter(j => j.status === 'Draft').length,
+    Closed: allJobs.filter(j => j.status === 'Closed').length,
+  };
 
-      <main className="max-w-7xl mx-auto px-6 pt-28 pb-16 flex-1 w-full">
-        {/* Page Title & Actions */}
+  return (
+    <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
+      <Header />
+      <main className="max-w-screen-xl mx-auto px-6 pt-24 pb-16 flex-1 w-full">
+
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white mb-1">Job Specification Directory</h1>
-            <p className="text-gray-400 text-sm">Manage position requirements, candidate matching rules, and evaluation pipelines.</p>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
+              <span className="w-2 h-2 rounded-full bg-brand-orange" />
+              Requisitions Directory
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Active Job Profiles</h1>
+            <p className="text-sm text-slate-500 mt-1">Manage job descriptions, deterministic criteria weights, and candidate pipelines</p>
           </div>
           <Link
             href="/jobs/create"
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2 self-start sm:self-auto"
+            className="flex items-center gap-2 px-5 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            Create New Job & Scan JD
+            Create New Job Evaluation
           </Link>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
-          {/* Search Input */}
-          <div className="relative w-full md:w-96">
-            <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          {[
+            { label: 'Total Requisitions', value: counts.All, color: 'text-[#1E293B]', border: 'border-slate-200', dot: 'bg-slate-700' },
+            { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+            { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-600', border: 'border-amber-200', dot: 'bg-amber-500' },
+            { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
+          ].map((s, i) => (
+            <div key={i} className={`bg-white border ${s.border} rounded-2xl p-5 shadow-sm card-hover-lift`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`} />
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{s.label}</span>
+              </div>
+              <div className={`text-2xl font-extrabold ${s.color}`}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Filter Bar */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative flex-1 w-full md:max-w-md">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by job title, client, or location..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by position title, client, or location..."
+              className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-colors"
             />
           </div>
 
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto">
-            {(['All', 'Active', 'Draft', 'Closed'] as const).map((status) => (
+          <div className="flex items-center justify-between w-full md:w-auto gap-3">
+            {/* Status Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {(['All', 'Active', 'Draft', 'Closed'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    filter === f
+                      ? 'bg-brand-orange text-white shadow-orange'
+                      : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200/70'
+                  }`}
+                >
+                  {f} <span className="ml-1 opacity-70">({counts[f]})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1">
               <button
-                key={status}
-                onClick={() => setSelectedFilter(status)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  selectedFilter === status
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-gray-800/60 text-gray-400 hover:text-white hover:bg-gray-800'
-                }`}
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white text-brand-orange shadow-xs' : 'text-slate-500'}`}
+                title="Table View"
               >
-                {status}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
               </button>
-            ))}
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white text-brand-orange shadow-xs' : 'text-slate-500'}`}
+                title="Grid View"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Jobs List Grid */}
-        <div className="space-y-4">
-          {filteredJobs.length > 0 ? (
-            filteredJobs.map((job) => (
-              <div
-                key={job.id}
-                className="bg-[#0F172A]/80 border border-gray-800 hover:border-gray-700/80 rounded-2xl p-6 transition-all shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6"
-              >
-                {/* Job Specs */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-lg font-bold text-white hover:text-blue-400 transition-colors">
-                      <Link href={`/jobs/${job.id}`}>{job.title}</Link>
-                    </h2>
-                    {job.isCustom && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                        NEWLY SAVED
-                      </span>
-                    )}
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      {job.workMode}
+        {/* Content Display */}
+        {viewMode === 'table' ? (
+          <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-4">Position Title</th>
+                    <th className="px-4 py-4 hidden lg:table-cell">Comp Range</th>
+                    <th className="px-4 py-4 text-center">Work Mode</th>
+                    <th className="px-4 py-4 text-center">Applicants</th>
+                    <th className="px-4 py-4 text-center">Top Match</th>
+                    <th className="px-4 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {filtered.map(j => (
+                    <tr key={j.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-6 py-4">
+                        <Link href={`/jobs/${j.id}/requirements`} className="text-sm font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors">
+                          {j.title}
+                        </Link>
+                        <div className="text-xs text-slate-500 mt-0.5">{j.client} • {j.location}</div>
+                      </td>
+                      <td className="px-4 py-4 hidden lg:table-cell">
+                        <span className="text-xs font-semibold text-slate-700">{j.salary}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${modeColors[j.mode]}`}>{j.mode}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="font-bold text-[#1E293B]">{j.candidates}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`font-extrabold ${j.topScore >= 80 ? 'text-emerald-600' : j.topScore >= 65 ? 'text-amber-500' : 'text-rose-500'}`}>
+                          {j.topScore}
+                        </span>
+                        <span className="text-xs text-slate-400 font-semibold">/100</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status]}`}>{j.status}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={`/jobs/${j.id}/requirements`}
+                            className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:border-brand-orange hover:text-brand-orange rounded-xl transition-all"
+                          >
+                            Rubric
+                          </Link>
+                          <Link
+                            href={`/jobs/${j.id}/upload-cvs`}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
+                          >
+                            Evaluate CVs
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map(j => (
+              <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all card-hover-lift flex flex-col justify-between">
+                <div>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status]}`}>
+                      {j.status}
                     </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                        job.status === 'Active'
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}
-                    >
-                      {job.status}
+                    <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${modeColors[j.mode]}`}>
+                      {j.mode}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs text-gray-400 flex-wrap">
-                    <span className="flex items-center gap-1.5 text-gray-300 font-medium">
-                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                      {job.client}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      {job.location}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      {job.salary}
-                    </span>
+                  <Link href={`/jobs/${j.id}/requirements`} className="text-base font-bold text-[#1E293B] hover:text-brand-orange transition-colors">
+                    {j.title}
+                  </Link>
+                  <p className="text-xs text-slate-500 mt-1 mb-4">{j.client} • {j.location}</p>
+
+                  <div className="bg-[#F8FAFC] rounded-2xl p-3.5 border border-slate-200 flex items-center justify-between text-xs mb-5">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Applicants</div>
+                      <div className="text-sm font-extrabold text-[#1E293B]">{j.candidates}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Top Match</div>
+                      <div className="text-sm font-extrabold text-brand-orange">{j.topScore}%</div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Job Metrics & Action */}
-                <div className="flex items-center gap-4 self-end md:self-auto flex-wrap sm:flex-nowrap">
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-white block">{job.candidatesCount} Candidates</span>
-                    <span className="text-xs text-emerald-400 font-medium">Top Match: {job.topMatch}%</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={`/jobs/${job.id}/requirements`}
-                      className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold rounded-xl border border-gray-700 transition-all"
-                    >
-                      Requirements
-                    </Link>
-
-                    <Link
-                      href={`/jobs/${job.id}/upload-cvs`}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-1.5"
-                    >
-                      <span>Compare Candidates</span>
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </Link>
-                  </div>
+                <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
+                  <Link
+                    href={`/jobs/${j.id}/requirements`}
+                    className="flex-1 text-center py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200/70 border border-slate-200 rounded-xl transition-all"
+                  >
+                    View Rubric
+                  </Link>
+                  <Link
+                    href={`/jobs/${j.id}/upload-cvs`}
+                    className="flex-1 text-center py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
+                  >
+                    Evaluate
+                  </Link>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-12 text-center text-gray-400">
-              No jobs found matching your criteria.
-            </div>
-          )}
-        </div>
-      </main>
+            ))}
+          </div>
+        )}
 
-      {/* Global Footer */}
+        {filtered.length === 0 && (
+          <div className="bg-white border border-slate-200/90 rounded-3xl text-center py-20 shadow-sm mt-4">
+            <div className="w-12 h-12 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <h3 className="text-base font-bold text-[#1E293B] mb-1">No matching requisitions</h3>
+            <p className="text-slate-500 text-xs">Try adjusting your search criteria or filter tags.</p>
+          </div>
+        )}
+      </main>
       <Footer />
     </div>
   );

@@ -170,3 +170,4 @@ const ProofSection: React.FC = () => {
 };
 
 export default ProofSection;
+
