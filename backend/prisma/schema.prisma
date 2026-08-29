@@ -9,34 +9,36 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  jobs      Job[]
+  id         String      @id @default(uuid()) @db.Uuid
+  email      String      @unique
+  password   String
+  name       String?
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  jobs       Job[]
+  candidates Candidate[]
 
   @@map("users")
 }
 
 model Job {
-  id                    String   @id @default(uuid()) @db.Uuid
+  id                    String      @id @default(uuid()) @db.Uuid
   client                String
   position              String
-  jd_file_url           String?  @map("jd_file_url")
-  jd_text               String?  @map("jd_text")
+  jd_file_url           String?     @map("jd_file_url")
+  jd_text               String?     @map("jd_text")
   location              String?
-  work_mode             String?  @map("work_mode")
+  work_mode             String?     @map("work_mode")
   salary                String?
-  status                String   @default("draft")
-  evaluation_profile_id String?  @map("evaluation_profile_id") @db.Uuid
-  created_by            String   @map("created_by") @db.Uuid
-  created_at            DateTime @default(now()) @map("created_at")
-  updated_at            DateTime @updatedAt @map("updated_at")
+  status                String      @default("draft")
+  evaluation_profile_id String?     @map("evaluation_profile_id") @db.Uuid
+  created_by            String      @map("created_by") @db.Uuid
+  created_at            DateTime    @default(now()) @map("created_at")
+  updated_at            DateTime    @updatedAt @map("updated_at")
 
   user         User          @relation(fields: [created_by], references: [id], onDelete: Cascade)
   requirements Requirement[]
+  candidates   Candidate[]
 
   @@index([created_by], map: "idx_jobs_created_by")
   @@index([status], map: "idx_jobs_status")
@@ -52,6 +54,8 @@ model Requirement {
   is_mandatory        Boolean  @default(false) @map("is_mandatory")
   evidence_required   Boolean  @default(false) @map("evidence_required")
   recruiter_confirmed Boolean  @default(false) @map("recruiter_confirmed")
+  source_evidence     String?  @map("source_evidence")
+  needs_verification  Boolean  @default(false) @map("needs_verification")
   created_at          DateTime @default(now()) @map("created_at")
   updated_at          DateTime @updatedAt @map("updated_at")
 
@@ -60,4 +64,130 @@ model Requirement {
   @@index([job_id], map: "idx_requirements_job_id")
   @@index([category], map: "idx_requirements_category")
   @@map("requirements")
+}
+
+enum ParsingStatus {
+  UPLOADED
+  PROCESSING
+  PARSED
+  FAILED
+}
+
+model Candidate {
+  id               String        @id @default(uuid()) @db.Uuid
+  job_id           String        @map("job_id") @db.Uuid
+  name             String?
+  email            String?
+  phone            String?
+  location         String?
+  total_experience String?       @map("total_experience")
+  current_title    String?       @map("current_title")
+  current_company  String?       @map("current_company")
+  summary          String?
+  resume_file_url  String?       @map("resume_file_url")
+  raw_text         String?       @map("raw_text")
+  file_hash        String?       @map("file_hash")
+  parsing_status   ParsingStatus @default(UPLOADED) @map("parsing_status")
+  error_message    String?       @map("error_message")
+  created_by       String        @map("created_by") @db.Uuid
+  created_at       DateTime      @default(now()) @map("created_at")
+  updated_at       DateTime      @updatedAt @map("updated_at")
+
+  job            Job                      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  user           User                     @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  experiences    CandidateExperience[]
+  education      CandidateEducation[]
+  skills         CandidateSkill[]
+  certifications CandidateCertification[]
+  languages      CandidateLanguage[]
+  projects       CandidateProject[]
+
+  @@index([job_id], map: "idx_candidates_job_id")
+  @@index([created_by], map: "idx_candidates_created_by")
+  @@index([file_hash], map: "idx_candidates_file_hash")
+  @@map("candidates")
+}
+
+model CandidateExperience {
+  id              String   @id @default(uuid()) @db.Uuid
+  candidate_id    String   @map("candidate_id") @db.Uuid
+  company         String?
+  title           String?
+  start_date      String?  @map("start_date")
+  end_date        String?  @map("end_date")
+  duration        String?
+  description     String?
+  source_evidence String?  @map("source_evidence")
+  created_at      DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_experience_candidate_id")
+  @@map("candidate_experiences")
+}
+
+model CandidateEducation {
+  id           String   @id @default(uuid()) @db.Uuid
+  candidate_id String   @map("candidate_id") @db.Uuid
+  degree       String?
+  institution  String?
+  field        String?
+  start_year   Int?     @map("start_year")
+  end_year     Int?     @map("end_year")
+  created_at   DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_education_candidate_id")
+  @@map("candidate_educations")
+}
+
+model CandidateSkill {
+  id           String   @id @default(uuid()) @db.Uuid
+  candidate_id String   @map("candidate_id") @db.Uuid
+  skill        String
+  created_at   DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_skill_candidate_id")
+  @@map("candidate_skills")
+}
+
+model CandidateCertification {
+  id            String   @id @default(uuid()) @db.Uuid
+  candidate_id  String   @map("candidate_id") @db.Uuid
+  certification String
+  created_at    DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_certification_candidate_id")
+  @@map("candidate_certifications")
+}
+
+model CandidateLanguage {
+  id           String   @id @default(uuid()) @db.Uuid
+  candidate_id String   @map("candidate_id") @db.Uuid
+  language     String
+  created_at   DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_language_candidate_id")
+  @@map("candidate_languages")
+}
+
+model CandidateProject {
+  id           String   @id @default(uuid()) @db.Uuid
+  candidate_id String   @map("candidate_id") @db.Uuid
+  name         String?
+  description  String?
+  technologies String[] @default([])
+  created_at   DateTime @default(now()) @map("created_at")
+
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@index([candidate_id], map: "idx_candidate_project_candidate_id")
+  @@map("candidate_projects")
 }

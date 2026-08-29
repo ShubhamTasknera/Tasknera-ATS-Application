@@ -271,7 +271,7 @@ export default function CreateJobPage() {
         throw new Error('Server response missing Job ID');
       }
 
-      router.push(`/jobs/${createdJobId}/requirements`);
+      router.push('/jobs');
     } catch (err: any) {
       console.error('Job creation error:', err);
       setErrorMsg(err.message || 'An error occurred while creating the job.');
