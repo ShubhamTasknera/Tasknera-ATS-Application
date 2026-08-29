@@ -310,14 +310,14 @@ Responsibilities:
   const preferredCount = requirements.filter(r => !r.mandatory).length;
 
   return (
-    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col justify-between">
+    <div className="min-h-screen bg-brand-bg text-charcoal flex flex-col">
       {/* Global Header */}
       <Header />
 
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-16 w-full flex-1">
         {/* Breadcrumb & Navigation */}
         <div className="flex items-center justify-between mb-8">
-          <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-charcoal-mid hover:text-charcoal transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -326,7 +326,7 @@ Responsibilities:
           <button
             type="button"
             onClick={loadSampleJD}
-            className="px-3.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-1.5 bg-orange/10 hover:bg-orange/20 text-orange border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -338,38 +338,38 @@ Responsibilities:
         {/* Page Title Header */}
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-3">
-            <div className="w-12 h-12 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <div className="w-12 h-12 rounded-xl bg-orange/15 border border-blue-500/30 flex items-center justify-center text-orange">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white">Create New Job & Scan JD</h1>
-              <p className="text-gray-400 text-sm">Upload PDF/Word JD files or paste text to automatically scan & extract candidate requirements</p>
+              <h1 className="text-3xl font-bold tracking-tight text-charcoal">Create New Job & Scan JD</h1>
+              <p className="text-charcoal-mid text-sm">Upload PDF/Word JD files or paste text to automatically scan & extract candidate requirements</p>
             </div>
           </div>
 
           {/* Workflow Steps Indicator */}
-          <div className="flex items-center gap-3 mt-6 pt-4 border-t border-gray-800/80">
+          <div className="flex items-center gap-3 mt-6 pt-4 border-t border-grey-border/80">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-orange text-charcoal font-bold text-xs flex items-center justify-center">
                 1
               </div>
-              <span className="text-sm font-semibold text-white">Upload & Scan JD</span>
+              <span className="text-sm font-semibold text-charcoal">Upload & Scan JD</span>
             </div>
-            <div className="flex-1 h-px bg-gray-800" />
+            <div className="flex-1 h-px bg-grey-pale" />
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gray-800 text-gray-400 font-bold text-xs flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-grey-pale text-charcoal-mid font-bold text-xs flex items-center justify-center">
                 2
               </div>
-              <span className="text-sm text-gray-500">Review Extracted Criteria</span>
+              <span className="text-sm text-grey">Review Extracted Criteria</span>
             </div>
-            <div className="flex-1 h-px bg-gray-800" />
+            <div className="flex-1 h-px bg-grey-pale" />
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gray-800 text-gray-400 font-bold text-xs flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-grey-pale text-charcoal-mid font-bold text-xs flex items-center justify-center">
                 3
               </div>
-              <span className="text-sm text-gray-500">Candidate Pipeline</span>
+              <span className="text-sm text-grey">Candidate Pipeline</span>
             </div>
           </div>
         </div>
@@ -390,39 +390,45 @@ Responsibilities:
         <form onSubmit={handleSubmit} className="space-y-6">
 
           {/* Section 1: Document Upload & Scanner Panel */}
-          <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-            <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-800">
+          <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
+            <div className="flex items-center justify-between mb-6 pb-3 border-b border-grey-border">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                <h2 className="text-lg font-semibold text-white">Job Description File Upload & Scanner (with OCR)</h2>
+                <h2 className="text-lg font-semibold text-charcoal">Job Description File Upload & Scanner (with OCR)</h2>
               </div>
 
               {/* Mode Tabs */}
-              <div className="flex gap-1.5 bg-[#070B14] p-1 rounded-xl border border-gray-800">
+              <div className="flex gap-1.5 bg-[#070B14] p-1 rounded-xl border border-grey-border">
                 <button
                   type="button"
                   onClick={() => setActiveTab('file')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === 'file' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'file' ? 'bg-orange text-charcoal shadow' : 'text-charcoal-mid hover:text-charcoal'
                   }`}
                 >
-                  📄 Upload PDF / Word File
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Upload PDF / Word File
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('text')}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === 'text' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'text' ? 'bg-orange text-charcoal shadow' : 'text-charcoal-mid hover:text-charcoal'
                   }`}
                 >
-                  📝 Paste JD Text
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Paste JD Text
                 </button>
               </div>
             </div>
 
             {/* File Upload Zone */}
             {activeTab === 'file' ? (
-              <div className="relative border-2 border-dashed border-gray-800 hover:border-blue-500/50 rounded-2xl p-8 text-center transition-all bg-[#070B14]/60 group">
+              <div className="relative border-2 border-dashed border-grey-border hover:border-blue-500/50 rounded-2xl p-8 text-center transition-all bg-[#070B14]/60 group">
                 {!uploadedFile && (
                   <input
                     type="file"
@@ -432,16 +438,19 @@ Responsibilities:
                   />
                 )}
                 <div className="flex flex-col items-center justify-center">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-orange flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
                   {uploadedFile ? (
                     <div className="relative z-20 flex flex-col items-center">
-                      <p className="text-white font-semibold text-sm mb-2">Uploaded Document:</p>
-                      <div className="inline-flex items-center gap-3 px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-mono mb-3">
-                        <span>📄 {uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
+                      <p className="text-charcoal font-semibold text-sm mb-2">Uploaded Document:</p>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-orange text-xs font-mono mb-3">
+                        <svg className="w-4 h-4 text-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>{uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -458,8 +467,8 @@ Responsibilities:
                     </div>
                   ) : (
                     <div>
-                      <p className="text-white font-semibold text-sm mb-1">Click to browse or drop PDF / Word (.docx, .doc, .txt) file here</p>
-                      <p className="text-gray-400 text-xs">Quality Assessment & Tesseract OCR engine will extract candidate criteria</p>
+                      <p className="text-charcoal font-semibold text-sm mb-1">Click to browse or drop PDF / Word (.docx, .doc, .txt) file here</p>
+                      <p className="text-charcoal-mid text-xs">Quality Assessment & Tesseract OCR engine will extract candidate criteria</p>
                     </div>
                   )}
                 </div>
@@ -471,15 +480,18 @@ Responsibilities:
                   value={jdText}
                   onChange={(e) => setJdText(e.target.value)}
                   placeholder="Paste job description text here..."
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-gray-800 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all text-xs font-mono resize-none mb-3"
+                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all text-xs font-mono resize-none mb-3"
                 />
                 <button
                   type="button"
                   onClick={() => sendToBackendParseApi(jdText)}
                   disabled={!jdText.trim() || isScanning}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-2"
+                  className="px-4 py-2.5 bg-orange hover:bg-orange-dark disabled:bg-grey-pale text-charcoal text-xs font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow"
                 >
-                  ⚡ Execute Backend Text Extraction
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Execute Backend Text Extraction
                 </button>
               </div>
             )}
@@ -489,7 +501,7 @@ Responsibilities:
               <div className="mt-6 p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 animate-pulse flex items-center gap-4">
                 <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
                 <div>
-                  <span className="text-blue-300 font-semibold text-xs block mb-0.5">Backend Processing Pipeline</span>
+                  <span className="text-orange-light font-semibold text-xs block mb-0.5">Backend Processing Pipeline</span>
                   <span className="text-blue-200/80 text-xs font-mono">{scanStep}</span>
                 </div>
               </div>
@@ -509,69 +521,77 @@ Responsibilities:
                 <button
                   type="button"
                   onClick={() => setShowRawTextDrawer(!showRawTextDrawer)}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-semibold underline flex items-center gap-1"
+                  className="text-xs text-orange hover:text-orange-light font-semibold underline flex items-center gap-1 cursor-pointer"
                 >
-                  {showRawTextDrawer ? 'Hide Debug Drawer' : '🔍 Debug RAW DOCUMENT TEXT'}
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  {showRawTextDrawer ? 'Hide Debug Drawer' : 'View Extracted Raw Text & Metrics'}
                 </button>
               </div>
             )}
 
             {/* Collapsible RAW DOCUMENT TEXT & Diagnostic Drawer */}
             {showRawTextDrawer && (
-              <div className="mt-4 p-4 rounded-xl bg-[#070B14] border border-gray-800 text-xs font-mono">
-                <div className="flex items-center justify-between mb-3 text-gray-400 text-[11px] uppercase tracking-wider border-b border-gray-800 pb-2">
-                  <span className="text-blue-400 font-bold">🔍 Document Diagnostic Summary</span>
-                  <button onClick={() => setShowRawTextDrawer(false)} className="hover:text-white">Close [✕]</button>
+              <div className="mt-4 p-4 rounded-xl bg-[#070B14] border border-grey-border text-xs font-mono">
+                <div className="flex items-center justify-between mb-3 text-charcoal-mid text-[11px] uppercase tracking-wider border-b border-grey-border pb-2">
+                  <span className="text-orange font-bold flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    Document Diagnostic Summary
+                  </span>
+                  <button onClick={() => setShowRawTextDrawer(false)} className="hover:text-charcoal cursor-pointer">Close [✕]</button>
                 </div>
 
                 {docMetrics && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 p-3 bg-gray-900/60 rounded-lg border border-gray-800/80 text-[11px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 p-3 bg-grey-pale rounded-lg border border-grey-border/80 text-[11px]">
                     <div>
-                      <span className="text-gray-500 block">Document Name:</span>
-                      <span className="text-white font-semibold truncate block">{docMetrics.fileName}</span>
+                      <span className="text-grey block">Document Name:</span>
+                      <span className="text-charcoal font-semibold truncate block">{docMetrics.fileName}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">File Type:</span>
-                      <span className="text-white font-semibold truncate block">{docMetrics.fileType}</span>
+                      <span className="text-grey block">File Type:</span>
+                      <span className="text-charcoal font-semibold truncate block">{docMetrics.fileType}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">Page Count:</span>
-                      <span className="text-white font-semibold block">{docMetrics.pageCount} page(s)</span>
+                      <span className="text-grey block">Page Count:</span>
+                      <span className="text-charcoal font-semibold block">{docMetrics.pageCount} page(s)</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">Extraction Method:</span>
-                      <span className="text-blue-400 font-semibold uppercase block">{docMetrics.extractionMethod}</span>
+                      <span className="text-grey block">Extraction Method:</span>
+                      <span className="text-orange font-semibold uppercase block">{docMetrics.extractionMethod}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">OCR Used:</span>
+                      <span className="text-grey block">OCR Used:</span>
                       <span className={`font-bold block ${docMetrics.ocrUsed ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {docMetrics.ocrUsed ? 'YES (Image OCR Fallback)' : 'NO (Native Text Stream)'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">Extracted Characters:</span>
-                      <span className="text-white font-semibold block">{docMetrics.textLength} chars</span>
+                      <span className="text-grey block">Extracted Characters:</span>
+                      <span className="text-charcoal font-semibold block">{docMetrics.textLength} chars</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">Extracted Words:</span>
-                      <span className="text-white font-semibold block">{docMetrics.wordCount} words</span>
+                      <span className="text-grey block">Extracted Words:</span>
+                      <span className="text-charcoal font-semibold block">{docMetrics.wordCount} words</span>
                     </div>
                     <div>
-                      <span className="text-gray-500 block">Non-empty Lines:</span>
-                      <span className="text-white font-semibold block">{docMetrics.lineCount} lines</span>
+                      <span className="text-grey block">Non-empty Lines:</span>
+                      <span className="text-charcoal font-semibold block">{docMetrics.lineCount} lines</span>
                     </div>
                   </div>
                 )}
 
-                <div className="text-gray-400 text-[11px] mb-1 font-semibold uppercase">--------------------------------<br />RAW DOCUMENT TEXT<br />--------------------------------</div>
-                <pre className="whitespace-pre-wrap text-gray-300 max-h-60 overflow-y-auto leading-relaxed">{rawText || '(No raw text available)'}</pre>
+                <div className="text-charcoal-mid text-[11px] mb-1 font-semibold uppercase">--------------------------------<br />RAW DOCUMENT TEXT<br />--------------------------------</div>
+                <pre className="whitespace-pre-wrap text-charcoal-mid max-h-60 overflow-y-auto leading-relaxed">{rawText || '(No raw text available)'}</pre>
               </div>
             )}
           </div>
 
           {/* Section 2: Extracted Job Specifications Form */}
-          <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-            <h2 className="text-lg font-semibold text-white mb-6 pb-3 border-b border-gray-800 flex items-center gap-2">
+          <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
+            <h2 className="text-lg font-semibold text-charcoal mb-6 pb-3 border-b border-grey-border flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
               Extracted Job Metadata
             </h2>
@@ -579,7 +599,7 @@ Responsibilities:
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Client */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
                   Client / Company Name <span className="text-rose-400">*</span>
                 </label>
                 <input
@@ -590,8 +610,8 @@ Responsibilities:
                     if (fieldErrors.client) setFieldErrors(prev => ({ ...prev, client: undefined }));
                   }}
                   placeholder="e.g. TechCorp Industries (Leave blank if not in JD)"
-                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-white text-sm placeholder-gray-500 focus:outline-none transition-all ${
-                    fieldErrors.client ? 'border-rose-500' : 'border-gray-800 focus:border-blue-500'
+                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-charcoal text-sm placeholder-gray-500 focus:outline-none transition-all ${
+                    fieldErrors.client ? 'border-rose-500' : 'border-grey-border focus:border-blue-500'
                   }`}
                 />
                 {fieldErrors.client && <p className="text-rose-400 text-xs mt-1">{fieldErrors.client}</p>}
@@ -599,7 +619,7 @@ Responsibilities:
 
               {/* Position */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
                   Position Title <span className="text-rose-400">*</span>
                 </label>
                 <input
@@ -610,8 +630,8 @@ Responsibilities:
                     if (fieldErrors.position) setFieldErrors(prev => ({ ...prev, position: undefined }));
                   }}
                   placeholder="e.g. SAP CO Consultant"
-                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-white text-sm placeholder-gray-500 focus:outline-none transition-all ${
-                    fieldErrors.position ? 'border-rose-500' : 'border-gray-800 focus:border-blue-500'
+                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-charcoal text-sm placeholder-gray-500 focus:outline-none transition-all ${
+                    fieldErrors.position ? 'border-rose-500' : 'border-grey-border focus:border-blue-500'
                   }`}
                 />
                 {fieldErrors.position && <p className="text-rose-400 text-xs mt-1">{fieldErrors.position}</p>}
@@ -619,7 +639,7 @@ Responsibilities:
 
               {/* Location */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
                   Location
                 </label>
                 <input
@@ -627,19 +647,19 @@ Responsibilities:
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   placeholder="e.g. New York, NY / Remote"
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-gray-800 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
                 />
               </div>
 
               {/* Work Mode */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
                   Work Mode <span className="text-rose-400">*</span>
                 </label>
                 <select
                   value={workMode}
                   onChange={(e) => setWorkMode(e.target.value as 'Remote' | 'Hybrid' | 'Onsite')}
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-gray-800 text-white text-sm focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
                 >
                   <option value="Remote">Remote</option>
                   <option value="Hybrid">Hybrid</option>
@@ -649,7 +669,7 @@ Responsibilities:
 
               {/* Salary */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
                   Salary Compensation Range
                 </label>
                 <input
@@ -657,7 +677,7 @@ Responsibilities:
                   value={salary}
                   onChange={(e) => setSalary(e.target.value)}
                   placeholder="e.g. $130,000 - $170,000 (Empty if not present in JD)"
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-gray-800 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
                 />
               </div>
             </div>
@@ -665,17 +685,17 @@ Responsibilities:
 
           {/* Section 3: Extracted Requirements Panel */}
           {requirements.length > 0 && (
-            <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-800">
+            <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
+              <div className="flex items-center justify-between mb-6 pb-3 border-b border-grey-border">
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Extracted Candidate Criteria ({requirements.length})</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Mandatory requirements are strictly enforced; preferred criteria yield bonus points.</p>
+                  <h2 className="text-lg font-semibold text-charcoal">Extracted Candidate Criteria ({requirements.length})</h2>
+                  <p className="text-xs text-charcoal-mid mt-0.5">Mandatory requirements are strictly enforced; preferred criteria yield bonus points.</p>
                 </div>
                 <div className="flex items-center gap-3 text-xs">
                   <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">
                     {mandatoryCount} Mandatory
                   </span>
-                  <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-orange border border-blue-500/20 font-semibold">
                     {preferredCount} Preferred
                   </span>
                 </div>
@@ -686,7 +706,7 @@ Responsibilities:
                 {requirements.map((req) => (
                   <div
                     key={req.id}
-                    className="p-3.5 rounded-xl bg-[#070B14] border border-gray-800 flex items-center justify-between gap-4 group"
+                    className="p-3.5 rounded-xl bg-[#070B14] border border-grey-border flex items-center justify-between gap-4 group"
                   >
                     <div className="flex items-center gap-3 flex-1">
                       <button
@@ -695,15 +715,15 @@ Responsibilities:
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border ${
                           req.mandatory
                             ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                            : 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30'
+                            : 'bg-blue-500/20 text-orange-light border-blue-500/40 hover:bg-orange-dark/30'
                         }`}
                       >
-                        {req.mandatory ? '⚠ Mandatory' : '○ Preferred'}
+                        {req.mandatory ? '? Mandatory' : '? Preferred'}
                       </button>
                       <div>
                         <span className="text-xs text-gray-200 block">{req.requirement}</span>
                         {req.sourceEvidence && (
-                          <span className="text-[10px] text-gray-500 block italic mt-0.5">
+                          <span className="text-[10px] text-grey block italic mt-0.5">
                             Source Evidence: "{req.sourceEvidence}"
                           </span>
                         )}
@@ -711,13 +731,13 @@ Responsibilities:
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-gray-500 bg-gray-800/60 px-2 py-0.5 rounded border border-gray-700">
+                      <span className="text-[11px] text-grey bg-grey-pale px-2 py-0.5 rounded border border-grey-border">
                         {req.category}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleRemoveRequirement(req.id)}
-                        className="text-gray-500 hover:text-rose-400 p-1 transition-colors"
+                        className="text-grey hover:text-rose-400 p-1 transition-colors"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -729,19 +749,19 @@ Responsibilities:
               </div>
 
               {/* Add Custom Requirement Box */}
-              <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+              <div className="flex items-center gap-2 pt-3 border-t border-grey-border">
                 <input
                   type="text"
                   value={newReqText}
                   onChange={(e) => setNewReqText(e.target.value)}
                   placeholder="Add custom candidate requirement..."
-                  className="flex-1 px-3.5 py-2 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
                 <button
                   type="button"
                   onClick={() => setNewReqMandatory(!newReqMandatory)}
                   className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
-                    newReqMandatory ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                    newReqMandatory ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-blue-500/10 text-orange border-blue-500/30'
                   }`}
                 >
                   {newReqMandatory ? 'Mandatory' : 'Preferred'}
@@ -749,7 +769,7 @@ Responsibilities:
                 <button
                   type="button"
                   onClick={handleAddCustomRequirement}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all"
+                  className="px-4 py-2 bg-orange hover:bg-orange-dark text-charcoal text-xs font-semibold rounded-xl transition-all"
                 >
                   + Add
                 </button>
@@ -761,7 +781,7 @@ Responsibilities:
           <div className="flex items-center justify-between pt-4">
             <Link
               href="/jobs"
-              className="px-6 py-3 bg-gray-800/80 hover:bg-gray-800 text-gray-300 text-sm font-semibold rounded-xl transition-colors border border-gray-700/60"
+              className="px-6 py-3 bg-grey-pale/80 hover:bg-grey-pale text-charcoal-mid text-sm font-semibold rounded-xl transition-colors border border-grey-border/60"
             >
               Cancel
             </Link>
@@ -769,11 +789,11 @@ Responsibilities:
             <button
               type="submit"
               disabled={isSubmitting || isScanning}
-              className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/40 flex items-center gap-2"
+              className="px-8 py-3.5 bg-orange hover:bg-orange-dark disabled:bg-orange/50 text-charcoal text-sm font-semibold rounded-xl transition-all shadow-lg shadow-orange/20 flex items-center gap-2"
             >
               {isSubmitting ? (
                 <>
-                  <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin w-4 h-4 text-charcoal" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
@@ -802,3 +822,4 @@ Responsibilities:
     </div>
   );
 }
+

@@ -22,7 +22,7 @@ const PARSE_ROWS = [
   {
     metric: 'Keyword-only matching',
     manual: { value: 'Yes',  bar: 100, note: 'Rejects "Python" résumé missing exact string' },
-    ai:     { value: 'No',   bar: 0,   note: 'Semantic understanding — "ML Engineer" ≡ "ML Eng."' },
+    ai:     { value: 'No',   bar: 0,   note: 'Semantic understanding — "ML Engineer" = "ML Eng."' },
   },
 ];
 
@@ -63,3 +63,4 @@ const ParsingSection: React.FC = () => {
 };
 
 export default ParsingSection;
+

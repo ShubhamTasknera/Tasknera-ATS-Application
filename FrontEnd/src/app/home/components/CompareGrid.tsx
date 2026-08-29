@@ -100,3 +100,4 @@ const CompareGrid: React.FC<CompareGridProps> = ({
 };
 
 export default CompareGrid;
+
