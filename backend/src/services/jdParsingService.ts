@@ -713,47 +713,77 @@ export const parseJobDescription = (
         return;
       }
 
-      // Explicit section state or keyword based mandatory check
+      // Mandatory / Preferred Classification according to Task 2 rules
       let mandatory = false;
+      let needsVerification = false;
+
+      const lowerClean = cleanReqText.toLowerCase();
+
+      const mandatoryKeywords = [
+        'required',
+        'mandatory',
+        'must have',
+        'essential',
+        'minimum',
+        'candidate must have',
+        'must possess',
+        'must be'
+      ];
+
+      const preferredKeywords = [
+        'preferred',
+        'nice to have',
+        'desirable',
+        'advantage',
+        'plus',
+        'beneficial',
+        'optional'
+      ];
+
+      const hasMandatoryKw = mandatoryKeywords.some(kw => lower.includes(kw) || lowerClean.includes(kw));
+      const hasPreferredKw = preferredKeywords.some(kw => lower.includes(kw) || lowerClean.includes(kw));
+
       if (currentSection === 'mandatory') {
         mandatory = true;
       } else if (currentSection === 'preferred') {
         mandatory = false;
+      } else if (hasMandatoryKw && !hasPreferredKw) {
+        mandatory = true;
+      } else if (hasPreferredKw && !hasMandatoryKw) {
+        mandatory = false;
       } else {
-        const isExplicitMandatory =
-          lower.includes('mandatory') ||
-          lower.includes('required') ||
-          lower.includes('must have') ||
-          lower.includes('minimum') ||
-          lower.includes('essential') ||
-          lower.includes('5+') ||
-          lower.includes('4+');
-
-        const isExplicitPreferred =
-          lower.includes('preferred') ||
-          lower.includes('nice to have') ||
-          lower.includes('desirable') ||
-          lower.includes('advantage') ||
-          lower.includes('plus') ||
-          lower.includes('optional');
-
-        mandatory = isExplicitMandatory || (!isExplicitPreferred && isNumberedOrBullet);
+        // Unclear classification: isMandatory = false, needsVerification = true
+        mandatory = false;
+        needsVerification = true;
       }
 
+      // Supported Category Classification according to Task 2 (Section 6)
       let category = 'Functional Skill';
-      if (lower.includes('degree') || lower.includes('bachelor') || lower.includes('master') || lower.includes('education')) {
+      if (lowerClean.includes('degree') || lowerClean.includes('bachelor') || lowerClean.includes('master') || lowerClean.includes('education') || lowerClean.includes('university') || lowerClean.includes('college')) {
         category = 'Education';
         educationList.push(cleanReqText);
-      } else if (lower.includes('certification') || lower.includes('certified')) {
+      } else if (lowerClean.includes('certification') || lowerClean.includes('certified') || lowerClean.includes('aws certified') || lowerClean.includes('sap cert')) {
         category = 'Certification';
         certList.push(cleanReqText);
-      } else if (lower.includes('years') || lower.includes('experience')) {
+      } else if (lowerClean.includes('years') || lowerClean.includes('experience')) {
         category = 'Experience';
-      } else if (lower.includes('sap') || lower.includes('python') || lower.includes('react') || lower.includes('s/4hana') || lower.includes('power bi')) {
+      } else if (lowerClean.includes('git') || lowerClean.includes('figma') || lowerClean.includes('docker') || lowerClean.includes('jira') || lowerClean.includes('postman')) {
+        category = 'Tool';
+      } else if (lowerClean.includes('react') || lowerClean.includes('next.js') || lowerClean.includes('typescript') || lowerClean.includes('javascript') || lowerClean.includes('html') || lowerClean.includes('css') || lowerClean.includes('tailwind') || lowerClean.includes('redux') || lowerClean.includes('node') || lowerClean.includes('python')) {
         category = 'Technical Skill';
         techSkillsList.push(cleanReqText);
       } else {
         funcSkillsList.push(cleanReqText);
+      }
+
+      // Source Evidence Verification (Section 5): Evidence MUST exist in original JD text
+      const sourceEv = line.trim();
+      const normJd = cleanedText.toLowerCase().replace(/\s+/g, ' ');
+      const normEv = sourceEv.toLowerCase().replace(/\s+/g, ' ');
+
+      if (!normJd.includes(normEv) && !normJd.includes(cleanReqText.toLowerCase().replace(/\s+/g, ' '))) {
+        console.warn(`[Requirement Rejection] Rejecting fabricated requirement without evidence in JD: "${cleanReqText}"`);
+        return;
       }
 
       if (mandatory) {
@@ -766,11 +796,11 @@ export const parseJobDescription = (
         requirement: cleanReqText,
         category,
         mandatory,
-        weight: mandatory ? 5 : 2,
+        weight: 1.0, // Default weight = 1.0 (Section 7)
         evidenceRequired: true,
-        sourceEvidence: line,
+        sourceEvidence: sourceEv,
         confidence: 'HIGH',
-        needsVerification: false
+        needsVerification
       });
     }
   });

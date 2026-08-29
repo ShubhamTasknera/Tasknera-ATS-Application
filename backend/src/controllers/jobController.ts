@@ -120,10 +120,12 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
       ? requirements
           .map((r: any) => ({
             requirement: String(r.requirement || r.text || '').trim(),
-            category: r.category ? String(r.category).trim() : 'General',
+            category: r.category ? String(r.category).trim() : 'Other',
             is_mandatory: Boolean(r.is_mandatory ?? r.isMandatory ?? false),
             weight: typeof r.weight === 'number' ? r.weight : 1.0,
-            evidence_required: Boolean(r.evidence_required ?? r.evidenceRequired ?? false)
+            evidence_required: Boolean(r.evidence_required ?? r.evidenceRequired ?? false),
+            source_evidence: String(r.sourceEvidence || r.source_evidence || r.requirement || r.text || '').trim(),
+            needs_verification: Boolean(r.needsVerification ?? r.needs_verification ?? false)
           }))
           .filter((r: any) => r.requirement.length > 0)
       : [];

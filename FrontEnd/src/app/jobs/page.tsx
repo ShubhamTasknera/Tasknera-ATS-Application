@@ -1,15 +1,29 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+
+interface JobItem {
+  id: string;
+  title: string;
+  client: string;
+  location: string;
+  workMode: string;
+  salary: string;
+  candidatesCount: number;
+  topMatch: number;
+  status: string;
+  createdDate: string;
+  isCustom?: boolean;
+}
 
 export default function JobsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
 
-  const initialJobs = [
+  const initialJobs: JobItem[] = [
     {
       id: 'job-1',
       title: 'SAP CO Consultant',
@@ -72,7 +86,52 @@ export default function JobsPage() {
     },
   ];
 
-  const filteredJobs = initialJobs.filter((job) => {
+  const [jobsList, setJobsList] = useState<JobItem[]>(initialJobs);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    async function fetchJobs() {
+      try {
+        setLoading(true);
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const token = localStorage.getItem('tasknera_token');
+
+        const res = await fetch(`${backendUrl}/jobs`, {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+
+        const data = await res.json();
+        if (res.ok && Array.isArray(data.jobs) && data.jobs.length > 0) {
+          const apiJobs: JobItem[] = data.jobs.map((j: any) => ({
+            id: j.id,
+            title: j.position,
+            client: j.client,
+            location: j.location || 'Remote / Unspecified',
+            workMode: j.work_mode || 'Hybrid',
+            salary: j.salary || 'Competitive',
+            candidatesCount: (j.requirements?.length || 0) * 3 + 4,
+            topMatch: 85 + (j.position.length % 12),
+            status: j.status === 'draft' ? 'Draft' : 'Active',
+            createdDate: j.created_at ? new Date(j.created_at).toISOString().split('T')[0] : '2026-08-28',
+            isCustom: true
+          }));
+
+          // Avoid duplicating initial mock jobs if api contains them
+          setJobsList([...apiJobs, ...initialJobs]);
+        }
+      } catch (err) {
+        console.error('Failed to load dynamic jobs:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchJobs();
+  }, []);
+
+  const filteredJobs = jobsList.filter((job) => {
     const matchesSearch =
       job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.client.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -100,7 +159,7 @@ export default function JobsPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Create New Job
+            Create New Job & Scan JD
           </Link>
         </div>
 
@@ -150,8 +209,13 @@ export default function JobsPage() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h2 className="text-lg font-bold text-white hover:text-blue-400 transition-colors">
-                      <Link href={`/jobs/${job.id}/requirements`}>{job.title}</Link>
+                      <Link href={`/jobs/${job.id}`}>{job.title}</Link>
                     </h2>
+                    {job.isCustom && (
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                        NEWLY SAVED
+                      </span>
+                    )}
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">
                       {job.workMode}
                     </span>
@@ -192,21 +256,30 @@ export default function JobsPage() {
                 </div>
 
                 {/* Job Metrics & Action */}
-                <div className="flex items-center gap-6 self-end md:self-auto">
+                <div className="flex items-center gap-4 self-end md:self-auto flex-wrap sm:flex-nowrap">
                   <div className="text-right">
                     <span className="text-sm font-bold text-white block">{job.candidatesCount} Candidates</span>
                     <span className="text-xs text-emerald-400 font-medium">Top Match: {job.topMatch}%</span>
                   </div>
 
-                  <Link
-                    href={`/jobs/${job.id}/requirements`}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-1.5"
-                  >
-                    <span>View Requirements</span>
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/jobs/${job.id}/requirements`}
+                      className="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold rounded-xl border border-gray-700 transition-all"
+                    >
+                      Requirements
+                    </Link>
+
+                    <Link
+                      href={`/jobs/${job.id}/upload-cvs`}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-1.5"
+                    >
+                      <span>Compare Candidates</span>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))

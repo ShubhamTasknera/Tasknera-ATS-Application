@@ -45,6 +45,7 @@ export const extractDocumentTextViaPython = async (
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'Content-Length': payload.length,
         },
+        timeout: 3000,
       },
       (res) => {
         let responseData = '';
@@ -96,6 +97,26 @@ export const extractDocumentTextViaPython = async (
         });
       }
     );
+
+    req.on('timeout', () => {
+      req.destroy();
+      console.warn('[Python Client Warning] Connection to Python service on port 8000 timed out (3s). Operating in fallback mode.');
+      resolve({
+        success: false,
+        fileName: filename,
+        fileType: mimeType,
+        pageCount: 1,
+        extractionMethod: 'fallback-node',
+        ocrUsed: false,
+        textQuality: 'FAILED',
+        characterCount: 0,
+        wordCount: 0,
+        text: '',
+        layoutText: '',
+        normalizedText: '',
+        error: 'Python service timed out.'
+      });
+    });
 
     req.on('error', (err) => {
       console.warn('[Python Client Connection Warning] Could not connect to Python FastAPI service on port 8000. Operating in fallback mode:', err.message);
