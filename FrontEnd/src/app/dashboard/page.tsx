@@ -96,139 +96,196 @@ const recent = [
 ];
 
 export default function DashboardPage() {
+  const [jobSearch, setJobSearch] = React.useState('');
+
+  const filteredJobs = jobs.filter(j => 
+    j.title.toLowerCase().includes(jobSearch.toLowerCase()) ||
+    j.client.toLowerCase().includes(jobSearch.toLowerCase()) ||
+    j.location.toLowerCase().includes(jobSearch.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen bg-brand-bg flex flex-col">
+    <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
       <Header />
 
-      <main className="max-w-screen-xl mx-auto px-6 pt-20 pb-16 flex-1 w-full">
+      <main className="max-w-screen-xl mx-auto px-6 pt-24 pb-16 flex-1 w-full">
 
         {/* Page header */}
-        <div className="flex items-center justify-between mb-7 pt-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-brand-charcoal">Dashboard</h1>
-            <p className="text-sm text-brand-charcoal-3 mt-0.5">Candidate evaluation overview and pipeline status</p>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
+              <span className="w-2 h-2 rounded-full bg-brand-orange" />
+              Recruiter Command Center
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
+            <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and submission pipeline</p>
           </div>
-          <Link
-            href="/jobs/create"
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-xl transition-colors shadow-orange"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            New Job
-          </Link>
+          
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/candidates"
+              className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs"
+            >
+              Search Talent Pool
+            </Link>
+            <Link
+              href="/jobs/create"
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Job Evaluation
+            </Link>
+          </div>
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           {kpis.map((k, i) => (
-            <div key={i} className="bg-white border border-brand-border rounded-2xl p-5 shadow-card hover:shadow-md transition-shadow">
+            <div key={i} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all card-hover-lift relative overflow-hidden group">
               <div className="flex items-start justify-between mb-4">
-                <div className={`w-10 h-10 rounded-xl ${k.bgAccent} flex items-center justify-center flex-shrink-0`}>
+                <div className={`w-11 h-11 rounded-xl ${k.bgAccent} flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform`}>
                   <div className={k.textAccent}>{k.icon}</div>
                 </div>
-                <span className="text-xs font-medium text-brand-charcoal-3 text-right leading-tight max-w-[100px]">{k.label}</span>
+                <span className="text-xs font-bold text-slate-500 text-right leading-tight">{k.label}</span>
               </div>
-              <div className="text-2xl font-bold text-brand-charcoal">{k.value}</div>
-              <div className="text-xs text-brand-charcoal-3 mt-1">{k.sub}</div>
+              <div className="text-3xl font-extrabold text-[#1E293B] tracking-tight">{k.value}</div>
+              <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                <span>{k.sub}</span>
+                <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
+                  ↑ 12%
+                </span>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Quick stats bar */}
-        <div className="bg-brand-charcoal rounded-2xl px-6 py-4 mb-6 flex flex-wrap items-center gap-6">
-          {[
-            { label: 'Submit Rate', value: '42%', color: 'text-emerald-400' },
-            { label: 'Review Rate', value: '31%', color: 'text-amber-400' },
-            { label: 'Reject Rate', value: '27%', color: 'text-red-400' },
-            { label: 'Avg Score',   value: '79.2', color: 'text-brand-orange' },
-            { label: 'Time to Eval', value: '3 min', color: 'text-blue-400' },
-          ].map((s, i) => (
-            <div key={i} className="flex flex-col">
-              <span className={`text-lg font-bold ${s.color}`}>{s.value}</span>
-              <span className="text-xs text-white/50 mt-0.5">{s.label}</span>
+        {/* High-Impact Performance Metrics Bar */}
+        <div className="bg-[#1E293B] rounded-3xl p-6 mb-8 shadow-lg text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-orange/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-brand-orange font-bold mb-1">Key Performance Ratios</div>
+              <div className="text-sm text-slate-300">Deterministic evaluation analytics across all active requisitions</div>
             </div>
-          ))}
-          <div className="ml-auto hidden md:block">
-            <span className="text-xs text-white/30">Last 30 days</span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-6">
+              {[
+                { label: 'Submit Rate', value: '42.0%', color: 'text-emerald-400' },
+                { label: 'Review Rate', value: '31.0%', color: 'text-amber-400' },
+                { label: 'Reject Rate', value: '27.0%', color: 'text-rose-400' },
+                { label: 'Avg Match Score', value: '79.2', color: 'text-brand-orange' },
+                { label: 'Median Turnaround', value: '3.2 min', color: 'text-blue-400' },
+              ].map((s, i) => (
+                <div key={i} className="flex flex-col">
+                  <span className={`text-xl font-extrabold ${s.color}`}>{s.value}</span>
+                  <span className="text-[11px] font-medium text-slate-300 mt-0.5">{s.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Active jobs table */}
-          <div className="lg:col-span-2 bg-white border border-brand-border rounded-2xl shadow-card overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-border">
-              <h2 className="text-sm font-semibold text-brand-charcoal">Active Jobs</h2>
-              <Link href="/jobs" className="text-xs text-brand-orange hover:underline font-medium">View all →</Link>
+          <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden flex flex-col">
+            <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
+              <div>
+                <h2 className="text-base font-bold text-[#1E293B]">Active Requisitions & JDs</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Click a position to review requirements or batch evaluate CVs</p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="Filter positions..."
+                  value={jobSearch}
+                  onChange={e => setJobSearch(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-44"
+                />
+                <Link href="/jobs" className="text-xs text-brand-orange font-bold hover:underline whitespace-nowrap">
+                  All ({jobs.length}) →
+                </Link>
+              </div>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-brand-border bg-brand-bg">
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-brand-charcoal-3 uppercase tracking-wide">Position</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-brand-charcoal-3 uppercase tracking-wide">CVs</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-brand-charcoal-3 uppercase tracking-wide">Top Score</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-brand-charcoal-3 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-border">
-                {jobs.map(j => (
-                  <tr key={j.id} className="hover:bg-brand-bg transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-semibold text-brand-charcoal">{j.title}</div>
-                      <div className="text-xs text-brand-charcoal-3 mt-0.5">{j.client} · {j.location}</div>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm font-medium text-brand-charcoal">{j.candidates}</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`text-sm font-bold ${scoreColor(j.topScore)}`}>{j.topScore}</span>
-                      <span className="text-xs text-brand-charcoal-3">/100</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="inline-flex px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-semibold">
-                        {j.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <Link href={`/jobs/${j.id}/upload-cvs`}
-                        className="text-xs text-brand-orange hover:underline font-medium">
-                        Evaluate →
-                      </Link>
-                    </td>
+
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-6 py-3.5">Position & Client</th>
+                    <th className="px-4 py-3.5 text-center">Applicants</th>
+                    <th className="px-4 py-3.5 text-center">Top Match</th>
+                    <th className="px-4 py-3.5 text-center">Mode</th>
+                    <th className="px-6 py-3.5 text-right">Quick Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {filteredJobs.map(j => (
+                    <tr key={j.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-6 py-4">
+                        <Link href={`/jobs/${j.id}/requirements`} className="text-sm font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors">
+                          {j.title}
+                        </Link>
+                        <div className="text-xs text-slate-500 mt-0.5">{j.client} • {j.location}</div>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="font-bold text-[#1E293B]">{j.candidates}</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className={`font-extrabold ${scoreColor(j.topScore)}`}>{j.topScore}</span>
+                        <span className="text-xs text-slate-400 font-semibold">/100</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="inline-flex px-2.5 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
+                          {j.mode}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Link
+                          href={`/jobs/${j.id}/upload-cvs`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-lg transition-all shadow-xs"
+                        >
+                          Evaluate CVs →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Right column */}
-          <div className="space-y-5">
+          <div className="space-y-6">
 
             {/* Recent evaluations */}
-            <div className="bg-white border border-brand-border rounded-2xl shadow-card overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-brand-border">
-                <h2 className="text-sm font-semibold text-brand-charcoal">Recent Evaluations</h2>
-                <Link href="/evaluations" className="text-xs text-brand-orange hover:underline font-medium">View all →</Link>
+            <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70">
+                <h2 className="text-sm font-bold text-[#1E293B]">Recent Evaluations</h2>
+                <Link href="/evaluations" className="text-xs text-brand-orange font-bold hover:underline">View All →</Link>
               </div>
-              <div className="divide-y divide-brand-border">
+              <div className="divide-y divide-slate-100">
                 {recent.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-brand-bg transition-colors">
+                  <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-brand-orange-pale text-brand-orange font-bold text-sm flex items-center justify-center flex-shrink-0">
+                      <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-extrabold text-xs flex items-center justify-center flex-shrink-0">
                         {r.name.charAt(0)}
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-brand-charcoal leading-tight">{r.name}</div>
-                        <div className="text-xs text-brand-charcoal-3">{r.role}</div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[#1E293B] truncate">{r.name}</div>
+                        <div className="text-[11px] text-slate-500 truncate">{r.role}</div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${decisionStyle(r.decision)}`}>
+                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold border ${decisionStyle(r.decision)}`}>
                         {r.decision === 'DO NOT SUBMIT' ? 'REJECT' : r.decision}
                       </span>
-                      <div className="text-[11px] text-brand-charcoal-3 mt-0.5">{r.match}/100 · {r.time}</div>
+                      <div className="text-[10px] text-slate-400 font-semibold mt-0.5">{r.match}% • {r.time}</div>
                     </div>
                   </div>
                 ))}
@@ -236,18 +293,21 @@ export default function DashboardPage() {
             </div>
 
             {/* Pipeline funnel */}
-            <div className="bg-white border border-brand-border rounded-2xl shadow-card p-5">
-              <h2 className="text-sm font-semibold text-brand-charcoal mb-4">Hiring Pipeline</h2>
-              <div className="space-y-3">
+            <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-[#1E293B]">Recruitment Pipeline</h2>
+                <span className="text-xs text-slate-500">1,847 total</span>
+              </div>
+              <div className="space-y-3.5">
                 {pipeline.map((p, i) => (
                   <div key={i}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-brand-charcoal-2">{p.stage}</span>
-                      <span className="text-xs font-semibold text-brand-charcoal">{p.value.toLocaleString()}</span>
+                    <div className="flex items-center justify-between mb-1 text-xs">
+                      <span className="font-semibold text-slate-600">{p.stage}</span>
+                      <span className="font-bold text-[#1E293B]">{p.value.toLocaleString()}</span>
                     </div>
-                    <div className="h-1.5 bg-brand-bg-2 rounded-full overflow-hidden">
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${p.color}`}
+                        className={`h-full rounded-full ${p.color} transition-all duration-700`}
                         style={{ width: `${Math.min((p.value / 1847) * 100, 100)}%` }}
                       />
                     </div>
@@ -255,6 +315,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
+
           </div>
         </div>
       </main>

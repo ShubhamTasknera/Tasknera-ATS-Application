@@ -1,225 +1,245 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { AuthModal } from '@/components/AuthModal';
+import Link from 'next/link';
 
 const HeroSection: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState(0);
 
-  const { isAuthenticated } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    setIsVisible(true);
-  }, []);
-
-  const handleActionClick = (targetPath: string) => {
-    if (isAuthenticated) {
-      router.push(targetPath);
-    } else {
-      setAuthModalOpen(true);
-    }
-  };
+  useEffect(() => { setVisible(true); }, []);
 
   const candidates = [
-    {
-      name: 'Sarah Mitchell',
-      role: 'SAP CO Consultant',
-      match: 94,
-      decision: 'SUBMIT',
-      decisionColor: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30',
-      skills: ['SAP CO', 'S/4HANA', 'Manufacturing'],
-      mandatory: '5/5',
+    { 
+      name: 'Sarah Mitchell',  
+      role: 'Lead SAP CO Consultant',    
+      match: 94, 
+      mandatory: '5/5', 
+      decision: 'SUBMIT',         
+      decisionCls: 'bg-status-submit-bg text-status-submit-text border-status-submit-border',
+      evidence: '11+ yrs SAP FICO/COPA, 4 S/4HANA global rollouts, verified CPA & SAP CO certification.'
     },
-    {
-      name: 'Michael Chen',
-      role: 'SAP Consultant',
-      match: 76,
-      decision: 'REVIEW',
-      decisionColor: 'text-amber-400 bg-amber-400/10 border-amber-400/30',
-      skills: ['SAP FI', 'SAP CO', 'S/4HANA'],
-      mandatory: '4/5',
+    { 
+      name: 'Michael Chen',    
+      role: 'Senior SAP Consultant',        
+      match: 76, 
+      mandatory: '4/5', 
+      decision: 'REVIEW',         
+      decisionCls: 'bg-status-review-bg text-status-review-text border-status-review-border',
+      evidence: '7 yrs SAP CO experience. Needs clarification on recent S/4HANA migration leadership.'
     },
-    {
-      name: 'Jennifer Lopez',
-      role: 'Junior SAP Analyst',
-      match: 52,
-      decision: 'DO NOT SUBMIT',
-      decisionColor: 'text-red-400 bg-red-400/10 border-red-400/30',
-      skills: ['SAP CO', 'Excel'],
-      mandatory: '1/5',
+    { 
+      name: 'Jennifer Lopez',  
+      role: 'Junior SAP Analyst',   
+      match: 52, 
+      mandatory: '1/5', 
+      decision: 'DO NOT SUBMIT',  
+      decisionCls: 'bg-status-reject-bg text-status-reject-text border-status-reject-border',
+      evidence: 'Missing mandatory requirement: Minimum 5 years hands-on Profitability Analysis (CO-PA).'
     },
   ];
 
   const steps = [
-    { num: '01', title: 'Upload JD', desc: 'Paste or upload your job description', color: 'text-blue-400', border: 'border-blue-400/30 bg-blue-400/5' },
-    { num: '02', title: 'Review Requirements', desc: 'Confirm mandatory vs preferred', color: 'text-indigo-400', border: 'border-indigo-400/30 bg-indigo-400/5' },
-    { num: '03', title: 'Upload CVs', desc: 'Single or bulk upload', color: 'text-gray-400', border: 'border-gray-600/40 bg-gray-700/20' },
-    { num: '04', title: 'Get Scores', desc: 'Evidence-based, deterministic', color: 'text-gray-400', border: 'border-gray-600/40 bg-gray-700/20' },
+    { n: '01', label: 'Upload JD', desc: 'Paste or upload JD text, docx, or pdf', active: true, icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+    { n: '02', label: 'Review Criteria', desc: 'Confirm mandatory rules & weights', active: true, icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
+    { n: '03', label: 'Upload CVs', desc: 'Single or bulk batch up to 50 resumes', active: true, icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
+    { n: '04', label: 'Deterministic Scoring', desc: 'Auditable, evidence-backed evaluation', active: true, icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
   ];
 
+  const scoreColor = (n: number) =>
+    n >= 80 ? 'text-green-600' : n >= 65 ? 'text-amber-600' : 'text-red-500';
+
+  const barColor = (n: number) =>
+    n >= 80 ? 'bg-green-500' : n >= 65 ? 'bg-amber-500' : 'bg-red-400';
+
   return (
-    <section className="relative min-h-screen bg-[#060C1A] overflow-hidden">
+    <section className="bg-brand-bg relative overflow-hidden bg-radial-orange-subtle">
+      {/* Decorative ambient glowing orb */}
+      <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-brand-orange/5 rounded-full blur-3xl pointer-events-none -z-10" />
 
-      {/* Subtle background grid */}
-      <div className="absolute inset-0"
-        style={{
-          backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
-          backgroundSize: '48px 48px',
-        }}
-      />
+      {/* ── Hero split ── */}
+      <div className="max-w-screen-xl mx-auto px-6 pt-24 pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
 
-      {/* Single subtle blue glow — top left only */}
-      <div className="absolute top-0 left-0 w-[600px] h-[400px] bg-blue-600/8 rounded-full blur-[120px] pointer-events-none" />
-
-      <div className="relative z-10 max-w-7xl mx-auto px-6 pt-36 pb-24">
-
-        {/* Top badge */}
-        <div className={`flex justify-center mb-8 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'}`}>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gray-800/80 border border-gray-700 text-gray-300 text-xs font-medium tracking-wide">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            Standardized Candidate–JD Matching & Submission Evaluation
-          </div>
-        </div>
-
-        {/* Main headline */}
-        <div className={`text-center mb-6 transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.1] tracking-tight mb-6">
-            <span className="text-white">Evaluate Candidates</span>
-            <br />
-            <span className="text-white">With </span>
-            <span className="text-blue-400">Evidence.</span>
-            <span className="text-gray-500"> Not Guesswork.</span>
-          </h1>
-          <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-            A fixed scoring framework that produces the same result every time.
-            Every score is backed by evidence extracted directly from the CV.
-          </p>
-        </div>
-
-        {/* CTAs */}
-        <div className={`flex items-center justify-center gap-4 mb-20 transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          <button
-            onClick={() => handleActionClick('/jobs/create')}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-blue-900/40 text-sm"
-          >
-            Start Evaluating
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </button>
-          <button
-            onClick={() => handleActionClick('/dashboard')}
-            className="flex items-center gap-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold rounded-lg transition-colors border border-gray-700 text-sm"
-          >
-            View Dashboard
-          </button>
-        </div>
-
-        {/* Workflow Steps */}
-        <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mb-20 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-          {steps.map((step, i) => (
-            <div key={i} className={`rounded-xl p-4 border ${step.border}`}>
-              <div className={`text-xs font-bold mb-2 ${step.color}`}>{step.num}</div>
-              <div className="text-white text-sm font-semibold mb-1">{step.title}</div>
-              <div className="text-gray-500 text-xs leading-relaxed">{step.desc}</div>
+          {/* Left Hero Content */}
+          <div className={`lg:col-span-6 transition-all duration-700 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-semibold text-brand-orange mb-6 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-brand-orange animate-ping" />
+              Candidate Intelligence & Precision ATS
             </div>
-          ))}
-        </div>
 
-        {/* Candidate Cards — demo output */}
-        <div className={`transition-all duration-700 delay-400 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+            <h1 className="text-4xl sm:text-5xl lg:text-[52px] font-extrabold text-brand-charcoal leading-[1.15] tracking-tight mb-6">
+              Evaluate Candidates With{' '}
+              <span className="orange-gradient-text">Evidence.</span>
+              <br />
+              <span className="text-brand-charcoal-2 font-bold">Never Guesswork.</span>
+            </h1>
 
-          {/* Section label */}
-          <div className="flex items-center gap-3 mb-5 max-w-5xl mx-auto">
-            <div className="h-px flex-1 bg-gray-800" />
-            <span className="text-gray-600 text-xs font-medium tracking-widest uppercase">Live Evaluation Output</span>
-            <div className="h-px flex-1 bg-gray-800" />
+            <p className="text-brand-charcoal-3 text-lg leading-relaxed mb-8 max-w-xl">
+              A deterministic scoring engine ensuring identical evaluations for identical requirements. Every single match score is validated with extracted citations from candidate resumes.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3.5 mb-10">
+              <Link
+                href="/jobs/create"
+                className="flex items-center gap-2 px-6 py-3.5 bg-brand-orange hover:bg-brand-orange-hover text-white font-semibold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm"
+              >
+                Start Free Evaluation
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </Link>
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-2 px-6 py-3.5 bg-brand-white hover:bg-brand-bg-2 border border-brand-border text-brand-charcoal font-semibold rounded-xl transition-all hover:-translate-y-0.5 text-sm shadow-xs"
+              >
+                Explore Dashboard
+              </Link>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-5 text-xs sm:text-sm font-medium text-brand-charcoal-3">
+              {['100% Deterministic', 'Direct CV Citations', 'Zero AI Hallucination'].map((b, i) => (
+                <div key={i} className="flex items-center gap-2 bg-white/80 px-3 py-1.5 rounded-lg border border-brand-border/60 shadow-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                  {b}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {candidates.map((c, i) => (
-              <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition-colors">
+          {/* Right — Interactive Live Evaluation Preview Card */}
+          <div className={`lg:col-span-6 transition-all duration-700 delay-200 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
+            <div className="bg-brand-white border border-brand-border rounded-3xl shadow-xl overflow-hidden ring-1 ring-black/5 card-hover-lift">
 
-                {/* Header row */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-gray-700 flex items-center justify-center text-gray-300 font-bold text-sm">
-                      {c.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="text-white font-semibold text-sm">{c.name}</div>
-                      <div className="text-gray-500 text-xs">{c.role}</div>
-                    </div>
+              {/* Card header */}
+              <div className="px-6 py-4 border-b border-brand-border bg-gradient-to-r from-brand-charcoal to-brand-charcoal-2 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange flex items-center justify-center font-bold text-xs text-white shadow-orange">
+                    JD
                   </div>
-                  {/* Score circle */}
-                  <div className="text-right">
-                    <div className={`text-xl font-bold ${c.match >= 80 ? 'text-white' : c.match >= 65 ? 'text-amber-400' : 'text-red-400'}`}>
-                      {c.match}
-                    </div>
-                    <div className="text-gray-600 text-xs">/100</div>
+                  <div>
+                    <h3 className="text-sm font-bold leading-tight">SAP CO Lead Consultant</h3>
+                    <p className="text-[11px] text-white/70">TechCorp Global • Requisition #JD-408</p>
                   </div>
                 </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 rounded-full text-[11px] font-medium text-white/90">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  Live Match Mode
+                </div>
+              </div>
 
-                {/* Score bar */}
-                <div className="w-full h-1.5 bg-gray-800 rounded-full mb-4 overflow-hidden">
+              {/* Column headings */}
+              <div className="grid grid-cols-12 px-6 py-3 border-b border-brand-border bg-brand-bg/70 text-[11px] font-bold text-brand-charcoal-3 uppercase tracking-wider">
+                <div className="col-span-5">Candidate Profile</div>
+                <div className="col-span-3 text-center">Match Index</div>
+                <div className="col-span-2 text-center">Mandatory</div>
+                <div className="col-span-2 text-right">Action</div>
+              </div>
+
+              {/* Rows */}
+              <div className="divide-y divide-brand-border">
+                {candidates.map((c, i) => (
                   <div
-                    className={`h-full rounded-full transition-all duration-1000 ${
-                      c.match >= 80 ? 'bg-blue-500' : c.match >= 65 ? 'bg-amber-500' : 'bg-red-500'
+                    key={i}
+                    onClick={() => setSelectedCandidate(i)}
+                    className={`grid grid-cols-12 px-6 py-4 items-center cursor-pointer transition-all ${
+                      selectedCandidate === i
+                        ? 'bg-brand-orange-pale/50 border-l-4 border-l-brand-orange'
+                        : 'hover:bg-brand-bg/50 border-l-4 border-l-transparent'
                     }`}
-                    style={{ width: `${c.match}%` }}
-                  />
-                </div>
+                  >
+                    <div className="col-span-5 flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 transition-colors ${
+                        selectedCandidate === i ? 'bg-brand-orange text-white' : 'bg-brand-bg-2 text-brand-charcoal'
+                      }`}>
+                        {c.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-brand-charcoal text-sm font-bold truncate">{c.name}</div>
+                        <div className="text-brand-charcoal-3 text-xs truncate">{c.role}</div>
+                      </div>
+                    </div>
 
-                {/* Mandatory */}
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-gray-500 text-xs">Mandatory</span>
-                  <span className="text-gray-300 text-xs font-semibold">{c.mandatory}</span>
-                </div>
+                    <div className="col-span-3 text-center">
+                      <div className="flex items-baseline justify-center gap-0.5">
+                        <span className={`text-base font-extrabold ${scoreColor(c.match)}`}>{c.match}</span>
+                        <span className="text-brand-charcoal-3 text-xs font-semibold">/100</span>
+                      </div>
+                      <div className="w-16 h-1.5 bg-brand-bg-2 rounded-full mx-auto mt-1 overflow-hidden">
+                        <div className={`h-full rounded-full ${barColor(c.match)} transition-all duration-500`} style={{ width: `${c.match}%` }} />
+                      </div>
+                    </div>
 
-                {/* Skills */}
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {c.skills.map((s, j) => (
-                    <span key={j} className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-gray-400 text-xs">
-                      {s}
-                    </span>
-                  ))}
-                </div>
+                    <div className="col-span-2 text-center">
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                        c.mandatory.startsWith('5') ? 'bg-emerald-50 text-emerald-700' : c.mandatory.startsWith('4') ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                      }`}>
+                        {c.mandatory}
+                      </span>
+                    </div>
 
-                {/* Decision */}
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${c.decisionColor}`}>
-                  {c.decision}
+                    <div className="col-span-2 text-right">
+                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${c.decisionCls}`}>
+                        {c.decision === 'DO NOT SUBMIT' ? 'REJECT' : c.decision}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Selected Candidate Evidence Citation Preview */}
+              <div className="p-4 bg-brand-bg border-t border-brand-border flex items-start gap-3">
+                <div className="w-5 h-5 rounded-md bg-brand-orange text-white flex items-center justify-center flex-shrink-0 mt-0.5 text-xs font-bold">
+                  ✓
                 </div>
+                <div>
+                  <div className="text-[11px] font-bold text-brand-charcoal uppercase tracking-wider mb-0.5 flex items-center gap-2">
+                    <span>Evidence Citation for {candidates[selectedCandidate].name}</span>
+                    <span className="text-brand-orange font-semibold lowercase">({candidates[selectedCandidate].match}% confidence)</span>
+                  </div>
+                  <p className="text-xs text-brand-charcoal-2 italic leading-relaxed">
+                    "{candidates[selectedCandidate].evidence}"
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ── Workflow Steps Cards ── */}
+      <div className="bg-brand-white border-t border-brand-border">
+        <div className="max-w-screen-xl mx-auto px-6 py-16">
+          <div className="text-center max-w-xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale rounded-full text-xs font-bold text-brand-orange uppercase tracking-wider mb-2">
+              Workflow
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-brand-charcoal mb-2">How Tasknera Operates</h2>
+            <p className="text-brand-charcoal-3 text-sm">Four automated steps from raw job description to client-ready evaluation reports</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {steps.map((s, i) => (
+              <div
+                key={i}
+                className="group relative bg-brand-bg hover:bg-white p-6 rounded-2xl border border-brand-border hover:border-brand-orange-border transition-all duration-300 card-hover-lift"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-orange-pale group-hover:bg-brand-orange text-brand-orange group-hover:text-white flex items-center justify-center transition-colors mb-4 shadow-xs">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={s.icon} />
+                  </svg>
+                </div>
+                <div className="text-[11px] font-extrabold text-brand-orange uppercase tracking-widest mb-1">Step {s.n}</div>
+                <h4 className="text-base font-bold text-brand-charcoal mb-1.5">{s.label}</h4>
+                <p className="text-xs text-brand-charcoal-3 leading-relaxed">{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
-
-        {/* Stats */}
-        <div className={`mt-20 flex flex-wrap items-center justify-center gap-12 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
-          {[
-            { value: '100%', label: 'Deterministic Scoring' },
-            { value: 'Evidence-Based', label: 'Every match explained' },
-            { value: 'No AI Guessing', label: 'Fixed framework always' },
-          ].map((stat, i) => (
-            <div key={i} className="text-center">
-              <div className="text-white font-bold text-xl mb-1">{stat.value}</div>
-              <div className="text-gray-600 text-sm">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
       </div>
 
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        initialMode="signin"
-      />
     </section>
   );
 };

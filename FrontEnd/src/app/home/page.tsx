@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -8,317 +9,175 @@ import HeroSection from './components/HeroSection';
 import { useAuth } from '@/context/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
 
+const features = [
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    title: 'Fixed Scoring Framework',
+    desc: 'Same JD + CV + rules = same score, every time. No AI guessing.',
+    stat: '100% Deterministic',
+    statColor: 'text-green-600 bg-green-50 border-green-200',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    ),
+    title: 'Evidence-Based Matching',
+    desc: 'Every match shows the exact CV text used as evidence.',
+    stat: 'Fully Auditable',
+    statColor: 'text-blue-600 bg-blue-50 border-blue-200',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    ),
+    title: 'Mandatory Rule Engine',
+    desc: 'Failed mandatory requirement? Flagged immediately, regardless of overall score.',
+    stat: 'Hard Rules Applied',
+    statColor: 'text-red-600 bg-red-50 border-red-200',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+    title: 'ATS Compatibility Score',
+    desc: 'Separate from JD match — tells you if the CV is optimized, not just if the candidate fits.',
+    stat: 'Separate Score',
+    statColor: 'text-purple-600 bg-purple-50 border-purple-200',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+    title: 'Bulk Evaluation',
+    desc: 'Upload 50 CVs against one JD. Ranked, filtered, and ready to action.',
+    stat: 'Up to 50 CVs',
+    statColor: 'text-amber-700 bg-amber-50 border-amber-200',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+      </svg>
+    ),
+    title: 'Client Submission Summary',
+    desc: 'One-click professional summary ready to send to the client.',
+    stat: 'One Click',
+    statColor: 'text-teal-600 bg-teal-50 border-teal-200',
+  },
+];
+
+const testimonials = [
+  {
+    quote: 'TaskNera reduced our time-to-hire by 60%. The scoring is consistent and every decision is backed by evidence.',
+    author: 'Sarah Mitchell',
+    role: 'Head of HR, TechCorp',
+    avatar: 'SM',
+  },
+  {
+    quote: 'Best recruitment evaluation tool we have used. The mandatory rule engine saves us from submitting the wrong candidates.',
+    author: 'James Chen',
+    role: 'Talent Acquisition Lead, StartupXYZ',
+    avatar: 'JC',
+  },
+];
+
 export default function HomePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
-
+  const [biasGuardActive, setBiasGuardActive] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'scoring' | 'auditing' | 'speed'>('all');
   const { isAuthenticated } = useAuth();
   const router = useRouter();
 
-  const handleCtaClick = (targetPath: string) => {
-    if (isAuthenticated) {
-      router.push(targetPath);
-    } else {
-      setAuthModalOpen(true);
-    }
+  const handleCta = (path: string) => {
+    if (isAuthenticated) router.push(path);
+    else setAuthModalOpen(true);
   };
-  const features = [
-    {
-      title: 'AI-Powered Matching',
-      description: 'Advanced algorithms analyze resumes and match candidates with unprecedented accuracy.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
-      ),
-      gradient: 'from-primary-500 via-purple-500 to-primary-700',
-      iconGradient: 'from-primary-400 to-primary-700',
-    },
-    {
-      title: 'Smart Pipeline',
-      description: 'Automated workflows that move candidates through stages intelligently.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      ),
-      gradient: 'from-cyan-500 via-blue-500 to-indigo-500',
-      iconGradient: 'from-cyan-400 to-blue-400',
-    },
-    {
-      title: 'Team Collaboration',
-      description: 'Real-time collaboration tools for seamless hiring team coordination.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-      ),
-      gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
-      iconGradient: 'from-emerald-400 to-teal-400',
-    },
-    {
-      title: 'Analytics Dashboard',
-      description: 'Deep insights into your hiring metrics with beautiful visualizations.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-      ),
-      gradient: 'from-amber-500 via-orange-500 to-red-500',
-      iconGradient: 'from-amber-400 to-orange-400',
-    },
-    {
-      title: 'Automated Screening',
-      description: 'Let AI handle initial screening while you focus on top candidates.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      gradient: 'from-primary-700 via-rose-500 to-red-500',
-      iconGradient: 'from-primary-700 to-rose-400',
-    },
-    {
-      title: 'Global Integration',
-      description: 'Connect with 100+ tools including Slack, LinkedIn, and email platforms.',
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-        </svg>
-      ),
-      gradient: 'from-blue-500 via-indigo-500 to-primary-500',
-      iconGradient: 'from-blue-400 to-indigo-400',
-    },
-  ];
+
+  const filteredFeatures = activeTab === 'all' 
+    ? features 
+    : activeTab === 'scoring' 
+    ? [features[0], features[2], features[3]]
+    : activeTab === 'auditing'
+    ? [features[1], features[2], features[5]]
+    : [features[4], features[5], features[0]];
 
   return (
-    <div className="relative min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-brand-bg flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
       <Header />
-      
-      <main>
+
+      <main className="flex-1">
+        {/* Hero */}
         <HeroSection />
-        
-        {/* Enterprise Features Section */}
-        <section id="features" className="relative py-20 md:py-24 overflow-hidden border-b border-slate-800/50">
-          {/* Subtle Ambient Background */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[500px] bg-blue-600/5 rounded-full blur-[120px]" />
-          </div>
 
-          <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
-            {/* Header */}
-            <div className="text-center mb-16 md:mb-20">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 mb-5">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Built for Modern Recruiting</span>
+        {/* Features Interactive Showcase */}
+        <section className="bg-brand-white border-t border-brand-border py-24 relative overflow-hidden">
+          <div className="max-w-screen-xl mx-auto px-6">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border/70 rounded-full text-xs font-bold text-brand-orange uppercase tracking-wider mb-3">
+                Core Capabilities
               </div>
-
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white mb-4">
-                Everything You Need to <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent">Hire Better</span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-brand-charcoal tracking-tight mb-3">
+                Engineered for Enterprise Talent Acquisition
               </h2>
-
-              <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-                Powerful tools designed to streamline your recruitment process from sourcing to offer.
+              <p className="text-brand-charcoal-3 text-base leading-relaxed">
+                Not a generative AI chatbot making subjective decisions. Tasknera uses an auditable, deterministic framework with direct resume proof.
               </p>
-            </div>
 
-            {/* Feature Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-              {/* 1. AI-Powered Matching */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-6 group-hover:bg-blue-500/20 group-hover:text-blue-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-blue-300 transition-colors">
-                    AI-Powered Matching
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Analyze resumes against job requirements and surface the strongest candidates automatically.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-[11px] font-medium tracking-wider text-slate-400 uppercase">Match Accuracy</span>
-                  </div>
-                  <span className="text-xs font-mono font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">94.8% Score</span>
-                </div>
-              </div>
-
-              {/* 2. Smart Pipeline */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-6 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-cyan-300 transition-colors">
-                    Smart Pipeline
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Automated workflows that move candidates through screening stages intelligently.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-2">
-                    <span>Pipeline Progress</span>
-                    <span className="text-cyan-400 font-normal">Automated</span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    <div className="h-1.5 rounded-full bg-cyan-500" />
-                    <div className="h-1.5 rounded-full bg-cyan-500" />
-                    <div className="h-1.5 rounded-full bg-cyan-500/60" />
-                    <div className="h-1.5 rounded-full bg-slate-800" />
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. Team Collaboration */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-6 group-hover:bg-purple-500/20 group-hover:text-purple-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-purple-300 transition-colors">
-                    Team Collaboration
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Real-time feedback and scorecards for seamless hiring team coordination.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <div className="flex -space-x-2 overflow-hidden">
-                    <div className="inline-block h-6 w-6 rounded-full ring-2 ring-slate-900 bg-blue-600 text-[10px] font-bold text-white flex items-center justify-center">JD</div>
-                    <div className="inline-block h-6 w-6 rounded-full ring-2 ring-slate-900 bg-purple-600 text-[10px] font-bold text-white flex items-center justify-center">SK</div>
-                    <div className="inline-block h-6 w-6 rounded-full ring-2 ring-slate-900 bg-indigo-600 text-[10px] font-bold text-white flex items-center justify-center">+3</div>
-                  </div>
-                  <span className="text-xs font-medium text-purple-300">Live Team Sync</span>
-                </div>
-              </div>
-
-              {/* 4. Analytics Dashboard */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-6 group-hover:bg-amber-500/20 group-hover:text-amber-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-amber-300 transition-colors">
-                    Analytics Dashboard
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Deep insights into your hiring metrics with clean visualizations.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[11px] font-medium tracking-wider text-slate-400 uppercase">Time-To-Hire</span>
-                  <span className="text-xs font-mono font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">-62% Reduction</span>
-                </div>
-              </div>
-
-              {/* 5. Automated Screening */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-6 group-hover:bg-emerald-500/20 group-hover:text-emerald-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-emerald-300 transition-colors">
-                    Automated Screening
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Let AI handle initial screening while you focus on top candidates.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[11px] font-medium tracking-wider text-slate-400 uppercase">Bias Guard</span>
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Audit Passed</span>
-                </div>
-              </div>
-
-              {/* 6. Global Integration */}
-              <div className="group relative flex flex-col justify-between bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-6 lg:p-8 transition-all duration-200 ease-out hover:-translate-y-1.5 shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-blue-500/5">
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-6 group-hover:bg-blue-500/20 group-hover:text-blue-300 transition-colors">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                    </svg>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white tracking-tight mb-2 group-hover:text-blue-300 transition-colors">
-                    Global Integration
-                  </h3>
-                  <p className="text-slate-400 text-sm leading-relaxed">
-                    Connect with 100+ recruitment tools including Slack, LinkedIn, and email platforms.
-                  </p>
-                </div>
-
-                <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[11px] font-medium tracking-wider text-slate-400 uppercase">Connectors</span>
-                  <span className="text-xs font-semibold text-slate-300">100+ Ecosystem</span>
-                </div>
+              {/* Filter Pills */}
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
+                {[
+                  { id: 'all', label: 'All Capabilities' },
+                  { id: 'scoring', label: 'Scoring Engine' },
+                  { id: 'auditing', label: 'Compliance & Audit' },
+                  { id: 'speed', label: 'Speed & Scale' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-brand-orange text-white shadow-orange scale-105'
+                        : 'bg-brand-bg text-brand-charcoal-2 hover:bg-brand-bg-2 hover:text-brand-charcoal border border-brand-border'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
-        </section>
 
-
-
-        {/* Testimonial Section with parallax */}
-        <section className="relative py-32 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-purple-950/20 to-slate-950" />
-          
-          <div className="relative z-10 max-w-6xl mx-auto px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Trusted by Leading Companies
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {[
-                {
-                  quote: "Tasknera reduced our time-to-hire by 60%. The AI matching is incredibly accurate.",
-                  author: "Sarah Mitchell",
-                  role: "Head of HR, TechCorp",
-                  avatar: "S"
-                },
-                {
-                  quote: "Best ATS we've used. The interface is intuitive and the automation saves us hours daily.",
-                  author: "James Chen",
-                  role: "Talent Acquisition Lead, StartupXYZ",
-                  avatar: "J"
-                }
-              ].map((testimonial, i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredFeatures.map((f, i) => (
                 <div
                   key={i}
-                  className="relative group"
+                  className="group bg-brand-bg hover:bg-white border border-brand-border hover:border-brand-orange-border rounded-2xl p-7 transition-all duration-300 card-hover-lift flex flex-col justify-between"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
-                  <div className="relative bg-white/5 backdrop-blur-xl rounded-2xl p-8 border border-white/10 hover:border-purple-500/50 transition-all duration-300">
-                    <div className="flex items-center gap-4 mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                        {testimonial.avatar}
-                      </div>
-                      <div>
-                        <div className="text-white font-semibold">{testimonial.author}</div>
-                        <div className="text-gray-400 text-sm">{testimonial.role}</div>
-                      </div>
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-brand-orange-pale group-hover:bg-brand-orange text-brand-orange group-hover:text-white flex items-center justify-center mb-5 transition-all shadow-xs">
+                      {f.icon}
                     </div>
-                    <p className="text-gray-300 text-lg leading-relaxed italic">
-                      "{testimonial.quote}"
-                    </p>
+                    <h3 className="text-base font-bold text-brand-charcoal mb-2.5">{f.title}</h3>
+                    <p className="text-xs sm:text-sm text-brand-charcoal-3 leading-relaxed mb-6">{f.desc}</p>
+                  </div>
+                  <div className="pt-4 border-t border-brand-border/60 flex items-center justify-between">
+                    <span className={`inline-flex px-3 py-1 rounded-lg text-xs font-bold border ${f.statColor}`}>
+                      {f.stat}
+                    </span>
+                    <span className="text-[11px] font-semibold text-brand-charcoal-3 group-hover:text-brand-orange transition-colors flex items-center gap-1">
+                      Learn more →
+                    </span>
                   </div>
                 </div>
               ))}
@@ -326,97 +185,295 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Refined Enterprise Conversion CTA Section */}
-        <section className="relative py-20 md:py-24 overflow-hidden">
-          {/* Extremely Soft Ambient Backdrop Light (reduced glow by 70%) */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-blue-600/5 rounded-full blur-[120px]" />
-          </div>
+        {/* Bias Guard Interactive Showcase */}
+        <section className="bg-gradient-to-b from-brand-bg via-white to-brand-bg border-t border-brand-border py-24 relative overflow-hidden">
+          {/* Subtle colorful ambient background glow */}
+          <div className="absolute top-1/2 -left-20 -translate-y-1/2 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute top-1/2 -right-20 -translate-y-1/2 w-96 h-96 bg-brand-orange/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative z-10 max-w-5xl mx-auto px-6">
-            {/* Premium CTA Card Panel */}
-            <div className="relative bg-[#0F172A]/80 backdrop-blur-xl border border-slate-800 hover:border-slate-700/80 rounded-3xl p-8 sm:p-12 md:p-16 text-center shadow-2xl shadow-black/40 transition-all duration-300">
+          <div className="max-w-screen-xl mx-auto px-6 relative z-10">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
               
-              {/* Eyebrow */}
-              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-6">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-400">
-                  Ready When You Are
-                </span>
+              {/* Left explanation */}
+              <div className="lg:col-span-6">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full text-xs font-bold text-emerald-700 uppercase tracking-wider mb-4 shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Ethical AI & EEOC Compliance
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-extrabold text-brand-charcoal tracking-tight leading-tight mb-4">
+                  Eliminate Subconscious Bias With <span className="orange-gradient-text">Bias Guard™</span>
+                </h2>
+                <p className="text-brand-charcoal-3 text-base leading-relaxed mb-6">
+                  Ensure equal opportunity and regulatory alignment. With one click, candidate identifiers (name, photo, gender, age, and university prestige) are anonymized during initial evaluation stages, focusing solely on verified competency.
+                </p>
+
+                <div className="space-y-3.5 mb-8">
+                  {[
+                    { text: 'Automated PII Redaction before scoring algorithm executes', color: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+                    { text: 'Competency-first ranking based strictly on validated JD requirements', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+                    { text: 'Full audit logging for EEOC and corporate diversity compliance', color: 'text-brand-orange bg-brand-orange-pale border-brand-orange-border' },
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-3 bg-white/80 p-3 rounded-xl border border-brand-border/80 shadow-xs">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5 border ${item.color}`}>
+                        ✓
+                      </div>
+                      <span className="text-sm font-semibold text-brand-charcoal-2">{item.text}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-brand-border shadow-sm max-w-md">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-brand-charcoal">Toggle Bias Guard Preview</div>
+                    <div className="text-[11px] text-brand-charcoal-3">Switch between Anonymized & Identified mode</div>
+                  </div>
+                  <button
+                    onClick={() => setBiasGuardActive(!biasGuardActive)}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 shadow-inner ${
+                      biasGuardActive ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-slate-300'
+                    }`}
+                    aria-label="Toggle Bias Guard"
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${
+                        biasGuardActive ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
-              {/* Headline */}
-              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6">
-                Ready to Transform <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent">Your Hiring?</span>
-              </h2>
+              {/* Right: Live Interactive Card Transformation */}
+              <div className="lg:col-span-6">
+                <div className="relative group">
+                  {/* Decorative glowing gradient ring */}
+                  <div className={`absolute -inset-1 rounded-[28px] opacity-75 blur-xl transition-all duration-500 ${
+                    biasGuardActive 
+                      ? 'bg-gradient-to-r from-emerald-500/30 via-indigo-500/20 to-teal-500/30' 
+                      : 'bg-gradient-to-r from-orange-500/30 via-amber-500/20 to-rose-500/30'
+                  }`} />
 
-              {/* Supporting Copy */}
-              <p className="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed mb-10">
-                Join <span className="text-white font-medium">thousands of companies</span> using Tasknera to find, evaluate, and hire exceptional talent faster.
-              </p>
+                  {/* Main Card Container */}
+                  <div className="relative bg-white/95 backdrop-blur-xl border border-brand-border/90 rounded-3xl p-7 shadow-2xl card-hover-lift overflow-hidden">
+                    
+                    {/* Top ambient color accent line */}
+                    <div className={`absolute top-0 left-0 right-0 h-1.5 transition-all duration-500 ${
+                      biasGuardActive 
+                        ? 'bg-gradient-to-r from-indigo-600 via-emerald-500 to-teal-400' 
+                        : 'bg-gradient-to-r from-brand-orange via-amber-500 to-orange-400'
+                    }`} />
 
-              {/* CTA Buttons - Matching heights & clean hierarchy */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-                {/* Primary CTA */}
-                <button
-                  onClick={() => handleCtaClick('/jobs/create')}
-                  className="w-full sm:w-auto h-12 md:h-14 px-8 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 text-base"
-                >
-                  Start Free Trial
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                  </svg>
-                </button>
+                    {/* Card Header */}
+                    <div className="flex items-center justify-between pb-5 border-b border-brand-border/80 mb-5">
+                      <div className="flex items-center gap-3.5">
+                        {/* Profile Avatar (No question marks - Clean Shield or Initials) */}
+                        {biasGuardActive ? (
+                          <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-indigo-200 ring-2 ring-indigo-500/30 shadow-md flex flex-col items-center justify-center transition-all">
+                            <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            <span className="text-[9px] font-mono font-bold tracking-widest text-indigo-300 uppercase mt-0.5">#804</span>
+                          </div>
+                        ) : (
+                          <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-brand-orange via-orange-500 to-amber-500 text-white ring-2 ring-orange-400/40 shadow-md shadow-orange/20 flex items-center justify-center font-black text-lg transition-all">
+                            AL
+                          </div>
+                        )}
 
-                {/* Secondary CTA */}
-                <button
-                  onClick={() => handleCtaClick('/dashboard')}
-                  className="w-full sm:w-auto h-12 md:h-14 px-8 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-slate-600 text-white font-semibold rounded-xl transition-all duration-200 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-base"
-                >
-                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Schedule Demo
-                </button>
-              </div>
+                        <div>
+                          <div className="text-base sm:text-lg font-extrabold text-brand-charcoal flex items-center gap-2 flex-wrap">
+                            <span>{biasGuardActive ? 'Candidate #804 (Anonymized)' : 'Alexander Laurent'}</span>
+                            {biasGuardActive ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold shadow-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Protected
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold shadow-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                Verified
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs font-medium text-brand-charcoal-3 flex items-center gap-1 mt-0.5">
+                            <svg className="w-3.5 h-3.5 text-brand-charcoal-3/70 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span>{biasGuardActive ? 'Senior Full-Stack Architect • [Location Redacted]' : 'Senior Full-Stack Architect • Austin, TX'}</span>
+                          </div>
+                        </div>
+                      </div>
 
-              {/* Trust / Benefits Row */}
-              <div className="flex items-center justify-center gap-6 md:gap-8 flex-wrap pt-6 border-t border-slate-800/80 text-xs sm:text-sm text-slate-400">
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  No credit card required
-                </span>
-                <span className="hidden sm:inline text-slate-700">•</span>
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  14-day free trial
-                </span>
-                <span className="hidden sm:inline text-slate-700">•</span>
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Cancel anytime
-                </span>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-2xl sm:text-3xl font-black bg-gradient-to-br from-brand-orange via-orange-500 to-amber-500 bg-clip-text text-transparent">
+                          96%
+                        </div>
+                        <div className="text-[10px] uppercase font-extrabold tracking-wider text-brand-charcoal-3">
+                          Match Score
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar & Key Requirement Checklist */}
+                    <div className="space-y-4 mb-5">
+                      <div>
+                        <div className="text-xs font-bold text-brand-charcoal mb-2 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Core Requirement Verification
+                          </span>
+                          <span className="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                            6/6 Mandatory Met (100%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-200/60">
+                          <div className="bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 h-full rounded-full transition-all duration-700 shadow-sm" style={{ width: '100%' }} />
+                        </div>
+                      </div>
+
+                      {/* Verified Skills Tags */}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {['React 19 Architecture', 'Distributed Systems', 'TypeScript / Node', 'System Design'].map((skill, sIdx) => (
+                          <span key={sIdx} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-[11px] font-semibold text-emerald-800">
+                            <span className="text-emerald-600 font-bold">✓</span>
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Demonstrated Skill Box with colorful gradient backdrop */}
+                      <div className="bg-gradient-to-r from-indigo-50/70 via-blue-50/40 to-slate-50 rounded-2xl p-4 border-l-4 border-l-brand-orange border-y border-r border-indigo-100/80 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-brand-charcoal flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-brand-orange" />
+                            <strong className="text-brand-charcoal">Demonstrated Skill:</strong> Distributed Systems & React Architecture
+                          </span>
+                          <span className="text-[10px] font-mono text-brand-charcoal-3 bg-white border border-brand-border px-2 py-0.5 rounded-md font-semibold">
+                            CV Citation Verified
+                          </span>
+                        </div>
+                        <div className="text-xs text-brand-charcoal-2 italic pl-3 border-l-2 border-brand-orange/40 leading-relaxed font-medium">
+                          "Architected micro-frontend platform handling 14M daily queries with 99.99% availability."
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer Action */}
+                    <div className="flex items-center justify-between text-xs pt-3 border-t border-brand-border/80 flex-wrap gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-brand-charcoal-3 font-semibold">Evaluation Status:</span>
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-extrabold rounded-lg text-xs shadow-xs tracking-wider uppercase">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          SUBMIT TO CLIENT
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleCta('/candidates')}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-brand-charcoal to-slate-800 hover:from-brand-orange hover:to-orange-600 text-white font-bold rounded-xl text-xs transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+                      >
+                        <span>Audit Full Profile</span>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
             </div>
           </div>
         </section>
+
+        {/* Testimonials */}
+        <section className="bg-brand-white border-t border-brand-border py-24">
+          <div className="max-w-screen-xl mx-auto px-6">
+            <div className="text-center max-w-xl mx-auto mb-14">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale rounded-full text-xs font-bold text-brand-orange uppercase tracking-wider mb-2">
+                User Testimonials
+              </div>
+              <h2 className="text-3xl font-extrabold text-brand-charcoal mb-2">Trusted by Leading Hiring Teams</h2>
+              <p className="text-brand-charcoal-3 text-sm">See how recruiters and agency heads transform their candidate quality</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              {testimonials.map((t, i) => (
+                <div key={i} className="bg-brand-bg border border-brand-border rounded-3xl p-8 shadow-sm hover:shadow-md transition-all card-hover-lift flex flex-col justify-between">
+                  <p className="text-brand-charcoal text-sm sm:text-base leading-relaxed italic mb-6">
+                    "{t.quote}"
+                  </p>
+                  <div className="flex items-center gap-3.5 pt-4 border-t border-brand-border/60">
+                    <div className="w-11 h-11 rounded-2xl bg-brand-orange text-white font-extrabold text-sm flex items-center justify-center flex-shrink-0 shadow-orange">
+                      {t.avatar}
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-brand-charcoal">{t.author}</div>
+                      <div className="text-xs font-medium text-brand-charcoal-3">{t.role}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* High-Impact Enterprise CTA Banner */}
+        <section className="bg-brand-charcoal py-20 relative overflow-hidden">
+          {/* Subtle Orange Glow in Dark section */}
+          <div className="absolute top-0 right-1/4 w-96 h-96 bg-brand-orange/15 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="max-w-screen-xl mx-auto px-6 flex flex-col lg:flex-row items-center justify-between gap-10 relative z-10">
+            <div className="max-w-xl text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold text-brand-orange mb-3 border border-white/10">
+                Ready to Upgrade?
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
+                Standardize Your Candidate Evaluations Today
+              </h2>
+              <p className="text-white/70 text-sm sm:text-base leading-relaxed">
+                Empower your recruiters with deterministic scoring, automated evidence validation, and client-ready reports in minutes.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-4 flex-shrink-0">
+              <button
+                onClick={() => handleCta('/jobs/create')}
+                className="flex items-center gap-2 px-7 py-4 bg-brand-orange hover:bg-brand-orange-hover text-white font-bold rounded-2xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 text-sm"
+              >
+                Create Job Evaluation
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handleCta('/dashboard')}
+                className="px-7 py-4 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl transition-all text-sm border border-white/20 hover:-translate-y-0.5"
+              >
+                Open Dashboard
+              </button>
+            </div>
+          </div>
+        </section>
       </main>
 
-      {/* Auth Modal */}
+      <Footer />
+
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode="signin"
       />
-
-      <Footer />
     </div>
   );
 }

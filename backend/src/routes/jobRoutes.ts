@@ -21,6 +21,13 @@ import {
   confirmRequirements
 } from '../controllers/requirementController';
 
+import {
+  uploadCandidateCVs,
+  getCandidatesForJob,
+  getCandidateById,
+  retryCandidateParsing
+} from '../controllers/candidateController';
+
 // Protect database routes with JWT authentication middleware
 router.post('/', protect, createJob);
 router.get('/', protect, getAllJobs);
@@ -33,5 +40,11 @@ router.post('/:jobId/requirements', protect, createRequirement);
 router.put('/:jobId/requirements/:requirementId', protect, updateRequirement);
 router.delete('/:jobId/requirements/:requirementId', protect, deleteRequirement);
 router.post('/:jobId/requirements/confirm', protect, confirmRequirements);
+
+// Candidate CV Upload, Extraction & Status Routes
+router.post('/:jobId/candidates/upload', upload.array('files', 50), uploadCandidateCVs);
+router.get('/:jobId/candidates', getCandidatesForJob);
+router.get('/:jobId/candidates/:candidateId', getCandidateById);
+router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);
 
 export default router;

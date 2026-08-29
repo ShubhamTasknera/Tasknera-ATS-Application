@@ -55,7 +55,7 @@ const IntegrationsSection: React.FC = () => {
           {/* Technical docs link */}
           <a
             href="#"
-            className="flex items-center gap-2 text-[14px] font-600 text-cyan-DEFAULT hover:text-white transition-colors flex-shrink-0 group"
+            className="flex items-center gap-2 text-[14px] font-600 text-cyan-DEFAULT hover:text-charcoal transition-colors flex-shrink-0 group"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="group-hover:translate-x-1 transition-transform">
               <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -129,3 +129,4 @@ const IntegrationsSection: React.FC = () => {
 };
 
 export default IntegrationsSection;
+
