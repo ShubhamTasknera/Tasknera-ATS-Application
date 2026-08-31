@@ -2,21 +2,135 @@ import React from 'react';
 import Link from 'next/link';
 import Logo from './Logo';
 
-const Footer: React.FC = () => (
-  <footer className="bg-[#E2E8F0]/60 border-t border-slate-200 mt-auto">
-    <div className="max-w-screen-xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
-      <div className="flex flex-col items-center md:items-start gap-1">
-        <Logo href="/home" size="sm" variant="dark" />
-        <p className="text-xs text-slate-500 mt-1">Autonomous Talent Evaluation & Bias-Guard Engine</p>
+interface FooterNavLink {
+  label: string;
+  href: string;
+}
+
+const FOOTER_NAV: {
+  product: FooterNavLink[];
+  resources: FooterNavLink[];
+  company: FooterNavLink[];
+} = {
+  product: [
+    { label: 'Dashboard', href: '/dashboard' },
+    { label: 'Jobs', href: '/jobs' },
+    { label: 'Candidates', href: '/candidates' },
+    { label: 'Evaluations', href: '/evaluations' },
+  ],
+  resources: [
+    { label: 'Reports', href: '/reports' },
+    { label: 'Analytics', href: '/analytics' },
+  ],
+  company: [
+    { label: 'Settings', href: '/settings' },
+  ],
+};
+
+const Footer: React.FC = () => {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <footer className="bg-[#0B132B] text-slate-300 border-t border-slate-800/80 mt-auto selection:bg-brand-orange-pale selection:text-brand-orange">
+      {/* Main Footer Container */}
+      <div className="max-w-7xl mx-auto px-6 pt-12 pb-8">
+        <div className="flex flex-col lg:flex-row justify-between items-start gap-10 lg:gap-16">
+          {/* Brand Column (Left) */}
+          <div className="max-w-md">
+            <Logo href="/home" size="md" variant="light" />
+            <p className="text-sm font-semibold text-slate-200 mt-4 tracking-tight">
+              Autonomous Talent Evaluation &amp; Bias-Guard Engine
+            </p>
+            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+              Evidence-based candidate evaluation for smarter, faster hiring.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/70 border border-slate-700/60 text-[11px] font-medium text-slate-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                Enterprise Recruitment Platform
+              </span>
+            </div>
+          </div>
+
+          {/* Navigation Columns (Right) */}
+          <nav aria-label="Footer Navigation" className="grid grid-cols-2 sm:grid-cols-3 gap-8 sm:gap-12 lg:gap-16 w-full lg:w-auto">
+            {/* Product Links */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 mb-3">
+                Product
+              </h3>
+              <ul className="space-y-2.5">
+                {FOOTER_NAV.product.map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="text-xs text-slate-400 hover:text-brand-orange transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:rounded"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Resources Links */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 mb-3">
+                Resources
+              </h3>
+              <ul className="space-y-2.5">
+                {FOOTER_NAV.resources.map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="text-xs text-slate-400 hover:text-brand-orange transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:rounded"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Company Links */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100 mb-3">
+                Company
+              </h3>
+              <ul className="space-y-2.5">
+                {FOOTER_NAV.company.map((item) => (
+                  <li key={item.label}>
+                    <Link
+                      href={item.href}
+                      className="text-xs text-slate-400 hover:text-brand-orange transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:rounded"
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </nav>
+        </div>
+
+        {/* Subtle Divider & Legal / Copyright Row */}
+        <div className="mt-10 pt-6 border-t border-slate-800/90 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+          <p>© {currentYear} TaskNera ATS. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <span className="hover:text-slate-200 transition-colors cursor-pointer">
+              Privacy Policy
+            </span>
+            <span className="hover:text-slate-200 transition-colors cursor-pointer">
+              Terms of Service
+            </span>
+            <span className="hover:text-slate-200 transition-colors cursor-pointer">
+              Security
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-5 flex-wrap justify-center">
-        {['Dashboard','Jobs','Candidates','Evaluations','Reports','Settings'].map(l => (
-          <Link key={l} href={`/${l.toLowerCase()}`} className="text-xs font-semibold text-slate-600 hover:text-brand-orange transition-colors">{l}</Link>
-        ))}
-      </div>
-      <p className="text-xs text-slate-400">© {new Date().getFullYear()} TaskNera ATS • All Rights Reserved</p>
-    </div>
-  </footer>
-);
+    </footer>
+  );
+};
 
 export default Footer;

@@ -9,14 +9,15 @@ import { useAuth } from '@/context/AuthContext';
 
 const SUPPORTED_CATEGORIES = [
   'Experience',
-  'Technical Skill',
-  'Functional Skill',
   'Technology',
-  'Tool',
-  'Education',
+  'Technical Skill',
+  'Integration',
   'Certification',
-  'Industry',
-  'Language',
+  'Methodology',
+  'Soft Skill',
+  'Hiring Criteria',
+  'Education',
+  'Tool',
   'Other'
 ] as const;
 
@@ -25,6 +26,8 @@ export interface RequirementItem {
   jobId: string;
   requirement: string;
   category: string;
+  type?: string;
+  sourceSection?: string;
   weight: number; // 1.0 - 3.0
   isMandatory: boolean;
   evidenceRequired: boolean;
@@ -36,26 +39,24 @@ export interface RequirementItem {
 
 const DEFAULT_SAMPLE_REQUIREMENTS: Record<string, { title: string; client: string; reqs: RequirementItem[] }> = {
   'jd-1': {
-    title: 'SAP CO Consultant',
-    client: 'TechCorp Industries',
+    title: 'Salesforce Manufacturing Cloud Developer',
+    client: 'Hexaware',
     reqs: [
-      { id: 'req-1', jobId: 'jd-1', requirement: 'Minimum 5+ years hands-on SAP CO (Controlling) & FICO configuration experience', category: 'Experience', weight: 2.0, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Required 5+ years SAP CO experience with Product Costing and CO-PA' },
-      { id: 'req-2', jobId: 'jd-1', requirement: 'Proven experience leading at least 2 full-lifecycle SAP S/4HANA migration projects', category: 'Technical Skill', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Led minimum 2 S/4HANA migration cycles' },
-      { id: 'req-3', jobId: 'jd-1', requirement: 'In-depth expertise in SAP CO-PA (Profitability Analysis) and Material Ledger', category: 'Functional Skill', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Expertise in CO-PA and ML integration' },
-      { id: 'req-4', jobId: 'jd-1', requirement: 'Bachelor degree in Computer Science, Finance, Accounting, or equivalent field', category: 'Education', weight: 1.0, isMandatory: false, evidenceRequired: false, recruiterConfirmed: true, sourceEvidence: 'BS in CS or Finance' },
-      { id: 'req-5', jobId: 'jd-1', requirement: 'Official SAP Certified Application Associate - SAP S/4HANA for Management Accounting', category: 'Certification', weight: 1.2, isMandatory: false, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'SAP CO certification preferred' },
-      { id: 'req-6', jobId: 'jd-1', requirement: 'Demonstrated experience in manufacturing and cost center accounting domain', category: 'Industry', weight: 1.0, isMandatory: false, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Manufacturing domain experience' },
+      { id: 'req-1', jobId: 'jd-1', requirement: '4–8 years of hands-on Salesforce development experience.', category: 'Experience', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: '4–8 years of hands-on Salesforce development experience.' },
+      { id: 'req-2', jobId: 'jd-1', requirement: 'Strong experience with Salesforce Manufacturing Cloud.', category: 'Technology', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Strong experience with Salesforce Manufacturing Cloud.' },
+      { id: 'req-3', jobId: 'jd-1', requirement: 'Strong knowledge of Apex, LWC, SOQL/SOSL, Triggers, Batch Apex, Queueable Apex, and asynchronous processing.', category: 'Technical Skill', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Strong knowledge of Apex, LWC, SOQL/SOSL, Triggers, Batch Apex, Queueable Apex, and asynchronous processing.' },
+      { id: 'req-4', jobId: 'jd-1', requirement: 'Salesforce Manufacturing Cloud certification or relevant Salesforce certification.', category: 'Certification', weight: 1.0, isMandatory: false, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Salesforce Manufacturing Cloud certification or relevant Salesforce certification.' },
+      { id: 'req-5', jobId: 'jd-1', requirement: 'Manufacturing Cloud experience', category: 'Hiring Criteria', type: 'HIRING_CRITERIA', weight: 1.0, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Candidate must have shown exp in Manufacturing cloud in their resumes.' }
     ]
   },
   'default': {
-    title: 'Senior Full-Stack Architect',
-    client: 'InnovateTech Dynamics',
+    title: 'Salesforce Manufacturing Cloud Developer',
+    client: 'Hexaware',
     reqs: [
-      { id: 'req-d1', jobId: 'default', requirement: '7+ years professional experience with React 19, TypeScript, and modern Next.js App Router', category: 'Technical Skill', weight: 2.0, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: '7+ yrs React/TypeScript' },
-      { id: 'req-d2', jobId: 'default', requirement: 'Demonstrated architectural experience with high-throughput distributed systems & micro-frontends', category: 'Technology', weight: 1.8, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Distributed systems & microfrontends architecture' },
-      { id: 'req-d3', jobId: 'default', requirement: 'Hands-on experience designing and operating REST/GraphQL APIs with Node.js and PostgreSQL', category: 'Technical Skill', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Node.js & PostgreSQL APIs' },
-      { id: 'req-d4', jobId: 'default', requirement: 'Experience with AWS/GCP cloud infrastructure, Docker, CI/CD pipelines and automated testing', category: 'Tool', weight: 1.2, isMandatory: false, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Cloud CI/CD & Docker experience' },
-      { id: 'req-d5', jobId: 'default', requirement: 'Bachelor or Master degree in Computer Science, Software Engineering or related technical field', category: 'Education', weight: 1.0, isMandatory: false, evidenceRequired: false, recruiterConfirmed: true, sourceEvidence: 'BS/MS in CS or equivalent' },
+      { id: 'req-d1', jobId: 'default', requirement: '4–8 years of hands-on Salesforce development experience.', category: 'Experience', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: '4–8 years of hands-on Salesforce development experience.' },
+      { id: 'req-d2', jobId: 'default', requirement: 'Strong experience with Salesforce Manufacturing Cloud.', category: 'Technology', weight: 1.5, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Strong experience with Salesforce Manufacturing Cloud.' },
+      { id: 'req-d3', jobId: 'default', requirement: 'Salesforce Manufacturing Cloud certification or relevant Salesforce certification.', category: 'Certification', weight: 1.0, isMandatory: false, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Salesforce Manufacturing Cloud certification or relevant Salesforce certification.' },
+      { id: 'req-d4', jobId: 'default', requirement: 'Local to NCR', category: 'Hiring Criteria', type: 'HIRING_CRITERIA', weight: 1.0, isMandatory: true, evidenceRequired: true, recruiterConfirmed: true, sourceEvidence: 'Local to NCR' }
     ]
   }
 };
@@ -123,12 +124,14 @@ export default function RequirementsReviewPage() {
             jobId: r.jobId || jobId,
             requirement: r.requirement,
             category: r.category || 'Other',
+            type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
+            sourceSection: r.sourceSection || '',
             weight: typeof r.weight === 'number' ? r.weight : 1.0,
-            isMandatory: Boolean(r.isMandatory),
-            evidenceRequired: Boolean(r.evidenceRequired),
-            recruiterConfirmed: Boolean(r.recruiterConfirmed),
-            sourceEvidence: r.sourceEvidence || r.requirement,
-            needsVerification: Boolean(r.needsVerification)
+            isMandatory: Boolean(r.isMandatory ?? r.is_mandatory),
+            evidenceRequired: Boolean(r.evidenceRequired ?? r.evidence_required),
+            recruiterConfirmed: Boolean(r.recruiterConfirmed ?? r.recruiter_confirmed),
+            sourceEvidence: r.sourceEvidence || r.source_evidence || r.requirement,
+            needsVerification: Boolean(r.needsVerification ?? r.needs_verification)
           }));
 
           setRequirements(apiReqs);
@@ -142,6 +145,8 @@ export default function RequirementsReviewPage() {
             jobId: jobId,
             requirement: r.requirement,
             category: r.category || 'Other',
+            type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
+            sourceSection: r.sourceSection || '',
             weight: typeof r.weight === 'number' ? r.weight : 1.0,
             isMandatory: Boolean(r.is_mandatory ?? r.isMandatory),
             evidenceRequired: Boolean(r.evidence_required ?? r.evidenceRequired),
@@ -151,7 +156,7 @@ export default function RequirementsReviewPage() {
           }));
           setRequirements(fallbackReqs);
         } else {
-          // Provide rich dummy requirements if no records found
+          // Provide rich sample requirements if no records found
           const sample = DEFAULT_SAMPLE_REQUIREMENTS[jobId] || DEFAULT_SAMPLE_REQUIREMENTS['default'];
           setJobTitle(prev => prev === 'Job Specification' ? sample.title : prev);
           setClientName(prev => !prev ? sample.client : prev);
@@ -228,6 +233,7 @@ export default function RequirementsReviewPage() {
       jobId: jobId,
       requirement: newText.trim(),
       category: newCategory,
+      type: newCategory === 'Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL',
       weight: newWeight,
       isMandatory: newIsMandatory,
       evidenceRequired: newEvidenceRequired,
@@ -273,6 +279,7 @@ export default function RequirementsReviewPage() {
           jobId: jobId,
           requirement: r.requirement.trim(),
           category: r.category,
+          type: r.type || (r.category === 'Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
           weight: r.weight,
           isMandatory: r.isMandatory,
           evidenceRequired: r.evidenceRequired,
@@ -306,9 +313,11 @@ export default function RequirementsReviewPage() {
           jobId: r.jobId || jobId,
           requirement: r.requirement,
           category: r.category || 'Other',
+          type: r.type || (r.category === 'Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
+          sourceSection: r.sourceSection || '',
           weight: typeof r.weight === 'number' ? r.weight : 1.0,
-          isMandatory: Boolean(r.isMandatory),
-          evidenceRequired: Boolean(r.evidenceRequired),
+          isMandatory: Boolean(r.isMandatory ?? r.is_mandatory),
+          evidenceRequired: Boolean(r.evidenceRequired ?? r.evidence_required),
           recruiterConfirmed: true,
           sourceEvidence: r.sourceEvidence || r.requirement,
           needsVerification: false
@@ -327,42 +336,43 @@ export default function RequirementsReviewPage() {
     }
   };
 
-  const mandatoryReqs = requirements.filter((r) => r.isMandatory);
-  const preferredReqs = requirements.filter((r) => !r.isMandatory);
+  const hiringCriteriaList = requirements.filter(r => r.type === 'HIRING_CRITERIA' || r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria');
+  const mandatorySkillsList = requirements.filter(r => r.isMandatory && r.type !== 'HIRING_CRITERIA' && r.category !== 'Hiring Criteria' && r.sourceSection !== 'Top Hiring Criteria');
+  const preferredSkillsList = requirements.filter(r => !r.isMandatory && r.type !== 'HIRING_CRITERIA' && r.category !== 'Hiring Criteria' && r.sourceSection !== 'Top Hiring Criteria');
 
   return (
-    <div className="min-h-screen bg-[#060C1A] text-white flex flex-col justify-between">
+    <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col justify-between selection:bg-brand-orange-pale selection:text-brand-orange">
       {/* Global Navigation Header */}
       <Header />
 
       <main className="max-w-6xl mx-auto px-6 pt-28 pb-16 w-full flex-1">
         {/* Navigation Breadcrumb */}
         <div className="flex items-center justify-between mb-8">
-          <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-[#1E293B] font-medium transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Jobs Directory
           </Link>
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-xs font-semibold">
+            <span className="px-3 py-1 bg-brand-orange-pale text-brand-orange border border-brand-orange-border rounded-full text-xs font-bold shadow-xs">
               Stage 2: Review Extracted Criteria
             </span>
           </div>
         </div>
 
         {/* Page Title & Header Banner */}
-        <div className="mb-8">
+        <div className="mb-8 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white mb-1">{jobTitle}</h1>
-              {clientName && <p className="text-gray-400 text-sm">Client / Company: <span className="text-gray-200 font-medium">{clientName}</span></p>}
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1E293B] mb-1">{jobTitle}</h1>
+              {clientName && <p className="text-slate-500 text-sm">Client / Company: <span className="text-slate-800 font-semibold">{clientName}</span></p>}
             </div>
 
             <button
               type="button"
               onClick={() => setShowAddForm(true)}
-              className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 self-start md:self-auto"
+              className="px-4 py-2 bg-brand-orange-pale hover:bg-brand-orange text-brand-orange hover:text-white border border-brand-orange-border rounded-xl text-xs font-bold transition-all flex items-center gap-2 self-start md:self-auto cursor-pointer shadow-xs"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -371,56 +381,50 @@ export default function RequirementsReviewPage() {
             </button>
           </div>
 
-          {/* Workflow Steps Indicator */}
-          <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-800/80">
-            <div className="flex items-center gap-2 text-emerald-400">
-              <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold text-xs flex items-center justify-center">
-                ✓
-              </div>
-              <span className="text-sm font-semibold">1. Upload & Scan JD</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-800" />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow">
-                2
-              </div>
-              <span className="text-sm font-semibold text-white">2. Review & Confirm Requirements</span>
-            </div>
-            <div className="flex-1 h-px bg-gray-800" />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gray-800 text-gray-400 font-bold text-xs flex items-center justify-center">
-                3
-              </div>
-              <span className="text-sm text-gray-500">3. Candidate Matching</span>
-            </div>
+          {/* Counts & Statistics Bar */}
+          <div className="flex items-center gap-3 pt-4 border-t border-slate-100 flex-wrap text-xs font-semibold">
+            <span className="px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full font-bold">
+              Mandatory Skills: {mandatorySkillsList.length}
+            </span>
+            <span className="px-3 py-1 bg-brand-orange-pale text-brand-orange border border-brand-orange-border rounded-full font-bold">
+              Preferred Skills: {preferredSkillsList.length}
+            </span>
+            {hiringCriteriaList.length > 0 && (
+              <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold">
+                Hiring Criteria: {hiringCriteriaList.length}
+              </span>
+            )}
+            <span className="text-slate-400 font-normal ml-auto">
+              Total Criteria: {requirements.length}
+            </span>
           </div>
         </div>
 
         {/* Global Success / Error Banners */}
         {successMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center gap-3">
-            <svg className="w-5 h-5 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3 shadow-sm">
+            <svg className="w-5 h-5 flex-shrink-0 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="font-semibold">{successMsg}</span>
+            <span className="font-bold">{successMsg}</span>
           </div>
         )}
 
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-start gap-3">
-            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-3 shadow-sm">
+            <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <span className="font-semibold block mb-0.5">Validation / API Warning</span>
+              <span className="font-bold block mb-0.5">Validation / API Warning</span>
               <span>{errorMsg}</span>
             </div>
           </div>
         )}
 
         {warnings.length > 0 && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-1">
-            <span className="font-semibold block text-amber-400 text-xs">Duplicate Requirement Warnings:</span>
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs space-y-1 shadow-sm">
+            <span className="font-bold block text-amber-700 text-xs">Duplicate Requirement Warnings:</span>
             {warnings.map((w, idx) => (
               <p key={idx}>• {w}</p>
             ))}
@@ -429,56 +433,56 @@ export default function RequirementsReviewPage() {
 
         {/* Loading Indicator */}
         {loading && (
-          <div className="p-12 text-center text-gray-400 animate-pulse bg-[#0F172A]/80 border border-gray-800 rounded-2xl">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <span className="text-sm font-medium">Fetching extracted requirements from backend API...</span>
+          <div className="p-12 text-center text-slate-500 animate-pulse bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div className="w-8 h-8 border-2 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <span className="text-sm font-semibold text-slate-700">Fetching extracted requirements from backend API...</span>
           </div>
         )}
 
         {/* Add Requirement Form Modal / Inline Box */}
         {showAddForm && (
-          <div className="mb-8 p-6 rounded-2xl bg-[#0F172A] border border-blue-500/40 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-              <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+          <div className="mb-8 p-6 rounded-2xl bg-white border border-brand-orange-border shadow-md space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-[#1E293B] flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
                 Add New Recruiter Requirement
               </h3>
               <button
                 type="button"
                 onClick={() => setShowAddForm(false)}
-                className="text-xs text-gray-400 hover:text-white"
+                className="text-xs text-slate-400 hover:text-slate-700 font-semibold cursor-pointer"
               >
                 ✕ Cancel
               </button>
             </div>
 
             {addFieldError && (
-              <p className="text-rose-400 text-xs font-semibold">{addFieldError}</p>
+              <p className="text-rose-600 text-xs font-bold">{addFieldError}</p>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-1.5">
-                  Requirement Text <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Requirement Text <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={newText}
                   onChange={(e) => setNewText(e.target.value)}
-                  placeholder="e.g. 3+ years experience with React.js and Next.js"
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  placeholder="e.g. 4–8 years of hands-on Salesforce development experience."
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[#1E293B] text-xs placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-1.5">
-                    Category <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                    Category <span className="text-rose-500">*</span>
                   </label>
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[#1E293B] text-xs focus:bg-white focus:outline-none focus:border-brand-orange cursor-pointer"
                   >
                     {SUPPORTED_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
@@ -489,24 +493,24 @@ export default function RequirementsReviewPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                     Classification
                   </label>
                   <button
                     type="button"
                     onClick={() => setNewIsMandatory(!newIsMandatory)}
-                    className={`w-full py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                    className={`w-full py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                       newIsMandatory
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                        : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-brand-orange-pale text-brand-orange border-brand-orange-border'
                     }`}
                   >
-                    {newIsMandatory ? '⚠ Mandatory' : '○ Preferred'}
+                    {newIsMandatory ? '✓ Mandatory' : '+ Preferred'}
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-300 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
                     Weight (1.0x – 3.0x)
                   </label>
                   <input
@@ -516,18 +520,18 @@ export default function RequirementsReviewPage() {
                     max="3.0"
                     value={newWeight}
                     onChange={(e) => setNewWeight(parseFloat(e.target.value) || 1.0)}
-                    className="w-full px-3 py-2 rounded-xl bg-[#070B14] border border-gray-800 text-white text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[#1E293B] text-xs focus:bg-white focus:outline-none focus:border-brand-orange"
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer font-medium">
                   <input
                     type="checkbox"
                     checked={newEvidenceRequired}
                     onChange={(e) => setNewEvidenceRequired(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-600 focus:ring-0"
+                    className="w-4 h-4 rounded border-slate-300 text-brand-orange focus:ring-brand-orange"
                   />
                   <span>Evidence Required in Candidate CV</span>
                 </label>
@@ -535,7 +539,7 @@ export default function RequirementsReviewPage() {
                 <button
                   type="button"
                   onClick={handleAddRequirement}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md"
+                  className="px-5 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange cursor-pointer"
                 >
                   Add Requirement to List
                 </button>
@@ -546,16 +550,16 @@ export default function RequirementsReviewPage() {
 
         {/* Empty State */}
         {!loading && requirements.length === 0 && (
-          <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-12 text-center text-gray-400 mb-8">
-            <svg className="w-12 h-12 text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 mb-8 shadow-sm">
+            <svg className="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="text-white font-semibold text-base mb-1">No requirements were extracted from this JD.</p>
-            <p className="text-xs text-gray-400 mb-4">Click "+ Add Requirement" to manually define requirements for candidate evaluation.</p>
+            <p className="text-[#1E293B] font-bold text-base mb-1">No requirements were extracted from this JD.</p>
+            <p className="text-xs text-slate-500 mb-4">Click "+ Add Requirement" to manually define requirements for candidate evaluation.</p>
             <button
               type="button"
               onClick={() => setShowAddForm(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-all"
+              className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange cursor-pointer"
             >
               + Manually Add Requirement
             </button>
@@ -565,24 +569,27 @@ export default function RequirementsReviewPage() {
         {!loading && requirements.length > 0 && (
           <div className="space-y-8">
             {/* Section 1: Mandatory Requirements */}
-            <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-800">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-                  <h2 className="text-xl font-bold text-white">
-                    Mandatory Requirements ({mandatoryReqs.length})
-                  </h2>
+                  <div>
+                    <h2 className="text-xl font-bold text-[#1E293B]">
+                      Mandatory Requirements ({mandatorySkillsList.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">Strictly enforced criteria derived from the Mandatory Skills section.</p>
+                  </div>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/20 text-xs font-semibold">
+                <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold">
                   Strictly Enforced
                 </span>
               </div>
 
               <div className="space-y-4">
-                {mandatoryReqs.length === 0 ? (
-                  <p className="text-gray-500 text-xs italic">No mandatory requirements set.</p>
+                {mandatorySkillsList.length === 0 ? (
+                  <p className="text-slate-400 text-xs italic">No mandatory requirements set.</p>
                 ) : (
-                  mandatoryReqs.map((req) => (
+                  mandatorySkillsList.map((req) => (
                     <RequirementCard
                       key={req.id}
                       item={req}
@@ -597,24 +604,27 @@ export default function RequirementsReviewPage() {
             </div>
 
             {/* Section 2: Preferred Requirements */}
-            <div className="bg-[#0F172A]/80 border border-gray-800 rounded-2xl p-6 md:p-8 shadow-xl">
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-800">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                  <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-                  <h2 className="text-xl font-bold text-white">
-                    Preferred Requirements ({preferredReqs.length})
-                  </h2>
+                  <span className="w-3 h-3 rounded-full bg-brand-orange"></span>
+                  <div>
+                    <h2 className="text-xl font-bold text-[#1E293B]">
+                      Preferred Requirements ({preferredSkillsList.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">Bonus scoring criteria derived from the Preferred Skills section.</p>
+                  </div>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20 text-xs font-semibold">
-                  Bonus Points
+                <span className="px-3 py-1 rounded-full bg-brand-orange-pale text-brand-orange border border-brand-orange-border text-xs font-bold">
+                  Bonus Scoring
                 </span>
               </div>
 
               <div className="space-y-4">
-                {preferredReqs.length === 0 ? (
-                  <p className="text-gray-500 text-xs italic">No preferred requirements set.</p>
+                {preferredSkillsList.length === 0 ? (
+                  <p className="text-slate-400 text-xs italic">No preferred requirements set.</p>
                 ) : (
-                  preferredReqs.map((req) => (
+                  preferredSkillsList.map((req) => (
                     <RequirementCard
                       key={req.id}
                       item={req}
@@ -628,11 +638,44 @@ export default function RequirementsReviewPage() {
               </div>
             </div>
 
+            {/* Section 3: Top Hiring Criteria */}
+            {hiringCriteriaList.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+                    <div>
+                      <h2 className="text-xl font-bold text-[#1E293B]">
+                        Top Hiring Criteria ({hiringCriteriaList.length})
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">Critical directives extracted from the top-of-JD hiring instructions.</p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                    Position Directives
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {hiringCriteriaList.map((req) => (
+                    <RequirementCard
+                      key={req.id}
+                      item={req}
+                      onUpdateField={handleUpdateField}
+                      onToggleMandatory={handleToggleMandatory}
+                      onToggleConfirmed={handleToggleConfirmed}
+                      onDelete={handleDeleteRequirement}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Actions Footer */}
             <div className="flex items-center justify-between pt-4">
               <Link
                 href="/jobs"
-                className="px-6 py-3 bg-gray-800/80 hover:bg-gray-800 text-gray-300 text-sm font-semibold rounded-xl transition-colors border border-gray-700/60"
+                className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-700 text-sm font-bold rounded-xl transition-colors border border-slate-200 shadow-xs"
               >
                 Back to Jobs
               </Link>
@@ -641,7 +684,7 @@ export default function RequirementsReviewPage() {
                 type="button"
                 onClick={handleSaveAndConfirm}
                 disabled={isSaving || requirements.length === 0}
-                className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-blue-900/40 flex items-center gap-2"
+                className="px-8 py-3.5 bg-brand-orange hover:bg-brand-orange-hover disabled:bg-slate-300 disabled:text-slate-500 text-white text-sm font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg flex items-center gap-2 cursor-pointer"
               >
                 {isSaving ? (
                   <>
@@ -687,7 +730,7 @@ function RequirementCard({
   const [showSource, setShowSource] = useState(false);
 
   return (
-    <div className="p-5 rounded-2xl bg-[#070B14] border border-gray-800 hover:border-gray-700/80 transition-all space-y-3">
+    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all space-y-3 shadow-xs">
       {/* Top Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
@@ -697,23 +740,23 @@ function RequirementCard({
             onClick={() => onToggleMandatory(item.id)}
             className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
               item.isMandatory
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                : 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30'
+                ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                : 'bg-brand-orange-pale text-brand-orange border-brand-orange-border hover:bg-brand-orange/10'
             }`}
           >
-            {item.isMandatory ? '⚠ Mandatory' : '○ Preferred'}
+            {item.isMandatory ? '✓ Mandatory' : '+ Preferred'}
           </button>
 
           {/* Unclear Classification Flag */}
           {item.needsVerification && (
-            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-semibold">
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
               Needs Verification
             </span>
           )}
 
           {/* Recruiter Added Flag */}
           {item.isRecruiterAdded && (
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
               Recruiter Added
             </span>
           )}
@@ -722,10 +765,10 @@ function RequirementCard({
           <button
             type="button"
             onClick={() => onToggleConfirmed(item.id)}
-            className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border transition-colors cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors cursor-pointer ${
               item.recruiterConfirmed
-                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
-                : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-slate-200 text-slate-600 border-slate-300 hover:bg-slate-300'
             }`}
           >
             Recruiter Confirmed: {item.recruiterConfirmed ? 'ON' : 'OFF'}
@@ -736,7 +779,7 @@ function RequirementCard({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
-          className="text-gray-500 hover:text-rose-400 text-xs font-semibold transition-colors flex items-center gap-1 self-end sm:self-auto"
+          className="text-slate-400 hover:text-rose-600 text-xs font-bold transition-colors flex items-center gap-1 self-end sm:self-auto cursor-pointer"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -747,14 +790,14 @@ function RequirementCard({
 
       {/* Requirement Text Input */}
       <div>
-        <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
           Requirement
         </label>
         <input
           type="text"
           value={item.requirement}
           onChange={(e) => onUpdateField(item.id, { requirement: e.target.value })}
-          className="w-full px-3.5 py-2 rounded-xl bg-[#0A0F1E] border border-gray-800 text-white text-xs font-medium focus:outline-none focus:border-blue-500"
+          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-[#1E293B] text-xs font-semibold focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
         />
       </div>
 
@@ -762,13 +805,13 @@ function RequirementCard({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
         {/* Category Dropdown */}
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             Category
           </label>
           <select
             value={item.category}
             onChange={(e) => onUpdateField(item.id, { category: e.target.value })}
-            className="w-full px-3 py-1.5 rounded-xl bg-[#0A0F1E] border border-gray-800 text-white text-xs focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1E293B] text-xs focus:outline-none focus:border-brand-orange cursor-pointer"
           >
             {SUPPORTED_CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
@@ -780,7 +823,7 @@ function RequirementCard({
 
         {/* Weight Selector */}
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             Weight ({item.weight.toFixed(1)}x)
           </label>
           <input
@@ -795,44 +838,36 @@ function RequirementCard({
                 onUpdateField(item.id, { weight: val });
               }
             }}
-            className="w-full px-3 py-1.5 rounded-xl bg-[#0A0F1E] border border-gray-800 text-white text-xs focus:outline-none focus:border-blue-500"
+            className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#1E293B] text-xs focus:outline-none focus:border-brand-orange"
           />
         </div>
 
         {/* Evidence Required Checkbox */}
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1">
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
             Evidence Required
           </label>
-          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0A0F1E] border border-gray-800 text-xs text-gray-200 cursor-pointer">
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 cursor-pointer">
             <input
               type="checkbox"
               checked={item.evidenceRequired}
               onChange={(e) => onUpdateField(item.id, { evidenceRequired: e.target.checked })}
-              className="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-600 focus:ring-0"
+              className="w-4 h-4 rounded border-slate-300 text-brand-orange focus:ring-brand-orange"
             />
-            <span>{item.evidenceRequired ? 'ON (Required)' : 'OFF (Optional)'}</span>
+            <span className="font-semibold">{item.evidenceRequired ? 'ON (Required)' : 'OFF (Optional)'}</span>
           </label>
         </div>
       </div>
 
       {/* Read-Only Informational Source Evidence Block */}
-      <div className="pt-2 border-t border-gray-800/60">
-        <button
-          type="button"
-          onClick={() => setShowSource(!showSource)}
-          className="text-[11px] text-gray-400 hover:text-blue-400 font-mono flex items-center gap-1"
-        >
-          <span>{showSource ? '▼ Hide Source Evidence' : '▶ View Verbatim Source Evidence'}</span>
-        </button>
-
-        {showSource && (
-          <div className="mt-2 p-3 rounded-xl bg-[#0A0F1E] border border-gray-800 text-xs font-mono text-gray-300">
-            <span className="text-gray-500 block text-[10px] uppercase font-bold mb-1">Verbatim Source Evidence (Informational — Non-Editable):</span>
-            <p className="italic text-gray-300">"{item.sourceEvidence || item.requirement}"</p>
+      {item.sourceEvidence && (
+        <div className="pt-2 border-t border-slate-200">
+          <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700">
+            <span className="text-slate-400 block text-[10px] uppercase font-bold mb-0.5 tracking-wider">Source Evidence (Extracted from JD):</span>
+            <p className="italic text-slate-700 text-xs font-mono">"{item.sourceEvidence}"</p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

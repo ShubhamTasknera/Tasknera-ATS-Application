@@ -6,58 +6,22 @@ from app.services.ocr import perform_pdf_ocr
 
 def extract_layout_aware_page(page) -> str:
     """
-    Extracts text from a PyMuPDF page using word bounding coordinates.
-    Sorts words into visual lines by Y-coordinate clustering,
-    handles two-column layouts, and orders words left-to-right.
+    Extracts text from a PyMuPDF page preserving visual reading order and paragraph/bullet boundaries.
+    Uses sorted block structures from PyMuPDF.
     """
-    words = page.get_text("words")
-    # Each word tuple: (x0, y0, x1, y1, word, block_no, line_no, word_no)
-    if not words:
+    blocks = page.get_text("blocks")
+    if not blocks:
         return page.get_text("text") or ""
 
-    rect = page.rect
-    page_width = rect.width
-    mid_x = page_width / 2.0
+    # Sort blocks by vertical position, then horizontal
+    sorted_blocks = sorted(blocks, key=lambda b: (b[1], b[0]))
+    block_texts = []
+    for b in sorted_blocks:
+        b_text = b[4].strip()
+        if b_text:
+            block_texts.append(b_text)
 
-    left_words = [w for w in words if w[0] < mid_x]
-    right_words = [w for w in words if w[0] >= mid_x]
-
-    is_two_column = len(left_words) > 10 and len(right_words) > 10 and len(right_words) > len(words) * 0.2
-
-    def process_words_into_lines(word_list):
-        if not word_list:
-            return []
-        sorted_words = sorted(word_list, key=lambda w: (w[1], w[0]))
-        lines = []
-        current_line = []
-        current_y = None
-
-        for w in sorted_words:
-            x0, y0, x1, y1, word_text = w[0], w[1], w[2], w[3], w[4]
-            if current_y is None:
-                current_y = y0
-                current_line.append((x0, word_text))
-            elif abs(y0 - current_y) <= 4.0:
-                current_line.append((x0, word_text))
-            else:
-                current_line_sorted = sorted(current_line, key=lambda item: item[0])
-                lines.append(" ".join(item[1] for item in current_line_sorted))
-                current_line = [(x0, word_text)]
-                current_y = y0
-
-        if current_line:
-            current_line_sorted = sorted(current_line, key=lambda item: item[0])
-            lines.append(" ".join(item[1] for item in current_line_sorted))
-
-        return lines
-
-    if is_two_column:
-        left_lines = process_words_into_lines(left_words)
-        right_lines = process_words_into_lines(right_words)
-        return "\n".join(left_lines) + "\n\n" + "\n".join(right_lines)
-    else:
-        page_lines = process_words_into_lines(words)
-        return "\n".join(page_lines)
+    return "\n\n".join(block_texts)
 
 def parse_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
     """

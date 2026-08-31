@@ -13,8 +13,10 @@ interface ExtractedRequirement {
   requirement: string;
   category: string;
   mandatory: boolean;
+  type?: string;
   weight: number;
   sourceEvidence?: string;
+  sourceSection?: string;
 }
 
 interface DocumentMetrics {
@@ -117,13 +119,19 @@ export default function CreateJobPage() {
         setDocMetrics(docInfo);
       }
 
-      // Populate extracted metadata cleanly
-      setPosition(job.jobTitle || '');
-      setClient(job.company || '');
-      setLocation(job.location || '');
-      setSalary(job.salary || '');
-      if (job.workMode && ['Remote', 'Hybrid', 'Onsite'].includes(job.workMode)) {
-        setWorkMode(job.workMode as any);
+      // Populate extracted metadata cleanly with multi-field fallback
+      const extractedCompany = resData.data.companyName || resData.data.job?.company || resData.data.job?.client || resData.data.metadata?.client || resData.data.metadata?.companyName || '';
+      const extractedPosition = resData.data.positionTitle || resData.data.job?.jobTitle || resData.data.job?.position || resData.data.metadata?.position || '';
+      const extractedLocation = resData.data.location || resData.data.job?.location || resData.data.metadata?.location || '';
+      const extractedSalary = resData.data.salary || resData.data.job?.salary || resData.data.metadata?.budget || '';
+      const extractedWorkMode = resData.data.workMode || resData.data.job?.workMode || resData.data.metadata?.workMode || '';
+
+      setPosition(extractedPosition);
+      setClient(extractedCompany);
+      setLocation(extractedLocation);
+      setSalary(extractedSalary);
+      if (extractedWorkMode && ['Remote', 'Hybrid', 'Onsite'].includes(extractedWorkMode)) {
+        setWorkMode(extractedWorkMode as any);
       }
 
       setRawText(resData.rawText || '');
@@ -136,10 +144,12 @@ export default function CreateJobPage() {
         ? extractedReqs.map((r: any, idx: number) => ({
             id: `req-${Date.now()}-${idx}`,
             requirement: r.requirement,
-            category: r.category || 'General',
-            mandatory: Boolean(r.mandatory),
-            weight: r.weight || (r.mandatory ? 5 : 2),
-            sourceEvidence: r.sourceEvidence || r.requirement
+            category: r.category || 'Technical Skill',
+            mandatory: Boolean(r.isMandatory ?? r.mandatory),
+            type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
+            weight: r.weight || (Boolean(r.isMandatory ?? r.mandatory) ? 1.5 : 1.0),
+            sourceEvidence: r.sourceEvidence || r.requirement,
+            sourceSection: r.sourceSection || ''
           }))
         : [];
 
@@ -280,108 +290,98 @@ export default function CreateJobPage() {
     }
   };
 
-  const loadSampleJD = () => {
-    const sampleText = `Job Title: SAP CO Consultant
-Company: TechCorp Industries
-Location: New York, NY
-Work Mode: Hybrid
-Salary: $130,000 - $170,000
+  const hiringCriteriaList = requirements.filter(r => r.type === 'HIRING_CRITERIA' || r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria');
+  const mandatorySkillsList = requirements.filter(r => r.mandatory && r.type !== 'HIRING_CRITERIA' && r.category !== 'Hiring Criteria' && r.sourceSection !== 'Top Hiring Criteria');
+  const preferredSkillsList = requirements.filter(r => !r.mandatory && r.type !== 'HIRING_CRITERIA' && r.category !== 'Hiring Criteria' && r.sourceSection !== 'Top Hiring Criteria');
 
-Overview:
-We are seeking an experienced SAP CO Consultant with strong manufacturing domain knowledge.
-
-Requirements:
-- 5+ years SAP CO experience (Mandatory)
-- 4+ years SAP S/4HANA experience (Mandatory)
-- Manufacturing industry experience (Mandatory)
-- SAP implementation project experience
-- Bachelor's degree in Finance, Accounting or related field
-- SAP certification (Preferred)
-- Power BI experience (Preferred)
-
-Responsibilities:
-- Configure and customize SAP CO modules
-- Lead S/4HANA implementation projects`;
-
-    sendToBackendParseApi(sampleText);
-  };
-
-  const mandatoryCount = requirements.filter(r => r.mandatory).length;
-  const preferredCount = requirements.filter(r => !r.mandatory).length;
+  const mandatoryCount = mandatorySkillsList.length;
+  const preferredCount = preferredSkillsList.length;
+  const hiringCriteriaCount = hiringCriteriaList.length;
 
   return (
-    <div className="min-h-screen bg-brand-bg text-charcoal flex flex-col">
+    <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
       {/* Global Header */}
       <Header />
 
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-16 w-full flex-1">
         {/* Breadcrumb & Navigation */}
-        <div className="flex items-center justify-between mb-8">
-          <Link href="/jobs" className="inline-flex items-center gap-2 text-sm text-charcoal-mid hover:text-charcoal transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center justify-between mb-6">
+          <Link
+            href="/jobs"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-brand-orange transition-colors group"
+          >
+            <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Jobs List
+            Back to Job Requisitions
           </Link>
-          <button
-            type="button"
-            onClick={loadSampleJD}
-            className="px-3.5 py-1.5 bg-orange/10 hover:bg-orange/20 text-orange border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Load SAP CO Sample JD & Scan
-          </button>
         </div>
 
-        {/* Page Title Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-3">
-            <div className="w-12 h-12 rounded-xl bg-orange/15 border border-blue-500/30 flex items-center justify-center text-orange">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-charcoal">Create New Job & Scan JD</h1>
-              <p className="text-charcoal-mid text-sm">Upload PDF/Word JD files or paste text to automatically scan & extract candidate requirements</p>
+        {/* Page Title Header Card */}
+        <div className="mb-8 bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div className="flex items-start sm:items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-brand-orange-pale border border-brand-orange-border flex items-center justify-center text-brand-orange shadow-xs flex-shrink-0">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1E293B]">
+                  Create Job Requisition
+                </h1>
+                <p className="text-slate-500 text-sm mt-0.5 max-w-2xl">
+                  Upload a Job Description or paste the text
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Workflow Steps Indicator */}
-          <div className="flex items-center gap-3 mt-6 pt-4 border-t border-grey-border/80">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-orange text-charcoal font-bold text-xs flex items-center justify-center">
+          {/* Workflow Stepper */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6">
+            {/* Step 1 */}
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-brand-orange-pale/40 border border-brand-orange-border">
+              <div className="w-8 h-8 rounded-lg bg-brand-orange text-white font-extrabold text-xs flex items-center justify-center shadow-xs flex-shrink-0">
                 1
               </div>
-              <span className="text-sm font-semibold text-charcoal">Upload & Scan JD</span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-[#1E293B] truncate">Upload & Parse JD</p>
+                <p className="text-[11px] font-semibold text-brand-orange hidden sm:block">In Progress</p>
+              </div>
             </div>
-            <div className="flex-1 h-px bg-grey-pale" />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-grey-pale text-charcoal-mid font-bold text-xs flex items-center justify-center">
+
+            {/* Step 2 */}
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center flex-shrink-0">
                 2
               </div>
-              <span className="text-sm text-grey">Review Extracted Criteria</span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-slate-600 truncate">Review Criteria</p>
+                <p className="text-[11px] text-slate-400 hidden sm:block">Next Step</p>
+              </div>
             </div>
-            <div className="flex-1 h-px bg-grey-pale" />
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-grey-pale text-charcoal-mid font-bold text-xs flex items-center justify-center">
+
+            {/* Step 3 */}
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center flex-shrink-0">
                 3
               </div>
-              <span className="text-sm text-grey">Candidate Pipeline</span>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm font-bold text-slate-600 truncate">Candidate Pipeline</p>
+                <p className="text-[11px] text-slate-400 hidden sm:block">Final Step</p>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Global Error State Banner */}
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-start gap-3">
-            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-start gap-3 shadow-sm">
+            <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <span className="font-semibold block mb-0.5">Extraction / Parsing Warning</span>
+              <span className="font-bold block mb-0.5">Extraction / Parsing Warning</span>
               <span>{errorMsg}</span>
             </div>
           </div>
@@ -390,45 +390,45 @@ Responsibilities:
         <form onSubmit={handleSubmit} className="space-y-6">
 
           {/* Section 1: Document Upload & Scanner Panel */}
-          <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
-            <div className="flex items-center justify-between mb-6 pb-3 border-b border-grey-border">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                <h2 className="text-lg font-semibold text-charcoal">Job Description File Upload & Scanner (with OCR)</h2>
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
+                <h2 className="text-lg font-bold text-[#1E293B]">Job Description Document & Parser</h2>
               </div>
 
               {/* Mode Tabs */}
-              <div className="flex gap-1.5 bg-[#070B14] p-1 rounded-xl border border-grey-border">
+              <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
                 <button
                   type="button"
                   onClick={() => setActiveTab('file')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    activeTab === 'file' ? 'bg-orange text-charcoal shadow' : 'text-charcoal-mid hover:text-charcoal'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'file' ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-600 hover:text-[#1E293B]'
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  Upload PDF / Word File
+                  Upload File (.pdf, .docx)
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('text')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                    activeTab === 'text' ? 'bg-orange text-charcoal shadow' : 'text-charcoal-mid hover:text-charcoal'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'text' ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-600 hover:text-[#1E293B]'
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Paste JD Text
+                  Paste Text Directly
                 </button>
               </div>
             </div>
 
             {/* File Upload Zone */}
             {activeTab === 'file' ? (
-              <div className="relative border-2 border-dashed border-grey-border hover:border-blue-500/50 rounded-2xl p-8 text-center transition-all bg-[#070B14]/60 group">
+              <div className="relative border-2 border-dashed border-slate-200 hover:border-brand-orange rounded-2xl p-8 text-center transition-all bg-slate-50/70 hover:bg-brand-orange-pale/20 group">
                 {!uploadedFile && (
                   <input
                     type="file"
@@ -438,25 +438,25 @@ Responsibilities:
                   />
                 )}
                 <div className="flex flex-col items-center justify-center">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-orange flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <div className="w-14 h-14 rounded-2xl bg-brand-orange-pale border border-brand-orange-border text-brand-orange flex items-center justify-center mb-3 group-hover:scale-105 transition-transform shadow-xs">
                     <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
                   {uploadedFile ? (
                     <div className="relative z-20 flex flex-col items-center">
-                      <p className="text-charcoal font-semibold text-sm mb-2">Uploaded Document:</p>
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-orange text-xs font-mono mb-3">
-                        <svg className="w-4 h-4 text-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <p className="text-[#1E293B] font-bold text-sm mb-2">Uploaded Document:</p>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-orange-pale border border-brand-orange-border text-brand-orange text-xs font-mono mb-3">
+                        <svg className="w-4 h-4 text-brand-orange" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span>{uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
+                        <span className="font-semibold">{uploadedFile.name} ({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={handleRemoveFile}
-                          className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer z-30"
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer z-30"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -467,8 +467,8 @@ Responsibilities:
                     </div>
                   ) : (
                     <div>
-                      <p className="text-charcoal font-semibold text-sm mb-1">Click to browse or drop PDF / Word (.docx, .doc, .txt) file here</p>
-                      <p className="text-charcoal-mid text-xs">Quality Assessment & Tesseract OCR engine will extract candidate criteria</p>
+                      <p className="text-[#1E293B] font-bold text-sm mb-1">Click to upload or drag and drop your JD file</p>
+                      <p className="text-slate-500 text-xs">Supports PDF, Word (.docx, .doc), or TXT • OCR engine automatically extracts requirements</p>
                     </div>
                   )}
                 </div>
@@ -479,49 +479,57 @@ Responsibilities:
                   rows={6}
                   value={jdText}
                   onChange={(e) => setJdText(e.target.value)}
-                  placeholder="Paste job description text here..."
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all text-xs font-mono resize-none mb-3"
+                  placeholder="Paste complete job description text here..."
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-slate-200 text-[#1E293B] placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-all text-xs font-mono resize-none mb-3"
                 />
                 <button
                   type="button"
                   onClick={() => sendToBackendParseApi(jdText)}
                   disabled={!jdText.trim() || isScanning}
-                  className="px-4 py-2.5 bg-orange hover:bg-orange-dark disabled:bg-grey-pale text-charcoal text-xs font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow"
+                  className="px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover disabled:bg-slate-200 disabled:text-slate-400 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-orange"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  Execute Backend Text Extraction
+                  Parse Job Description Text
                 </button>
               </div>
             )}
 
             {/* Live Scanning Progress Indicator */}
             {isScanning && (
-              <div className="mt-6 p-4 rounded-xl bg-blue-900/20 border border-blue-500/30 animate-pulse flex items-center gap-4">
-                <div className="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <div className="mt-6 p-4 rounded-xl bg-brand-orange-pale border border-brand-orange-border flex items-center gap-4 animate-pulse">
+                <div className="w-6 h-6 border-2 border-brand-orange border-t-transparent rounded-full animate-spin flex-shrink-0" />
                 <div>
-                  <span className="text-orange-light font-semibold text-xs block mb-0.5">Backend Processing Pipeline</span>
-                  <span className="text-blue-200/80 text-xs font-mono">{scanStep}</span>
+                  <span className="text-brand-orange font-bold text-xs block mb-0.5">Processing Pipeline</span>
+                  <span className="text-slate-700 text-xs font-mono">{scanStep}</span>
                 </div>
               </div>
             )}
 
             {/* Scan Success Summary */}
             {scanComplete && (
-              <div className="mt-6 p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between text-xs flex-wrap gap-2">
-                <div className="flex items-center gap-2 text-emerald-300">
-                  <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mt-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-emerald-800 flex-wrap">
+                  <svg className="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="font-semibold">Extraction Complete:</span>
-                  <span>Extracted {mandatoryCount} Mandatory & {preferredCount} Preferred Requirements</span>
+                  <span className="font-bold">Extraction Complete:</span>
+                  <span>{mandatoryCount} Mandatory Skills</span>
+                  <span>•</span>
+                  <span>{preferredCount} Preferred Skills</span>
+                  {hiringCriteriaCount > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>{hiringCriteriaCount} Hiring Criteria</span>
+                    </>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowRawTextDrawer(!showRawTextDrawer)}
-                  className="text-xs text-orange hover:text-orange-light font-semibold underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-brand-orange hover:text-brand-orange-hover font-bold underline flex items-center gap-1 cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -533,74 +541,74 @@ Responsibilities:
 
             {/* Collapsible RAW DOCUMENT TEXT & Diagnostic Drawer */}
             {showRawTextDrawer && (
-              <div className="mt-4 p-4 rounded-xl bg-[#070B14] border border-grey-border text-xs font-mono">
-                <div className="flex items-center justify-between mb-3 text-charcoal-mid text-[11px] uppercase tracking-wider border-b border-grey-border pb-2">
-                  <span className="text-orange font-bold flex items-center gap-1.5">
+              <div className="mt-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
+                <div className="flex items-center justify-between mb-3 text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800 pb-2">
+                  <span className="text-brand-orange-light font-bold flex items-center gap-1.5">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                     Document Diagnostic Summary
                   </span>
-                  <button onClick={() => setShowRawTextDrawer(false)} className="hover:text-charcoal cursor-pointer">Close [✕]</button>
+                  <button onClick={() => setShowRawTextDrawer(false)} className="hover:text-white cursor-pointer">Close [✕]</button>
                 </div>
 
                 {docMetrics && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 p-3 bg-grey-pale rounded-lg border border-grey-border/80 text-[11px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 p-3 bg-slate-800/80 rounded-lg border border-slate-700 text-[11px]">
                     <div>
-                      <span className="text-grey block">Document Name:</span>
-                      <span className="text-charcoal font-semibold truncate block">{docMetrics.fileName}</span>
+                      <span className="text-slate-400 block">Document Name:</span>
+                      <span className="text-slate-100 font-semibold truncate block">{docMetrics.fileName}</span>
                     </div>
                     <div>
-                      <span className="text-grey block">File Type:</span>
-                      <span className="text-charcoal font-semibold truncate block">{docMetrics.fileType}</span>
+                      <span className="text-slate-400 block">File Type:</span>
+                      <span className="text-slate-100 font-semibold truncate block">{docMetrics.fileType}</span>
                     </div>
                     <div>
-                      <span className="text-grey block">Page Count:</span>
-                      <span className="text-charcoal font-semibold block">{docMetrics.pageCount} page(s)</span>
+                      <span className="text-slate-400 block">Page Count:</span>
+                      <span className="text-slate-100 font-semibold block">{docMetrics.pageCount} page(s)</span>
                     </div>
                     <div>
-                      <span className="text-grey block">Extraction Method:</span>
-                      <span className="text-orange font-semibold uppercase block">{docMetrics.extractionMethod}</span>
+                      <span className="text-slate-400 block">Extraction Method:</span>
+                      <span className="text-brand-orange font-semibold uppercase block">{docMetrics.extractionMethod}</span>
                     </div>
                     <div>
-                      <span className="text-grey block">OCR Used:</span>
+                      <span className="text-slate-400 block">OCR Used:</span>
                       <span className={`font-bold block ${docMetrics.ocrUsed ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {docMetrics.ocrUsed ? 'YES (Image OCR Fallback)' : 'NO (Native Text Stream)'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-grey block">Extracted Characters:</span>
-                      <span className="text-charcoal font-semibold block">{docMetrics.textLength} chars</span>
+                      <span className="text-slate-400 block">Extracted Characters:</span>
+                      <span className="text-slate-100 font-semibold block">{docMetrics.textLength} chars</span>
                     </div>
                     <div>
-                      <span className="text-grey block">Extracted Words:</span>
-                      <span className="text-charcoal font-semibold block">{docMetrics.wordCount} words</span>
+                      <span className="text-slate-400 block">Extracted Words:</span>
+                      <span className="text-slate-100 font-semibold block">{docMetrics.wordCount} words</span>
                     </div>
                     <div>
-                      <span className="text-grey block">Non-empty Lines:</span>
-                      <span className="text-charcoal font-semibold block">{docMetrics.lineCount} lines</span>
+                      <span className="text-slate-400 block">Non-empty Lines:</span>
+                      <span className="text-slate-100 font-semibold block">{docMetrics.lineCount} lines</span>
                     </div>
                   </div>
                 )}
 
-                <div className="text-charcoal-mid text-[11px] mb-1 font-semibold uppercase">--------------------------------<br />RAW DOCUMENT TEXT<br />--------------------------------</div>
-                <pre className="whitespace-pre-wrap text-charcoal-mid max-h-60 overflow-y-auto leading-relaxed">{rawText || '(No raw text available)'}</pre>
+                <div className="text-slate-400 text-[11px] mb-1 font-semibold uppercase">--------------------------------<br />RAW DOCUMENT TEXT<br />--------------------------------</div>
+                <pre className="whitespace-pre-wrap text-slate-300 max-h-60 overflow-y-auto leading-relaxed">{rawText || '(No raw text available)'}</pre>
               </div>
             )}
           </div>
 
           {/* Section 2: Extracted Job Specifications Form */}
-          <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
-            <h2 className="text-lg font-semibold text-charcoal mb-6 pb-3 border-b border-grey-border flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              Extracted Job Metadata
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+            <h2 className="text-lg font-bold text-[#1E293B] mb-6 pb-4 border-b border-slate-100 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
+              Job Specifications & Details
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Client */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
-                  Client / Company Name <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Company / Client Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -609,18 +617,18 @@ Responsibilities:
                     setClient(e.target.value);
                     if (fieldErrors.client) setFieldErrors(prev => ({ ...prev, client: undefined }));
                   }}
-                  placeholder="e.g. TechCorp Industries (Leave blank if not in JD)"
-                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-charcoal text-sm placeholder-gray-500 focus:outline-none transition-all ${
-                    fieldErrors.client ? 'border-rose-500' : 'border-grey-border focus:border-blue-500'
+                  placeholder="e.g. BlueOrbit Technologies (or Not specified in JD)"
+                  className={`w-full px-4 py-3 rounded-xl bg-slate-50/70 border text-[#1E293B] text-sm placeholder-slate-400 focus:bg-white focus:outline-none transition-all ${
+                    fieldErrors.client ? 'border-rose-500 focus:ring-2 focus:ring-rose-200' : 'border-slate-200 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20'
                   }`}
                 />
-                {fieldErrors.client && <p className="text-rose-400 text-xs mt-1">{fieldErrors.client}</p>}
+                {fieldErrors.client && <p className="text-rose-500 text-xs mt-1 font-semibold">{fieldErrors.client}</p>}
               </div>
 
               {/* Position */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
-                  Position Title <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Position Title <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -629,55 +637,55 @@ Responsibilities:
                     setPosition(e.target.value);
                     if (fieldErrors.position) setFieldErrors(prev => ({ ...prev, position: undefined }));
                   }}
-                  placeholder="e.g. SAP CO Consultant"
-                  className={`w-full px-4 py-3 rounded-xl bg-[#070B14] border text-charcoal text-sm placeholder-gray-500 focus:outline-none transition-all ${
-                    fieldErrors.position ? 'border-rose-500' : 'border-grey-border focus:border-blue-500'
+                  placeholder="e.g. Senior SAP CO Consultant"
+                  className={`w-full px-4 py-3 rounded-xl bg-slate-50/70 border text-[#1E293B] text-sm placeholder-slate-400 focus:bg-white focus:outline-none transition-all ${
+                    fieldErrors.position ? 'border-rose-500 focus:ring-2 focus:ring-rose-200' : 'border-slate-200 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20'
                   }`}
                 />
-                {fieldErrors.position && <p className="text-rose-400 text-xs mt-1">{fieldErrors.position}</p>}
+                {fieldErrors.position && <p className="text-rose-500 text-xs mt-1 font-semibold">{fieldErrors.position}</p>}
               </div>
 
               {/* Location */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Location
                 </label>
                 <input
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. New York, NY / Remote"
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                  placeholder="e.g. New York, NY (or Remote)"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-slate-200 text-[#1E293B] text-sm placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-all"
                 />
               </div>
 
               {/* Work Mode */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
-                  Work Mode <span className="text-rose-400">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Workplace Type <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={workMode}
                   onChange={(e) => setWorkMode(e.target.value as 'Remote' | 'Hybrid' | 'Onsite')}
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm focus:outline-none focus:border-blue-500 transition-all cursor-pointer"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-slate-200 text-[#1E293B] text-sm focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-all cursor-pointer"
                 >
                   <option value="Remote">Remote</option>
                   <option value="Hybrid">Hybrid</option>
-                  <option value="Onsite">Onsite</option>
+                  <option value="Onsite">On-site</option>
                 </select>
               </div>
 
               {/* Salary */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-mid mb-2">
-                  Salary Compensation Range
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Compensation Range
                 </label>
                 <input
                   type="text"
                   value={salary}
                   onChange={(e) => setSalary(e.target.value)}
-                  placeholder="e.g. $130,000 - $170,000 (Empty if not present in JD)"
-                  className="w-full px-4 py-3 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                  placeholder="e.g. $130,000 – $170,000 / year (Leave empty if not specified)"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50/70 border border-slate-200 text-[#1E293B] text-sm placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-all"
                 />
               </div>
             </div>
@@ -685,94 +693,227 @@ Responsibilities:
 
           {/* Section 3: Extracted Requirements Panel */}
           {requirements.length > 0 && (
-            <div className="bg-white/80 border border-grey-border rounded-2xl p-6 md:p-8 shadow-xl">
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-grey-border">
+            <div className="space-y-6">
+              {/* Header Stats */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-charcoal">Extracted Candidate Criteria ({requirements.length})</h2>
-                  <p className="text-xs text-charcoal-mid mt-0.5">Mandatory requirements are strictly enforced; preferred criteria yield bonus points.</p>
+                  <h2 className="text-lg font-bold text-[#1E293B]">Candidate Evaluation Rubric ({requirements.length})</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Section-aware classification automatically derived from Job Description.</p>
                 </div>
-                <div className="flex items-center gap-3 text-xs">
-                  <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">
-                    {mandatoryCount} Mandatory
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-bold">
+                    Mandatory Skills: {mandatoryCount}
                   </span>
-                  <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-orange border border-blue-500/20 font-semibold">
-                    {preferredCount} Preferred
+                  <span className="px-3 py-1 rounded-full bg-brand-orange-pale text-brand-orange border border-brand-orange-border font-bold">
+                    Preferred Skills: {preferredCount}
                   </span>
+                  {hiringCriteriaCount > 0 && (
+                    <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                      Hiring Criteria: {hiringCriteriaCount}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              {/* List of Scanned Requirements */}
-              <div className="space-y-3 mb-6">
-                {requirements.map((req) => (
-                  <div
-                    key={req.id}
-                    className="p-3.5 rounded-xl bg-[#070B14] border border-grey-border flex items-center justify-between gap-4 group"
-                  >
-                    <div className="flex items-center gap-3 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleMandatory(req.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border ${
-                          req.mandatory
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                            : 'bg-blue-500/20 text-orange-light border-blue-500/40 hover:bg-orange-dark/30'
-                        }`}
-                      >
-                        {req.mandatory ? '? Mandatory' : '? Preferred'}
-                      </button>
-                      <div>
-                        <span className="text-xs text-gray-200 block">{req.requirement}</span>
-                        {req.sourceEvidence && (
-                          <span className="text-[10px] text-grey block italic mt-0.5">
-                            Source Evidence: "{req.sourceEvidence}"
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-grey bg-grey-pale px-2 py-0.5 rounded border border-grey-border">
-                        {req.category}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRequirement(req.id)}
-                        className="text-grey hover:text-rose-400 p-1 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
+              {/* 1. Mandatory Skills Section */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                    <h3 className="text-base font-bold text-[#1E293B]">Mandatory Requirements ({mandatorySkillsList.length})</h3>
                   </div>
-                ))}
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">
+                    Strictly Enforced
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {mandatorySkillsList.length === 0 ? (
+                    <p className="text-slate-400 text-xs italic">No mandatory requirements found.</p>
+                  ) : (
+                    mandatorySkillsList.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4 group hover:border-slate-300 transition-all"
+                      >
+                        <div className="flex items-start gap-3 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMandatory(req.id)}
+                            className="mt-0.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 cursor-pointer flex-shrink-0"
+                          >
+                            ✓ Mandatory
+                          </button>
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800 block leading-relaxed">{req.requirement}</span>
+                            {req.sourceEvidence && (
+                              <span className="text-[10px] text-slate-500 block italic mt-1">
+                                Source Evidence: "{req.sourceEvidence}"
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
+                            {req.category}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRequirement(req.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
+
+              {/* 2. Preferred Skills Section */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-brand-orange"></span>
+                    <h3 className="text-base font-bold text-[#1E293B]">Preferred Requirements ({preferredSkillsList.length})</h3>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-brand-orange-pale text-brand-orange border border-brand-orange-border text-[11px] font-bold">
+                    Bonus Scoring
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {preferredSkillsList.length === 0 ? (
+                    <p className="text-slate-400 text-xs italic">No preferred requirements found.</p>
+                  ) : (
+                    preferredSkillsList.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4 group hover:border-slate-300 transition-all"
+                      >
+                        <div className="flex items-start gap-3 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMandatory(req.id)}
+                            className="mt-0.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border bg-brand-orange-pale text-brand-orange border-brand-orange-border hover:bg-brand-orange/10 cursor-pointer flex-shrink-0"
+                          >
+                            + Preferred
+                          </button>
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800 block leading-relaxed">{req.requirement}</span>
+                            {req.sourceEvidence && (
+                              <span className="text-[10px] text-slate-500 block italic mt-1">
+                                Source Evidence: "{req.sourceEvidence}"
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
+                            {req.category}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRequirement(req.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Hiring Criteria Section */}
+              {hiringCriteriaList.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      <h3 className="text-base font-bold text-[#1E293B]">Top Hiring Criteria ({hiringCriteriaList.length})</h3>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
+                      Position Directives
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {hiringCriteriaList.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-3.5 rounded-xl bg-emerald-50/40 border border-emerald-200/80 flex items-start justify-between gap-4 group hover:border-emerald-300 transition-all"
+                      >
+                        <div className="flex items-start gap-3 flex-1">
+                          <span className="mt-0.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-emerald-100 text-emerald-800 border-emerald-300 flex-shrink-0">
+                            ✓ Mandatory
+                          </span>
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800 block leading-relaxed">{req.requirement}</span>
+                            {req.sourceEvidence && (
+                              <span className="text-[10px] text-slate-500 block italic mt-1">
+                                Source Evidence: "{req.sourceEvidence}"
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[11px] text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200 font-medium">
+                            {req.category}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRequirement(req.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Add Custom Requirement Box */}
-              <div className="flex items-center gap-2 pt-3 border-t border-grey-border">
-                <input
-                  type="text"
-                  value={newReqText}
-                  onChange={(e) => setNewReqText(e.target.value)}
-                  placeholder="Add custom candidate requirement..."
-                  className="flex-1 px-3.5 py-2 rounded-xl bg-[#070B14] border border-grey-border text-charcoal text-xs placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setNewReqMandatory(!newReqMandatory)}
-                  className={`px-3 py-2 rounded-xl text-xs font-semibold border ${
-                    newReqMandatory ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-blue-500/10 text-orange border-blue-500/30'
-                  }`}
-                >
-                  {newReqMandatory ? 'Mandatory' : 'Preferred'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddCustomRequirement}
-                  className="px-4 py-2 bg-orange hover:bg-orange-dark text-charcoal text-xs font-semibold rounded-xl transition-all"
-                >
-                  + Add
-                </button>
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">Add Custom Evaluation Criterion</h3>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newReqText}
+                    onChange={(e) => setNewReqText(e.target.value)}
+                    placeholder="e.g. 5+ years experience with Salesforce Apex & LWC..."
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200 text-[#1E293B] text-xs placeholder-slate-400 focus:bg-white focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewReqMandatory(!newReqMandatory)}
+                    className={`px-3 py-2.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                      newReqMandatory ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-brand-orange-pale text-brand-orange border-brand-orange-border'
+                    }`}
+                  >
+                    {newReqMandatory ? 'Mandatory' : 'Preferred'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomRequirement}
+                    className="px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                  >
+                    + Add
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -781,7 +922,7 @@ Responsibilities:
           <div className="flex items-center justify-between pt-4">
             <Link
               href="/jobs"
-              className="px-6 py-3 bg-grey-pale/80 hover:bg-grey-pale text-charcoal-mid text-sm font-semibold rounded-xl transition-colors border border-grey-border/60"
+              className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-700 text-sm font-bold rounded-xl transition-colors border border-slate-200 shadow-xs"
             >
               Cancel
             </Link>
@@ -789,19 +930,19 @@ Responsibilities:
             <button
               type="submit"
               disabled={isSubmitting || isScanning}
-              className="px-8 py-3.5 bg-orange hover:bg-orange-dark disabled:bg-orange/50 text-charcoal text-sm font-semibold rounded-xl transition-all shadow-lg shadow-orange/20 flex items-center gap-2"
+              className="px-8 py-3.5 bg-brand-orange hover:bg-brand-orange-hover disabled:bg-slate-300 disabled:text-slate-500 text-white text-sm font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg flex items-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
-                  <svg className="animate-spin w-4 h-4 text-charcoal" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>Saving Job & Extracted Criteria...</span>
+                  <span>Saving Requisition & Criteria...</span>
                 </>
               ) : (
                 <>
-                  <span>Save Job & Continue</span>
+                  <span>Save Requisition & Continue</span>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                   </svg>

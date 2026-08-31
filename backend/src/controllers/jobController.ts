@@ -66,7 +66,29 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
     const textToParse = normalizedText || layoutText || rawText;
     const result = parseJobDescription(textToParse, fileName, mimeType, pageCount, method, ocrUsed);
 
-    console.log(`[JD Parsing Pipeline] Extracted Title: "${result.data.job.jobTitle || 'null'}", Client: "${result.data.job.company || 'null'}", Salary: "${result.data.job.salary || 'null'}", Requirements Count: ${result.data.requirements.length}`);
+    console.log('\n========================================');
+    console.log('[JD PARSING PIPELINE DEBUG]');
+    console.log('--- 1. RAW EXTRACTED TEXT (First 300 chars) ---');
+    console.log(rawText.substring(0, 300) + '...');
+    console.log('\n--- 2. STRUCTURED PARSER RESULT ---');
+    console.log(`Company / Client: "${result.data.companyName || 'null'}" | Position: "${result.data.positionTitle || 'null'}" | Location: "${result.data.location || 'null'}"`);
+    console.log('\n--- 3. NORMALIZED JOB METADATA ---');
+    console.log(JSON.stringify(result.data.metadata, null, 2));
+    console.log('\n--- 4. FINAL API RESPONSE PAYLOAD SUMMARY ---');
+    console.log(JSON.stringify({
+      companyName: result.data.companyName,
+      positionTitle: result.data.positionTitle,
+      client: result.data.metadata.client,
+      position: result.data.metadata.position,
+      location: result.data.location,
+      workMode: result.data.workMode,
+      experience: result.data.experience,
+      salary: result.data.salary,
+      mandatoryCount: result.data.validation.counts.mandatoryCount,
+      preferredCount: result.data.validation.counts.preferredCount,
+      hiringCriteriaCount: result.data.validation.counts.hiringCriteriaCount
+    }, null, 2));
+    console.log('========================================\n');
 
     res.status(200).json({
       success: result.success,
