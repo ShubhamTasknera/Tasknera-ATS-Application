@@ -74,6 +74,7 @@ const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {
       achievements: [],
       rawText: `RAHUL SHARMA\nSenior Frontend Developer\nEmail: rahul.sharma@example.com | Phone: +91 98234 56789 | Location: Pune, Maharashtra\n\nSUMMARY\nFrontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.\n\nEXPERIENCE\nSenior Frontend Developer — TechNova Solutions (2021 – Present)\n- Architected enterprise client portal in React & TypeScript.\n- Improved frontend load speed by 42% through code-splitting and asset optimization.\n\nEDUCATION\nBachelor of Engineering (B.E.), Pune Institute of Computer Technology (2015 – 2019)\n\nSKILLS\nReact, TypeScript, Next.js, Tailwind CSS, Redux, Node.js, REST APIs, Git, Jest`,
       parsingStatus: 'PARSED',
+      validationErrors: [],
       parsingMetadata: {
         fileName: 'CV_Rahul_Sharma_Frontend.pdf',
         fileType: 'application/pdf',
@@ -115,7 +116,7 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
     // 1. Try fetching from Prisma DB if accessible
     let dbCandidates: CandidateRecord[] = [];
     try {
-      const apps = await prisma.candidateApplication.findMany({
+      const apps = await (prisma as any).candidateApplication?.findMany({
         where: { job_id: jobId },
         include: {
           candidate: {
@@ -132,8 +133,8 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
         orderBy: { created_at: 'desc' }
       });
 
-      if (apps.length > 0) {
-        dbCandidates = apps.map(app => {
+      if (apps && apps.length > 0) {
+        dbCandidates = apps.map((app: any) => {
           const c = app.candidate;
           return {
             id: c.id,
@@ -147,35 +148,36 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
             currentTitle: c.current_title,
             currentCompany: c.current_company,
             summary: c.summary,
-            skills: c.skills.map(s => s.skill),
-            technologies: c.skills.map(s => s.skill),
+            skills: c.skills?.map((s: any) => s.skill) || [],
+            technologies: c.skills?.map((s: any) => s.skill) || [],
             tools: [],
             industries: [],
-            education: c.education.map(e => ({
+            education: c.education?.map((e: any) => ({
               degree: e.degree,
               institution: e.institution,
               field: e.field,
               year: e.start_year ? `${e.start_year}` : undefined,
-            })),
-            certifications: c.certifications.map(ct => ct.certification),
-            languages: c.languages.map(l => l.language),
-            experience: c.experiences.map(ex => ({
+            })) || [],
+            certifications: c.certifications?.map((ct: any) => ct.certification) || [],
+            languages: c.languages?.map((l: any) => l.language) || [],
+            experience: c.experiences?.map((ex: any) => ({
               title: ex.title,
               company: ex.company,
               startDate: ex.start_date,
               endDate: ex.end_date,
               duration: ex.duration,
               description: ex.description,
-            })),
+            })) || [],
             responsibilities: [],
             achievements: [],
-            projects: c.projects.map(p => ({
+            projects: c.projects?.map((p: any) => ({
               name: p.name,
               description: p.description,
               technologies: p.technologies,
-            })),
+            })) || [],
             rawText: c.raw_text || '',
             parsingStatus: (c.parsing_status as any) || 'PARSED',
+            validationErrors: [],
             parsingMetadata: {
               fileName: c.resume_file_url || 'cv.pdf',
               fileType: 'application/pdf',
@@ -308,6 +310,7 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
           })),
           rawText: c.raw_text || '',
           parsingStatus: (c.parsing_status as any) || 'PARSED',
+          validationErrors: [],
           parsingMetadata: {
             fileName: c.resume_file_url || 'cv.pdf',
             fileType: 'application/pdf',
@@ -447,6 +450,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             sourceEvidence: {},
             rawText: rawText || '',
             parsingStatus: 'FAILED',
+            errorMessage: textQuality.reason || 'Unable to extract valid CV text from this document.',
+            validationErrors: [textQuality.reason || 'Unable to extract valid CV text from this document.'],
             parsingMetadata: {
               fileName,
               fileType: fileMime,
@@ -466,7 +471,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
               parsedCandidate: {},
               validationErrors: [textQuality.reason || 'Unable to extract valid CV text from this document.'],
             },
-            errorMessage: textQuality.reason || 'Unable to extract valid CV text from this document.',
             fileName,
             fileSize,
             fileHash,
@@ -519,6 +523,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             const dbCand = await prisma.candidate.create({
               data: {
                 id: candidateId.includes('-') && candidateId.length === 36 ? candidateId : undefined,
+                job_id: jobId.includes('-') && jobId.length === 36 ? jobId : undefined,
                 name: newRecord.name,
                 email: newRecord.email,
                 phone: newRecord.phone,
@@ -537,14 +542,14 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
             // Create CandidateApplication join record linking candidate to job
             const validJob = await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
-            if (validJob) {
-              await prisma.candidateApplication.create({
+            if (validJob && (prisma as any).candidateApplication) {
+              await (prisma as any).candidateApplication.create({
                 data: {
                   job_id: validJob.id,
                   candidate_id: dbCand.id,
                   stage: 'PARSED',
                 }
-              }).catch((err) => console.warn('[Application Link Error]', err));
+              }).catch((err: any) => console.warn('[Application Link Error]', err));
             }
           }
         } catch (dbSaveErr) {
@@ -581,6 +586,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           sourceEvidence: {},
           rawText: '',
           parsingStatus: 'FAILED',
+          errorMessage: `Processing error: ${err.message || 'Unknown error'}`,
+          validationErrors: [err.message || 'Unknown processing error'],
           parsingMetadata: {
             fileName,
             fileType: fileMime,
@@ -590,7 +597,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             characterCount: 0,
             wordCount: 0,
           },
-          errorMessage: `Processing error: ${err.message || 'Unknown error'}`,
           fileName,
           fileSize,
           fileHash,

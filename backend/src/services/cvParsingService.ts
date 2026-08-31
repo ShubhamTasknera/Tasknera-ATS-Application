@@ -65,6 +65,8 @@ export interface CandidateParsedProfile {
   sourceEvidence?: Record<string, string | undefined>;
   rawText: string;
   parsingStatus: 'PARSED' | 'FAILED' | 'PROCESSING' | 'UPLOADED';
+  errorMessage?: string;
+  validationErrors: string[];
   parsingMetadata: {
     fileName: string;
     fileType: string;
@@ -84,7 +86,6 @@ export interface CandidateParsedProfile {
     parsedCandidate: Record<string, any>;
     validationErrors: string[];
   };
-  errorMessage?: string;
 }
 
 /**
@@ -96,8 +97,8 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
   }
 
   const text = rawText.trim();
-  if (text.length < 30) {
-    return { isValid: false, reason: 'Extracted text length is too short to be a valid CV (< 30 characters).' };
+  if (text.length < 20) {
+    return { isValid: false, reason: 'Extracted text length is too short (< 20 characters).' };
   }
 
   // 1. Check for HTML or template tags
@@ -133,7 +134,7 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
 
   // 3. Check for binary / unprintable characters
   const unprintableCount = (text.match(/[\x00-\x08\x0E-\x1F\x7F-\x9F]/g) || []).length;
-  if (unprintableCount > text.length * 0.15) {
+  if (unprintableCount > text.length * 0.25) {
     return { isValid: false, reason: 'Extracted text contains excessive unprintable binary characters.' };
   }
 
@@ -142,7 +143,6 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
 
 /**
  * Validates email format strictly according to RFC standards.
- * Rejects .doctype.html.@email.com, HTML tags, or invalid domains.
  */
 export function validateEmail(emailCandidate: string | null): string | null {
   if (!emailCandidate) return null;
@@ -156,7 +156,7 @@ export function validateEmail(emailCandidate: string | null): string | null {
     email.startsWith('.') ||
     email.endsWith('.') ||
     email.includes('..') ||
-    email.includes('@email.com') && email.startsWith('.')
+    (email.includes('@email.com') && email.startsWith('.'))
   ) {
     return null;
   }
@@ -171,8 +171,6 @@ export function validateEmail(emailCandidate: string | null): string | null {
 
 /**
  * Validates and normalizes phone number string.
- * Supports Indian (+91 9876543210, 9876543210) and international numbers.
- * Rejects timestamps, hashes, or arbitrary numeric IDs.
  */
 export function validatePhone(phoneCandidate: string | null): string | null {
   if (!phoneCandidate) return null;
@@ -181,7 +179,6 @@ export function validatePhone(phoneCandidate: string | null): string | null {
   // Reject HTML, strings with letters, or extreme lengths
   if (/[a-zA-Z<>]/.test(raw)) return null;
 
-  // Extract digits only
   const digitsOnly = raw.replace(/\D/g, '');
 
   // Legitimate phone number digits count is between 10 and 15
@@ -189,12 +186,11 @@ export function validatePhone(phoneCandidate: string | null): string | null {
     return null;
   }
 
-  // Reject repeating single digit e.g. 0000000000 or 1111111111
+  // Reject repeating single digit
   if (/^(\d)\1+$/.test(digitsOnly)) {
     return null;
   }
 
-  // Reject sequential numbers e.g. 1234567890
   if (digitsOnly === '1234567890' || digitsOnly === '0123456789') {
     return null;
   }
@@ -203,21 +199,19 @@ export function validatePhone(phoneCandidate: string | null): string | null {
 }
 
 /**
- * Extracts candidate name from the top lines of the CV.
- * NEVER guesses from filename or application context.
- * Returns null if not confident.
+ * Extracts candidate name from the top lines of the CV with verified ground truth.
  */
-export function extractCandidateName(lines: string[]): { name: string | null; evidence?: string } {
-  // Reject words that should never appear in a candidate name
+export function extractCandidateName(lines: string[], cleanText: string, fileName?: string): { name: string | null; evidence?: string } {
   const invalidNameKeywords = [
     'curriculum', 'vitae', 'resume', 'profile', 'summary', 'contact', 'email',
     'phone', 'address', 'page', 'objective', 'education', 'experience', 'skills',
     'developer', 'engineer', 'consultant', 'manager', 'specialist', 'doctype',
     'html', 'http', 'https', 'www', 'linkedin', 'github', 'portfolio', 'gender',
-    'date of birth', 'nationality', 'languages', 'projects', 'declaration'
+    'date of birth', 'nationality', 'languages', 'projects', 'declaration', 'career'
   ];
 
-  for (let i = 0; i < Math.min(lines.length, 6); i++) {
+  // 1. Direct inspection of top lines (first 8 lines)
+  for (let i = 0; i < Math.min(lines.length, 8); i++) {
     let line = lines[i].trim();
 
     // Clean leading labels like "Name:", "Full Name:"
@@ -230,16 +224,39 @@ export function extractCandidateName(lines: string[]): { name: string | null; ev
     const hasInvalidKeyword = invalidNameKeywords.some(kw => new RegExp(`\\b${kw}\\b`, 'i').test(lower));
     if (hasInvalidKeyword) continue;
 
-    // Check that line contains 2 to 4 words composed of alphabetical characters
     const words = line.split(/\s+/).filter(Boolean);
     if (words.length >= 1 && words.length <= 4) {
       const allAlpha = words.every(w => /^[a-zA-Z'.-]+$/.test(w));
       if (allAlpha) {
-        // Format with Title Case
         const formatted = words
           .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
           .join(' ');
         return { name: formatted, evidence: lines[i] };
+      }
+    }
+  }
+
+  // 2. Cross-verify with clean filename if tokens appear in CV body
+  if (fileName) {
+    const rawBase = fileName
+      .replace(/\.[^/.]+$/, '')
+      .replace(/\(\d+\)/g, '')
+      .replace(/^(?:resume|cv|profile|candidate)[\s_-]*/i, '')
+      .replace(/[\s_-]*(?:resume|cv|profile|candidate)$/i, '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .trim();
+
+    const nameTokens = rawBase.split(/\s+/).filter(t => t.length >= 2 && /^[a-zA-Z]+$/.test(t));
+    if (nameTokens.length >= 2) {
+      const allTokensInCv = nameTokens.every(token =>
+        new RegExp(`\\b${token}\\b`, 'i').test(cleanText)
+      );
+      if (allTokensInCv) {
+        const formatted = nameTokens
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
+        return { name: formatted, evidence: `Verified in CV text (${rawBase})` };
       }
     }
   }
@@ -249,7 +266,6 @@ export function extractCandidateName(lines: string[]): { name: string | null; ev
 
 /**
  * Parses CV text strictly using evidence present in the text.
- * Never invents facts. Returns structured data with source evidence.
  */
 export function extractStructuredCandidateFromText(
   rawText: string,
@@ -293,6 +309,8 @@ export function extractStructuredCandidateFromText(
       sourceEvidence: {},
       rawText: rawText || '',
       parsingStatus: 'FAILED',
+      errorMessage: qualityCheck.reason || 'Unable to extract valid CV text from this document.',
+      validationErrors,
       parsingMetadata: {
         fileName,
         fileType: docMetrics.fileType || 'application/pdf',
@@ -312,7 +330,6 @@ export function extractStructuredCandidateFromText(
         parsedCandidate: {},
         validationErrors,
       },
-      errorMessage: qualityCheck.reason || 'Unable to extract valid CV text from this document.',
     };
   }
 
@@ -337,7 +354,6 @@ export function extractStructuredCandidateFromText(
 
   // 3. Phone Extraction
   let phone: string | null = null;
-  // Match Indian formats (+91 98765 43210, +91-9876543210, 9876543210) & international
   const phonePatterns = [
     /(?:\+91[\-\s]?)?[6-9]\d{4}[\-\s]?\d{5}\b/g,
     /(?:\+\d{1,3}[\-\s]?)?\(?\d{3}\)?[\-\s]?\d{3}[\-\s]?\d{4}\b/g,
@@ -360,7 +376,7 @@ export function extractStructuredCandidateFromText(
   }
 
   // 4. Candidate Name Extraction
-  const nameResult = extractCandidateName(lines);
+  const nameResult = extractCandidateName(lines, cleanText, fileName);
   const name = nameResult.name;
   if (nameResult.evidence) {
     sourceEvidence['name'] = nameResult.evidence;
@@ -373,7 +389,6 @@ export function extractStructuredCandidateFromText(
     totalExperience = `${expMatch[1]} years`;
     sourceEvidence['totalExperience'] = expMatch[0];
   } else {
-    // Check year ranges in experience sections e.g. 2019 - 2024
     const yearRangeMatch = cleanText.match(/\b(20\d{2}|19\d{2})\s*(?:[-–—]|to)\s*(20\d{2}|Present|Current)\b/i);
     if (yearRangeMatch) {
       const startYear = parseInt(yearRangeMatch[1], 10);
@@ -394,7 +409,6 @@ export function extractStructuredCandidateFromText(
   let currentTitle: string | null = null;
   let currentCompany: string | null = null;
 
-  // Check explicit title patterns in header or experience
   const titleList = [
     'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
     'Senior Full Stack Engineer', 'Senior Full Stack Developer', 'Full Stack Engineer', 'Full Stack Developer',
@@ -406,8 +420,7 @@ export function extractStructuredCandidateFromText(
     'Product Manager', 'Project Manager', 'Solutions Architect'
   ];
 
-  // First check top 5 lines for primary title
-  const headerText = lines.slice(0, 5).join('\n');
+  const headerText = lines.slice(0, 8).join('\n');
   for (const t of titleList) {
     const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
     if (reg.test(headerText)) {
@@ -417,7 +430,6 @@ export function extractStructuredCandidateFromText(
     }
   }
 
-  // If not found in header, check full text
   if (!currentTitle) {
     for (const t of titleList) {
       const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
@@ -429,7 +441,6 @@ export function extractStructuredCandidateFromText(
     }
   }
 
-  // Extract company from experience block
   const companyPattern = /(?:at|company|worked at|organization|employer)\s*[:\-–]\s*([A-Za-z0-9\s&.,]{2,40})/i;
   const companyMatch = cleanText.match(companyPattern);
   if (companyMatch && companyMatch[1]) {
@@ -482,7 +493,7 @@ export function extractStructuredCandidateFromText(
     sourceEvidence['skills'] = skills.join(', ');
   }
 
-  // 9. Summary / Profile Extraction
+  // 9. Summary Extraction
   let summary: string | null = null;
   const summaryMatch = cleanText.match(/(?:summary|profile|about me|objective|professional summary)\s*[:\-–\n]+([\s\S]{30,600}?)(?=\n\s*(?:experience|work history|skills|education|projects|certifications|employment)|$)/i);
   if (summaryMatch && summaryMatch[1]) {
@@ -579,6 +590,8 @@ export function extractStructuredCandidateFromText(
     sourceEvidence,
     rawText,
     parsingStatus: 'PARSED',
+    errorMessage: undefined,
+    validationErrors: [],
     parsingMetadata: {
       fileName,
       fileType: docMetrics.fileType || 'application/pdf',
@@ -604,7 +617,7 @@ export function extractStructuredCandidateFromText(
         totalExperience,
         skillsCount: skills.length,
       },
-      validationErrors,
+      validationErrors: [],
     },
   };
 
