@@ -5,7 +5,8 @@ import { extractDocumentTextViaPython, PythonDocumentResponse } from '../service
 import {
   extractStructuredCandidateFromText,
   CandidateParsedProfile,
-  validateCvTextQuality
+  validateCvTextQuality,
+  calculateCareerGaps
 } from '../services/cvParsingService';
 
 export interface CandidateRecord extends CandidateParsedProfile {
@@ -148,6 +149,7 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
             currentTitle: c.current_title,
             currentCompany: c.current_company,
             summary: c.summary,
+            professionalSummary: c.summary,
             skills: c.skills?.map((s: any) => s.skill) || [],
             technologies: c.skills?.map((s: any) => s.skill) || [],
             tools: [],
@@ -168,6 +170,14 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
               duration: ex.duration,
               description: ex.description,
             })) || [],
+            gapAnalysis: calculateCareerGaps(c.experiences?.map((ex: any) => ({
+              title: ex.title,
+              company: ex.company,
+              startDate: ex.start_date,
+              endDate: ex.end_date,
+              duration: ex.duration,
+              description: ex.description,
+            })) || []),
             responsibilities: [],
             achievements: [],
             projects: c.projects?.map((p: any) => ({
@@ -281,6 +291,7 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
           currentTitle: c.current_title,
           currentCompany: c.current_company,
           summary: c.summary,
+          professionalSummary: c.summary,
           skills: c.skills.map(s => s.skill),
           technologies: c.skills.map(s => s.skill),
           tools: [],
