@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n \"FRONTEND,BACKEND,PYTHON_API\" -c \"cyan.bold,green.bold,yellow.bold\" \"npm --prefix FrontEnd run dev\" \"npm --prefix backend run dev\" \"cd document_processor && python -m uvicorn app.main:app --port 8000 --reload\"",
+    "dev": "concurrently -n \"FRONTEND,BACKEND,PYTHON_API\" -c \"cyan.bold,green.bold,yellow.bold\" \"npm --prefix FrontEnd run dev\" \"npm --prefix backend run dev\" \"cd document_processor && py -m uvicorn app.main:app --port 8000 --reload\"",
     "dev:frontend": "npm --prefix FrontEnd run dev",
     "dev:backend": "npm --prefix backend run dev",
-    "dev:python": "cd document_processor && python -m uvicorn app.main:app --port 8000 --reload",
+    "dev:python": "cd document_processor && py -m uvicorn app.main:app --port 8000 --reload",
     "build:frontend": "npm --prefix FrontEnd run build",
     "build:backend": "npm --prefix backend run build",
     "install:all": "npm --prefix FrontEnd install && npm --prefix backend install"
