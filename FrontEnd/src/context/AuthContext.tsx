@@ -71,6 +71,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     localStorage.removeItem('tasknera_token');
     setToken(null);
     setUser(null);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/home';
+    }
   };
 
   return (
