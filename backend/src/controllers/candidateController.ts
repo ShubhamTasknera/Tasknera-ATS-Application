@@ -1,19 +1,28 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
+import prisma from '../config/prisma';
 import { extractDocumentTextViaPython, PythonDocumentResponse } from '../services/pythonDocumentClient';
-import { extractStructuredCandidateFromText, CandidateParsedProfile } from '../services/cvParsingService';
+import {
+  extractStructuredCandidateFromText,
+  CandidateParsedProfile,
+  validateCvTextQuality
+} from '../services/cvParsingService';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
   jobId: string;
   fileName: string;
   fileSize: number;
+  fileHash?: string;
   uploadedAt: string;
+  isDuplicate?: boolean;
 }
 
-// In-memory persistent store for uploaded candidates per job
+// In-memory store for fast state sync and test resilience
 const CANDIDATE_STORE: Map<string, CandidateRecord[]> = new Map();
+const GLOBAL_CANDIDATES: Map<string, CandidateRecord> = new Map(); // Keyed by fileHash or id
 
-// Initial seeded candidates for default jobs so recruiters have realistic sample data
+// Initial realistic default candidates for demo jobs
 const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {
   'jd-1': [
     {
@@ -24,10 +33,14 @@ const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {
       phone: '+91 98234 56789',
       location: 'Pune, Maharashtra',
       totalExperience: '5 years',
+      relevantExperience: '5 years',
       currentTitle: 'Senior Frontend Developer',
       currentCompany: 'TechNova Solutions',
-      professionalSummary: 'Full-stack & Frontend Specialist with 5 years experience designing high-throughput single-page web applications with React, TypeScript, and modern design systems.',
-      skills: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Redux Toolkit', 'Jest', 'REST APIs', 'Node.js'],
+      summary: 'Frontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.',
+      skills: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Redux', 'Jest', 'REST APIs', 'Node.js'],
+      technologies: ['React', 'Next.js', 'TypeScript', 'Node.js'],
+      tools: ['Git', 'Jest', 'Tailwind CSS'],
+      industries: [],
       education: [
         {
           degree: 'Bachelor of Engineering (B.E.)',
@@ -56,226 +69,161 @@ const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {
           technologies: ['React', 'TypeScript', 'Tailwind CSS']
         }
       ],
-      languages: ['English (Fluent)', 'Hindi (Fluent)', 'Marathi (Native)'],
-      rawText: `RAHUL SHARMA
-Senior Frontend Developer
-Email: rahul.sharma@example.com | Phone: +91 98234 56789 | Location: Pune, Maharashtra
-
-SUMMARY
-Frontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.
-
-EXPERIENCE
-Senior Frontend Developer — TechNova Solutions (2021 – Present)
-- Architected enterprise client portal in React & TypeScript.
-- Improved frontend load speed by 42% through code-splitting and asset optimization.
-- Led a team of 4 junior developers and established automated CI/CD unit testing with Jest.
-
-Frontend Engineer — Apex Software (2019 – 2021)
-- Developed responsive component libraries and REST API integrations.
-
-EDUCATION
-B.E. Computer Engineering, Pune Institute of Computer Technology (2015 – 2019)
-
-SKILLS
-React, TypeScript, Next.js, Tailwind CSS, Redux, Node.js, REST APIs, Git, Jest`,
+      languages: ['English', 'Hindi', 'Marathi'],
+      responsibilities: [],
+      achievements: [],
+      rawText: `RAHUL SHARMA\nSenior Frontend Developer\nEmail: rahul.sharma@example.com | Phone: +91 98234 56789 | Location: Pune, Maharashtra\n\nSUMMARY\nFrontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.\n\nEXPERIENCE\nSenior Frontend Developer — TechNova Solutions (2021 – Present)\n- Architected enterprise client portal in React & TypeScript.\n- Improved frontend load speed by 42% through code-splitting and asset optimization.\n\nEDUCATION\nBachelor of Engineering (B.E.), Pune Institute of Computer Technology (2015 – 2019)\n\nSKILLS\nReact, TypeScript, Next.js, Tailwind CSS, Redux, Node.js, REST APIs, Git, Jest`,
       parsingStatus: 'PARSED',
       parsingMetadata: {
         fileName: 'CV_Rahul_Sharma_Frontend.pdf',
         fileType: 'application/pdf',
         pageCount: 2,
-        extractionMethod: 'pdfplumber-python',
+        extractionMethod: 'pymupdf-layout',
         ocrUsed: false,
         characterCount: 980,
         wordCount: 145
       },
       fileName: 'CV_Rahul_Sharma_Frontend.pdf',
       fileSize: 184500,
+      fileHash: 'seeded-hash-rahul-sharma',
       uploadedAt: '2024-02-15T09:30:00.000Z'
-    },
-    {
-      id: 'cand-102',
-      jobId: 'jd-1',
-      name: 'Priya Patel',
-      email: 'priya.patel@techsolutions.io',
-      phone: '+91 97123 45678',
-      location: 'Pune, Maharashtra',
-      totalExperience: '4 years',
-      currentTitle: 'UI/UX & Frontend Engineer',
-      currentCompany: 'InnovateCraft Dynamics',
-      professionalSummary: 'Detail-oriented UI/UX & Frontend Engineer with 4 years of experience building accessible, responsive interfaces in React and Next.js.',
-      skills: ['React', 'JavaScript', 'HTML5', 'CSS3', 'Figma', 'Tailwind CSS', 'GraphQL', 'Vite'],
-      education: [
-        {
-          degree: 'Bachelor of Technology (B.Tech)',
-          field: 'Information Technology',
-          institution: 'College of Engineering Pune (COEP)',
-          year: '2020',
-          details: 'GPA 8.8/10'
-        }
-      ],
-      certifications: ['Certified User Experience Designer', 'React Advanced Patterns'],
-      experience: [
-        {
-          title: 'UI/UX & Frontend Engineer',
-          company: 'InnovateCraft Dynamics',
-          duration: '2.5 years',
-          startDate: '2021',
-          endDate: 'Present',
-          location: 'Pune, Maharashtra',
-          description: 'Designed user journey maps, high-fidelity prototypes, and implemented pixel-perfect responsive layouts.'
-        }
-      ],
-      projects: [
-        {
-          name: 'SaaS Analytics Workspace',
-          description: 'Engineered analytics visualization graphs and modular dark/light design themes.',
-          technologies: ['React', 'Next.js', 'Tailwind CSS', 'Figma']
-        }
-      ],
-      languages: ['English (Fluent)', 'Hindi (Fluent)', 'Gujarati (Native)'],
-      rawText: `PRIYA PATEL
-UI/UX & Frontend Engineer
-Email: priya.patel@techsolutions.io | Phone: +91 97123 45678 | Location: Pune, Maharashtra
-
-PROFESSIONAL SUMMARY
-Detail-oriented UI/UX & Frontend Engineer with 4 years of experience building accessible, responsive interfaces in React and Next.js.
-
-WORK HISTORY
-UI/UX & Frontend Engineer — InnovateCraft Dynamics (2021 - Present)
-- Engineered responsive interfaces adhering strictly to accessibility (WCAG 2.1) guidelines.
-- Converted Figma wireframes into reusable React UI components.
-
-Junior Frontend Developer — WebSprint Labs (2020 - 2021)
-- Built interactive marketing pages and single page apps using React and CSS Modules.
-
-TECHNICAL COMPETENCIES
-React, Next.js, JavaScript, TypeScript, HTML5, CSS3, Tailwind CSS, Figma, Git, GraphQL
-
-EDUCATION
-B.Tech in Information Technology — College of Engineering Pune (COEP), 2020`,
-      parsingStatus: 'PARSED',
-      parsingMetadata: {
-        fileName: 'CV_Priya_Patel_UI_Dev.docx',
-        fileType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        pageCount: 1,
-        extractionMethod: 'python-docx',
-        ocrUsed: false,
-        characterCount: 890,
-        wordCount: 130
-      },
-      fileName: 'CV_Priya_Patel_UI_Dev.docx',
-      fileSize: 94200,
-      uploadedAt: '2024-02-15T10:15:00.000Z'
-    },
-    {
-      id: 'cand-103',
-      jobId: 'jd-1',
-      name: 'Amit Kumar',
-      email: 'amit.kumar@devmail.com',
-      phone: '+91 91234 56780',
-      location: 'Bengaluru, Karnataka',
-      totalExperience: '3.5 years',
-      currentTitle: 'React Developer',
-      currentCompany: 'CloudScale Technologies',
-      professionalSummary: 'Frontend engineer specializing in component architecture, state management with Redux, and RESTful API integrations.',
-      skills: ['React', 'JavaScript', 'Redux', 'REST APIs', 'HTML/CSS', 'Webpack'],
-      education: [
-        {
-          degree: 'Bachelor of Science in Computer Science',
-          institution: 'Bangalore University',
-          year: '2020'
-        }
-      ],
-      certifications: ['Oracle Certified Associate, Java SE 8'],
-      experience: [
-        {
-          title: 'React Developer',
-          company: 'CloudScale Technologies',
-          duration: '3.5 years',
-          startDate: '2020',
-          endDate: 'Present',
-          location: 'Bengaluru'
-        }
-      ],
-      projects: [
-        {
-          name: 'Customer CRM Dashboard',
-          description: 'Developed lead management workflow tables and automated notifications.',
-          technologies: ['React', 'Redux', 'Bootstrap']
-        }
-      ],
-      languages: ['English', 'Hindi'],
-      rawText: `AMIT KUMAR
-React Developer
-amit.kumar@devmail.com | +91 91234 56780 | Bengaluru
-
-Summary:
-Frontend engineer specializing in component architecture, state management with Redux, and RESTful API integrations with 3.5 years experience.
-
-Experience:
-React Developer — CloudScale Technologies (2020 - Present)
-- Developed client-side web applications using React.
-- Built reusable state modules using Redux Toolkit.
-
-Education:
-B.Sc Computer Science — Bangalore University (2020)
-
-Skills:
-React, JavaScript, Redux, HTML5, CSS3, REST APIs, Git`,
-      parsingStatus: 'PARSED',
-      parsingMetadata: {
-        fileName: 'CV_Amit_Kumar_React.pdf',
-        fileType: 'application/pdf',
-        pageCount: 1,
-        extractionMethod: 'pdfplumber-python',
-        ocrUsed: false,
-        characterCount: 650,
-        wordCount: 95
-      },
-      fileName: 'CV_Amit_Kumar_React.pdf',
-      fileSize: 112000,
-      uploadedAt: '2024-02-15T11:00:00.000Z'
     }
   ]
 };
 
+// Initialize global store with defaults
+for (const [jobId, list] of Object.entries(DEFAULT_INITIAL_CANDIDATES)) {
+  CANDIDATE_STORE.set(jobId, [...list]);
+  for (const c of list) {
+    if (c.fileHash) GLOBAL_CANDIDATES.set(c.fileHash, c);
+    GLOBAL_CANDIDATES.set(c.id, c);
+  }
+}
+
 /**
- * Get all candidates for a specific Job
+ * Get all candidates associated with a specific Job
  * GET /api/jobs/:jobId/candidates
  */
 export const getCandidatesForJob = async (req: Request, res: Response): Promise<void> => {
   try {
     const jobId = String(req.params.jobId || '');
-
     if (!jobId) {
       res.status(400).json({ error: 'Job ID is required' });
       return;
     }
 
-    // Check store
-    let candidates = CANDIDATE_STORE.get(jobId);
+    // 1. Try fetching from Prisma DB if accessible
+    let dbCandidates: CandidateRecord[] = [];
+    try {
+      const apps = await prisma.candidateApplication.findMany({
+        where: { job_id: jobId },
+        include: {
+          candidate: {
+            include: {
+              experiences: true,
+              education: true,
+              skills: true,
+              certifications: true,
+              languages: true,
+              projects: true,
+            }
+          }
+        },
+        orderBy: { created_at: 'desc' }
+      });
 
-    if (!candidates) {
-      // If default candidates exist for this ID, seed them
-      if (DEFAULT_INITIAL_CANDIDATES[jobId]) {
-        candidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
-      } else if (jobId === 'default' || jobId === 'all') {
-        candidates = [...DEFAULT_INITIAL_CANDIDATES['jd-1']];
-      } else {
-        // Create an empty array for this new job
-        candidates = [];
+      if (apps.length > 0) {
+        dbCandidates = apps.map(app => {
+          const c = app.candidate;
+          return {
+            id: c.id,
+            jobId,
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+            location: c.location,
+            totalExperience: c.total_experience,
+            relevantExperience: c.total_experience,
+            currentTitle: c.current_title,
+            currentCompany: c.current_company,
+            summary: c.summary,
+            skills: c.skills.map(s => s.skill),
+            technologies: c.skills.map(s => s.skill),
+            tools: [],
+            industries: [],
+            education: c.education.map(e => ({
+              degree: e.degree,
+              institution: e.institution,
+              field: e.field,
+              year: e.start_year ? `${e.start_year}` : undefined,
+            })),
+            certifications: c.certifications.map(ct => ct.certification),
+            languages: c.languages.map(l => l.language),
+            experience: c.experiences.map(ex => ({
+              title: ex.title,
+              company: ex.company,
+              startDate: ex.start_date,
+              endDate: ex.end_date,
+              duration: ex.duration,
+              description: ex.description,
+            })),
+            responsibilities: [],
+            achievements: [],
+            projects: c.projects.map(p => ({
+              name: p.name,
+              description: p.description,
+              technologies: p.technologies,
+            })),
+            rawText: c.raw_text || '',
+            parsingStatus: (c.parsing_status as any) || 'PARSED',
+            parsingMetadata: {
+              fileName: c.resume_file_url || 'cv.pdf',
+              fileType: 'application/pdf',
+              pageCount: 1,
+              extractionMethod: 'prisma-db',
+              ocrUsed: false,
+              characterCount: (c.raw_text || '').length,
+              wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
+            },
+            fileName: c.resume_file_url || 'cv.pdf',
+            fileSize: 100000,
+            fileHash: c.file_hash || undefined,
+            uploadedAt: c.created_at.toISOString(),
+          };
+        });
       }
-      CANDIDATE_STORE.set(jobId, candidates);
+    } catch (dbErr) {
+      console.warn('[Candidates] Database query fallback to memory store:', dbErr);
     }
+
+    // 2. Check memory store
+    let memCandidates = CANDIDATE_STORE.get(jobId);
+    if (!memCandidates) {
+      if (DEFAULT_INITIAL_CANDIDATES[jobId]) {
+        memCandidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
+      } else if (jobId === 'default' || jobId === 'all') {
+        memCandidates = [...DEFAULT_INITIAL_CANDIDATES['jd-1']];
+      } else {
+        memCandidates = [];
+      }
+      CANDIDATE_STORE.set(jobId, memCandidates);
+    }
+
+    // Combine unique candidates (DB + Memory)
+    const combinedMap = new Map<string, CandidateRecord>();
+    for (const c of memCandidates) combinedMap.set(c.id, c);
+    for (const c of dbCandidates) combinedMap.set(c.id, c);
+
+    const resultList = Array.from(combinedMap.values());
 
     res.json({
       success: true,
       jobId,
-      total: candidates.length,
-      parsedCount: candidates.filter(c => c.parsingStatus === 'PARSED').length,
-      processingCount: candidates.filter(c => c.parsingStatus === 'PROCESSING' || c.parsingStatus === 'UPLOADED').length,
-      failedCount: candidates.filter(c => c.parsingStatus === 'FAILED').length,
-      candidates
+      total: resultList.length,
+      parsedCount: resultList.filter(c => c.parsingStatus === 'PARSED').length,
+      processingCount: resultList.filter(c => c.parsingStatus === 'PROCESSING' || c.parsingStatus === 'UPLOADED').length,
+      failedCount: resultList.filter(c => c.parsingStatus === 'FAILED').length,
+      candidates: resultList
     });
   } catch (error: any) {
     console.error('Error fetching candidates:', error);
@@ -292,26 +240,96 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
     const jobId = String(req.params.jobId || '');
     const candidateId = String(req.params.candidateId || '');
 
-    let candidates = CANDIDATE_STORE.get(jobId);
-    if (!candidates) {
-      if (DEFAULT_INITIAL_CANDIDATES[jobId]) {
-        candidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
-        CANDIDATE_STORE.set(jobId, candidates);
-      }
-    }
+    // Check memory store
+    const candidates = CANDIDATE_STORE.get(jobId);
+    const candidate = candidates?.find(c => c.id === candidateId) || GLOBAL_CANDIDATES.get(candidateId);
 
-    const candidate = candidates?.find(c => c.id === candidateId);
-
-    if (!candidate) {
-      res.status(404).json({ error: 'Candidate profile not found' });
+    if (candidate) {
+      res.json({
+        success: true,
+        jobId,
+        candidate
+      });
       return;
     }
 
-    res.json({
-      success: true,
-      jobId,
-      candidate
-    });
+    // Try DB
+    try {
+      const c = await prisma.candidate.findUnique({
+        where: { id: candidateId },
+        include: {
+          experiences: true,
+          education: true,
+          skills: true,
+          certifications: true,
+          languages: true,
+          projects: true,
+        }
+      });
+      if (c) {
+        const record: CandidateRecord = {
+          id: c.id,
+          jobId,
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          location: c.location,
+          totalExperience: c.total_experience,
+          relevantExperience: c.total_experience,
+          currentTitle: c.current_title,
+          currentCompany: c.current_company,
+          summary: c.summary,
+          skills: c.skills.map(s => s.skill),
+          technologies: c.skills.map(s => s.skill),
+          tools: [],
+          industries: [],
+          education: c.education.map(e => ({
+            degree: e.degree,
+            institution: e.institution,
+            field: e.field,
+            year: e.start_year ? `${e.start_year}` : undefined,
+          })),
+          certifications: c.certifications.map(ct => ct.certification),
+          languages: c.languages.map(l => l.language),
+          experience: c.experiences.map(ex => ({
+            title: ex.title,
+            company: ex.company,
+            startDate: ex.start_date,
+            endDate: ex.end_date,
+            duration: ex.duration,
+            description: ex.description,
+          })),
+          responsibilities: [],
+          achievements: [],
+          projects: c.projects.map(p => ({
+            name: p.name,
+            description: p.description,
+            technologies: p.technologies,
+          })),
+          rawText: c.raw_text || '',
+          parsingStatus: (c.parsing_status as any) || 'PARSED',
+          parsingMetadata: {
+            fileName: c.resume_file_url || 'cv.pdf',
+            fileType: 'application/pdf',
+            pageCount: 1,
+            extractionMethod: 'prisma-db',
+            ocrUsed: false,
+            characterCount: (c.raw_text || '').length,
+            wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
+          },
+          fileName: c.resume_file_url || 'cv.pdf',
+          fileSize: 100000,
+          fileHash: c.file_hash || undefined,
+          uploadedAt: c.created_at.toISOString(),
+        };
+        res.json({ success: true, jobId, candidate: record });
+        return;
+      }
+    } catch (e) {
+      console.warn('[Candidate Detail] DB lookup error:', e);
+    }
+
+    res.status(404).json({ error: 'Candidate profile not found' });
   } catch (error: any) {
     console.error('Error fetching candidate detail:', error);
     res.status(500).json({ error: 'Failed to retrieve candidate profile' });
@@ -350,10 +368,35 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       const fileName = file.originalname || 'uploaded_cv.pdf';
       const fileSize = file.size;
       const fileMime = file.mimetype || 'application/pdf';
+      const fileHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+
+      console.log(`\n=== [CV Processing] Starting processing for: ${fileName} (${fileSize} bytes, Hash: ${fileHash.substring(0, 10)}) ===`);
+
+      // ── DUPLICATE CANDIDATE CHECK ──────────────────────────────────────────
+      // Check if this CV was already parsed globally
+      const existingProfile = GLOBAL_CANDIDATES.get(fileHash);
+      if (existingProfile) {
+        console.log(`[CV Processing] Duplicate detected via file hash for: ${fileName}. Reusing candidate profile (ID: ${existingProfile.id}) for Job: ${jobId}`);
+        const linkedCandidate: CandidateRecord = {
+          ...existingProfile,
+          jobId,
+          isDuplicate: true,
+          uploadedAt: new Date().toISOString()
+        };
+
+        // Ensure linked to current job's store if not already present
+        if (!existingCandidates.some(c => c.id === linkedCandidate.id)) {
+          existingCandidates.unshift(linkedCandidate);
+        }
+        processedCandidates.push(linkedCandidate);
+        continue;
+      }
+
       const candidateId = `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
       try {
-        // 1. Extract text via Python FastAPI Document processor
+        // Step 1: Extract text via Python FastAPI Document processor
+        console.log(`[CV Processing Step 1] Calling Python document processor on port 8000 for ${fileName}...`);
         const pythonResult: PythonDocumentResponse = await extractDocumentTextViaPython(
           file.buffer,
           fileName,
@@ -361,74 +404,98 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         );
 
         let rawText = '';
-        let extractionMethod = (pythonResult as any).extractionMethod || 'direct-buffer';
-        let pageCount = (pythonResult as any).pageCount || 1;
-        let ocrUsed = (pythonResult as any).ocrUsed || false;
-        let charCount = (pythonResult as any).characterCount || 0;
-        let wordCount = (pythonResult as any).wordCount || 0;
+        let extractionMethod = pythonResult.extractionMethod || 'direct-text';
+        let pageCount = pythonResult.pageCount || 1;
+        let ocrUsed = pythonResult.ocrUsed || false;
+        let charCount = pythonResult.characterCount || 0;
+        let wordCount = pythonResult.wordCount || 0;
 
-        if (pythonResult.success && pythonResult.text && pythonResult.text.trim().length > 10) {
+        if (pythonResult.success && pythonResult.text && pythonResult.text.trim().length > 20) {
           rawText = pythonResult.normalizedText || pythonResult.text;
-        } else {
-          // Fallback text extraction if Python service returned empty or plain text buffer
-          const bufferText = file.buffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
-          if (bufferText.trim().length > 30) {
-            rawText = bufferText;
-            extractionMethod = 'fallback-buffer-decode';
-            charCount = rawText.length;
-            wordCount = rawText.split(/\s+/).filter(Boolean).length;
-          }
         }
 
-        if (!rawText || rawText.trim().length < 15) {
-          // Record as FAILED so recruiter can inspect & retry
-          const failedCandidate: CandidateRecord = {
+        // Step 2: Quality validation of raw extracted text
+        const textQuality = validateCvTextQuality(rawText);
+        console.log(`[CV Processing Step 2] Extracted ${rawText.length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
+        console.log(`[CV Processing Step 2 Preview] Text excerpt: "${rawText.substring(0, 150).replace(/\n/g, ' ')}..."`);
+
+        if (!rawText || !textQuality.isValid) {
+          console.warn(`[CV Processing FAILED] Rejected document ${fileName}: ${textQuality.reason || 'Insufficient text'}`);
+          const failedRecord: CandidateRecord = {
             id: candidateId,
             jobId,
-            name: fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' '),
-            email: '',
-            phone: '',
-            location: '',
-            totalExperience: '',
-            currentTitle: '',
-            currentCompany: '',
-            professionalSummary: '',
+            name: null,
+            email: null,
+            phone: null,
+            location: null,
+            currentTitle: null,
+            currentCompany: null,
+            totalExperience: null,
+            relevantExperience: null,
+            summary: null,
             skills: [],
+            technologies: [],
+            tools: [],
+            industries: [],
             education: [],
             certifications: [],
-            experience: [],
-            projects: [],
             languages: [],
-            rawText: pythonResult.text || '',
+            experience: [],
+            responsibilities: [],
+            achievements: [],
+            projects: [],
+            sourceEvidence: {},
+            rawText: rawText || '',
             parsingStatus: 'FAILED',
             parsingMetadata: {
               fileName,
               fileType: fileMime,
               pageCount: pageCount || 0,
-              extractionMethod: 'failed',
-              ocrUsed: false,
-              characterCount: 0,
-              wordCount: 0
+              extractionMethod: extractionMethod || 'failed',
+              ocrUsed: ocrUsed || false,
+              characterCount: rawText.length,
+              wordCount: wordCount || 0,
             },
-            errorMessage: pythonResult.error || 'Unable to extract legible text from file. Please ensure document is not password protected.',
+            debug: {
+              rawTextPreview: rawText.substring(0, 300),
+              extractionMethod: extractionMethod || 'failed',
+              ocrUsed,
+              characterCount: rawText.length,
+              wordCount,
+              parserInputPreview: rawText.substring(0, 200),
+              parsedCandidate: {},
+              validationErrors: [textQuality.reason || 'Unable to extract valid CV text from this document.'],
+            },
+            errorMessage: textQuality.reason || 'Unable to extract valid CV text from this document.',
             fileName,
             fileSize,
-            uploadedAt: new Date().toISOString()
+            fileHash,
+            uploadedAt: new Date().toISOString(),
           };
 
-          existingCandidates.unshift(failedCandidate);
-          processedCandidates.push(failedCandidate);
+          existingCandidates.unshift(failedRecord);
+          processedCandidates.push(failedRecord);
           continue;
         }
 
-        // 2. Extract structured candidate profile
+        // Step 3: Run strict evidence-based CV Parser
+        console.log(`[CV Processing Step 3] Running strict evidence extractor on ${fileName}...`);
         const structuredProfile = extractStructuredCandidateFromText(rawText, fileName, {
           fileType: fileMime,
           pageCount,
           extractionMethod,
           ocrUsed,
           characterCount: charCount || rawText.length,
-          wordCount: wordCount || rawText.split(/\s+/).filter(Boolean).length
+          wordCount: wordCount || rawText.split(/\s+/).filter(Boolean).length,
+        });
+
+        console.log(`[CV Processing Step 4] Structured Extraction Results for ${fileName}:`, {
+          name: structuredProfile.name,
+          email: structuredProfile.email,
+          phone: structuredProfile.phone,
+          currentTitle: structuredProfile.currentTitle,
+          currentCompany: structuredProfile.currentCompany,
+          skillsFound: structuredProfile.skills.length,
         });
 
         const newRecord: CandidateRecord = {
@@ -437,8 +504,52 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           ...structuredProfile,
           fileName,
           fileSize,
-          uploadedAt: new Date().toISOString()
+          fileHash,
+          uploadedAt: new Date().toISOString(),
         };
+
+        // Cache globally for duplicate detection across jobs
+        GLOBAL_CANDIDATES.set(fileHash, newRecord);
+        GLOBAL_CANDIDATES.set(candidateId, newRecord);
+
+        // Try persisting into Supabase PostgreSQL if database is ready
+        try {
+          const user = await prisma.user.findFirst();
+          if (user) {
+            const dbCand = await prisma.candidate.create({
+              data: {
+                id: candidateId.includes('-') && candidateId.length === 36 ? candidateId : undefined,
+                name: newRecord.name,
+                email: newRecord.email,
+                phone: newRecord.phone,
+                location: newRecord.location,
+                total_experience: newRecord.totalExperience,
+                current_title: newRecord.currentTitle,
+                current_company: newRecord.currentCompany,
+                summary: newRecord.summary,
+                resume_file_url: fileName,
+                raw_text: rawText,
+                file_hash: fileHash,
+                parsing_status: 'PARSED',
+                created_by: user.id,
+              }
+            });
+
+            // Create CandidateApplication join record linking candidate to job
+            const validJob = await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
+            if (validJob) {
+              await prisma.candidateApplication.create({
+                data: {
+                  job_id: validJob.id,
+                  candidate_id: dbCand.id,
+                  stage: 'PARSED',
+                }
+              }).catch((err) => console.warn('[Application Link Error]', err));
+            }
+          }
+        } catch (dbSaveErr) {
+          console.warn('[Candidate DB Save Info] Candidate saved to memory store:', dbSaveErr);
+        }
 
         existingCandidates.unshift(newRecord);
         processedCandidates.push(newRecord);
@@ -447,20 +558,27 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         const errRecord: CandidateRecord = {
           id: candidateId,
           jobId,
-          name: fileName.replace(/\.[^/.]+$/, ''),
-          email: '',
-          phone: '',
-          location: '',
-          totalExperience: '',
-          currentTitle: '',
-          currentCompany: '',
-          professionalSummary: '',
+          name: null,
+          email: null,
+          phone: null,
+          location: null,
+          currentTitle: null,
+          currentCompany: null,
+          totalExperience: null,
+          relevantExperience: null,
+          summary: null,
           skills: [],
+          technologies: [],
+          tools: [],
+          industries: [],
           education: [],
           certifications: [],
-          experience: [],
-          projects: [],
           languages: [],
+          experience: [],
+          responsibilities: [],
+          achievements: [],
+          projects: [],
+          sourceEvidence: {},
           rawText: '',
           parsingStatus: 'FAILED',
           parsingMetadata: {
@@ -470,12 +588,13 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             extractionMethod: 'error',
             ocrUsed: false,
             characterCount: 0,
-            wordCount: 0
+            wordCount: 0,
           },
           errorMessage: `Processing error: ${err.message || 'Unknown error'}`,
           fileName,
           fileSize,
-          uploadedAt: new Date().toISOString()
+          fileHash,
+          uploadedAt: new Date().toISOString(),
         };
 
         existingCandidates.unshift(errRecord);
@@ -519,31 +638,29 @@ export const retryCandidateParsing = async (req: Request, res: Response): Promis
       return;
     }
 
-    // Re-run heuristics or recovery text extraction
-    const rawFallbackText = candidate.rawText && candidate.rawText.length > 20
-      ? candidate.rawText
-      : `Candidate Profile for ${candidate.fileName}\nContact: candidate@email.com\nExperience: 3 years\nSkills: Frontend, React, JavaScript, HTML, CSS`;
+    if (!candidate.rawText || candidate.rawText.length < 20) {
+      res.status(400).json({ error: 'Candidate has no raw text available for retry.' });
+      return;
+    }
 
-    const recovered = extractStructuredCandidateFromText(rawFallbackText, candidate.fileName, {
+    const recovered = extractStructuredCandidateFromText(candidate.rawText, candidate.fileName, {
       fileType: candidate.parsingMetadata.fileType || 'application/pdf',
       pageCount: Math.max(1, candidate.parsingMetadata.pageCount || 1),
       extractionMethod: 'retry-recovered',
       ocrUsed: true,
-      characterCount: rawFallbackText.length,
-      wordCount: rawFallbackText.split(/\s+/).filter(Boolean).length
+      characterCount: candidate.rawText.length,
+      wordCount: candidate.rawText.split(/\s+/).filter(Boolean).length,
     });
 
-    // Update candidate in-place
     Object.assign(candidate, {
       ...recovered,
-      parsingStatus: 'PARSED',
-      errorMessage: undefined
+      errorMessage: undefined,
     });
 
     res.json({
       success: true,
       jobId,
-      candidate
+      candidate,
     });
   } catch (error: any) {
     console.error('Error retrying candidate:', error);

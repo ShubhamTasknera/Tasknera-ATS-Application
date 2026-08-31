@@ -36,9 +36,10 @@ model Job {
   created_at            DateTime    @default(now()) @map("created_at")
   updated_at            DateTime    @updatedAt @map("updated_at")
 
-  user         User          @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  user         User                   @relation(fields: [created_by], references: [id], onDelete: Cascade)
   requirements Requirement[]
   candidates   Candidate[]
+  applications CandidateApplication[]
 
   @@index([created_by], map: "idx_jobs_created_by")
   @@index([status], map: "idx_jobs_status")
@@ -74,27 +75,28 @@ enum ParsingStatus {
 }
 
 model Candidate {
-  id               String        @id @default(uuid()) @db.Uuid
-  job_id           String        @map("job_id") @db.Uuid
+  id               String                 @id @default(uuid()) @db.Uuid
+  job_id           String?                @map("job_id") @db.Uuid
   name             String?
   email            String?
   phone            String?
   location         String?
-  total_experience String?       @map("total_experience")
-  current_title    String?       @map("current_title")
-  current_company  String?       @map("current_company")
+  total_experience String?                @map("total_experience")
+  current_title    String?                @map("current_title")
+  current_company  String?                @map("current_company")
   summary          String?
-  resume_file_url  String?       @map("resume_file_url")
-  raw_text         String?       @map("raw_text")
-  file_hash        String?       @map("file_hash")
-  parsing_status   ParsingStatus @default(UPLOADED) @map("parsing_status")
-  error_message    String?       @map("error_message")
-  created_by       String        @map("created_by") @db.Uuid
-  created_at       DateTime      @default(now()) @map("created_at")
-  updated_at       DateTime      @updatedAt @map("updated_at")
+  resume_file_url  String?                @map("resume_file_url")
+  raw_text         String?                @map("raw_text")
+  file_hash        String?                @map("file_hash")
+  parsing_status   ParsingStatus          @default(UPLOADED) @map("parsing_status")
+  error_message    String?                @map("error_message")
+  created_by       String                 @map("created_by") @db.Uuid
+  created_at       DateTime               @default(now()) @map("created_at")
+  updated_at       DateTime               @updatedAt @map("updated_at")
 
-  job            Job                      @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  job            Job?                     @relation(fields: [job_id], references: [id], onDelete: Cascade)
   user           User                     @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  applications   CandidateApplication[]
   experiences    CandidateExperience[]
   education      CandidateEducation[]
   skills         CandidateSkill[]
@@ -106,6 +108,25 @@ model Candidate {
   @@index([created_by], map: "idx_candidates_created_by")
   @@index([file_hash], map: "idx_candidates_file_hash")
   @@map("candidates")
+}
+
+model CandidateApplication {
+  id           String    @id @default(uuid()) @db.Uuid
+  job_id       String    @map("job_id") @db.Uuid
+  candidate_id String    @map("candidate_id") @db.Uuid
+  stage        String    @default("SOURCED")
+  match_score  Float?    @map("match_score")
+  status       String    @default("active")
+  created_at   DateTime  @default(now()) @map("created_at")
+  updated_at   DateTime  @updatedAt @map("updated_at")
+
+  job       Job       @relation(fields: [job_id], references: [id], onDelete: Cascade)
+  candidate Candidate @relation(fields: [candidate_id], references: [id], onDelete: Cascade)
+
+  @@unique([job_id, candidate_id], map: "uniq_job_candidate")
+  @@index([job_id], map: "idx_app_job_id")
+  @@index([candidate_id], map: "idx_app_candidate_id")
+  @@map("candidate_applications")
 }
 
 model CandidateExperience {
