@@ -505,7 +505,7 @@ export default function RequirementsReviewPage() {
                         : 'bg-brand-orange-pale text-brand-orange border-brand-orange-border'
                     }`}
                   >
-                    {newIsMandatory ? '✓ Mandatory' : '+ Preferred'}
+                    {newIsMandatory ? 'Mandatory' : 'Preferred'}
                   </button>
                 </div>
 
@@ -561,7 +561,7 @@ export default function RequirementsReviewPage() {
               onClick={() => setShowAddForm(true)}
               className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange cursor-pointer"
             >
-              + Manually Add Requirement
+              Manually Add Requirement
             </button>
           </div>
         )}
@@ -744,7 +744,7 @@ function RequirementCard({
                 : 'bg-brand-orange-pale text-brand-orange border-brand-orange-border hover:bg-brand-orange/10'
             }`}
           >
-            {item.isMandatory ? '✓ Mandatory' : '+ Preferred'}
+            {item.isMandatory ? 'Mandatory' : 'Preferred'}
           </button>
 
           {/* Unclear Classification Flag */}

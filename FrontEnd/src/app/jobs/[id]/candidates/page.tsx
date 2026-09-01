@@ -146,12 +146,12 @@ const parseMonthsFromText = (text?: string | null): number => {
   }
 
   // Pattern 2: Date range like "Apr 2025 – Nov 2025" or "2021 – 2023"
-  const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current)\b/i;
+  const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current|Now|Ongoing)\b/i;
   const match = t.match(dateRangePattern);
   if (match) {
     const parseYM = (str: string) => {
       const s = str.trim().toLowerCase();
-      if (s === 'present' || s === 'current' || s === 'now') {
+      if (s === 'present' || s === 'current' || s === 'now' || s === 'till date' || s === 'ongoing') {
         const d = new Date();
         return { y: d.getFullYear(), m: d.getMonth() };
       }
@@ -223,6 +223,126 @@ const parseDateToYMClient = (str: string) => {
   return null;
 };
 
+// ── Company Breakdown Helper (Extracts unique companies & counts) ─────────────
+const getCompanyBreakdown = (cand: CandidateRecord) => {
+  const experiences = cand.experience || [];
+  const rawCompanies = new Set<string>();
+  
+  for (const exp of experiences) {
+    if (exp.company && exp.company.trim() && exp.company.trim().toLowerCase() !== 'company') {
+      rawCompanies.add(exp.company.trim());
+    }
+  }
+
+  if (rawCompanies.size === 0 && cand.currentCompany && cand.currentCompany.trim() && cand.currentCompany.trim().toLowerCase() !== 'company') {
+    rawCompanies.add(cand.currentCompany.trim());
+  }
+
+  const count = rawCompanies.size || (experiences.length > 0 ? experiences.length : 1);
+  const companyList = Array.from(rawCompanies);
+  const bracketLabel = `(${count} ${count === 1 ? 'Company' : 'Companies'})`;
+  const countNumberOnly = `(${count})`;
+
+  return {
+    count,
+    companyList,
+    bracketLabel,
+    countNumberOnly,
+    hasMultipleCompanies: count > 1,
+  };
+};
+
+// ── Timeline with Gaps Between Companies Helper ───────────────────────────────
+interface TimelineItem {
+  type: 'COMPANY' | 'GAP';
+  company?: CandidateExperience;
+  companyIndex?: number;
+  gap?: {
+    gapMonths: number;
+    gapLabel: string;
+    fromCompany: string;
+    toCompany: string;
+    startDate: string;
+    endDate: string;
+  };
+}
+
+const getTimelineWithGaps = (cand: CandidateRecord): TimelineItem[] => {
+  const exps = [...(cand.experience || [])];
+  if (exps.length === 0) {
+    if (cand.currentTitle || cand.currentCompany) {
+      return [{
+        type: 'COMPANY',
+        company: {
+          title: cand.currentTitle || 'Professional Role',
+          company: cand.currentCompany || 'Organization',
+          duration: cand.totalExperience || 'Current Role',
+          description: cand.summary || cand.professionalSummary || 'Primary professional experience profile extracted from resume.',
+        },
+        companyIndex: 1,
+      }];
+    }
+    return [];
+  }
+
+  // Parse dated experiences
+  const dated = exps.map(exp => {
+    const s = exp.startDate ? parseDateToYMClient(exp.startDate) : null;
+    const e = exp.endDate ? parseDateToYMClient(exp.endDate) : (exp.startDate ? parseDateToYMClient('Present') : null);
+    return { exp, start: s, end: e };
+  });
+
+  // Sort newest first (reverse chronological order)
+  dated.sort((a, b) => {
+    const aVal = a.start ? a.start.y * 12 + a.start.m : 0;
+    const bVal = b.start ? b.start.y * 12 + b.start.m : 0;
+    return bVal - aVal;
+  });
+
+  const timelineItems: TimelineItem[] = [];
+  let compCounter = 1;
+
+  for (let i = 0; i < dated.length; i++) {
+    const current = dated[i];
+    timelineItems.push({
+      type: 'COMPANY',
+      company: current.exp,
+      companyIndex: compCounter++,
+    });
+
+    // Check if there is an older job following this one (since sorted newest to oldest)
+    if (i < dated.length - 1) {
+      const nextOlder = dated[i + 1];
+      if (current.start && nextOlder.end) {
+        const newerJobStartMonths = current.start.y * 12 + current.start.m;
+        const olderJobEndMonths = nextOlder.end.y * 12 + nextOlder.end.m;
+        const gap = newerJobStartMonths - olderJobEndMonths;
+
+        if (gap >= 2) {
+          const gapYears = (gap / 12).toFixed(1);
+          const gapText = gap >= 12
+            ? `${gapYears} yrs (${gap} mos)`
+            : `${gap} mos`;
+
+          timelineItems.push({
+            type: 'GAP',
+            gap: {
+              gapMonths: gap,
+              gapLabel: `${gapText} Career Gap`,
+              fromCompany: nextOlder.exp.company || 'Previous Organization',
+              toCompany: current.exp.company || 'Subsequent Organization',
+              startDate: nextOlder.exp.endDate || `${nextOlder.end.y}`,
+              endDate: current.exp.startDate || `${current.start.y}`,
+            }
+          });
+        }
+      }
+    }
+  }
+
+  return timelineItems;
+};
+
 const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => {
   if (cand.gapAnalysis && cand.gapAnalysis.statusText) {
     return cand.gapAnalysis;
@@ -233,7 +353,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified (Continuous employment)'
+      statusText: 'Continuous Employment (No Career Gaps Detected)'
     };
   }
 
@@ -251,7 +371,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous Employment'
     };
   }
 
@@ -267,7 +387,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
     const nextStart = next.start.y * 12 + next.start.m;
     const diff = nextStart - prevEnd;
 
-    if (diff >= 3) {
+    if (diff >= 2) {
       const gapYears = (diff / 12).toFixed(1);
       const gapLabel = diff >= 12
         ? `${gapYears} yrs (${diff} mos) gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`
@@ -290,7 +410,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous Employment (No Career Gaps Detected)'
     };
   }
 
@@ -323,13 +443,13 @@ const getEffectiveSkills = (cand: CandidateRecord): string[] => {
 
 const avatarColor = (name: string) => {
   const colors = [
-    'bg-brand-orange-pale text-brand-orange',
-    'bg-blue-50 text-blue-600',
-    'bg-emerald-50 text-emerald-600',
-    'bg-purple-50 text-purple-600',
-    'bg-amber-50 text-amber-600',
-    'bg-rose-50 text-rose-600',
-    'bg-teal-50 text-teal-600',
+    'bg-brand-orange-pale text-brand-orange border-brand-orange-border',
+    'bg-blue-50 text-blue-600 border-blue-200',
+    'bg-emerald-50 text-emerald-600 border-emerald-200',
+    'bg-purple-50 text-purple-600 border-purple-200',
+    'bg-amber-50 text-amber-600 border-amber-200',
+    'bg-rose-50 text-rose-600 border-rose-200',
+    'bg-teal-50 text-teal-600 border-teal-200',
   ];
   return colors[Math.abs(name.charCodeAt(0) || 0) % colors.length];
 };
@@ -365,6 +485,22 @@ const statusBadge = (status: string) => {
   }
 };
 
+/**
+ * Deep text sanitizer to remove unprintable unicode box glyphs (e.g. 􀀀, □, ),
+ * null characters, and normalize bullets into clean readable text arrays.
+ */
+const sanitizeBulletText = (text: string): string[] => {
+  if (!text) return [];
+  const clean = text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uE000-\uF8FF\uFFF0-\uFFFF\uFFFD\uF0B7\uF0A7\uF000-\uF0FF]/g, '')
+    .replace(/[􀀀□■▫▪◇◆⯀⯁\u25A0\u25A1\u25AA\u25AB\u25CF\u25CB\u25E6\u25BA]/g, '');
+
+  return clean
+    .split('\n')
+    .map(line => line.replace(/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/, '').trim())
+    .filter(line => line.length > 2);
+};
+
 export default function JobCandidatesPage() {
   const params = useParams();
   const router = useRouter();
@@ -389,6 +525,7 @@ export default function JobCandidatesPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidateRecord | null>(null);
   const [showRawText, setShowRawText] = useState(false);
   const [copiedRawText, setCopiedRawText] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -493,14 +630,12 @@ export default function JobCandidatesPage() {
     });
 
     try {
-      // Step 1: Advance UI queue to UPLOADING -> PROCESSING
       setUploadQueue(prev =>
         prev.map(q =>
           items.some(it => it.id === q.id) ? { ...q, status: 'UPLOADING', progress: 45 } : q
         )
       );
 
-      // Step 2: Call backend POST /api/jobs/:jobId/candidates/upload
       const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
         method: 'POST',
         body: formData,
@@ -513,7 +648,6 @@ export default function JobCandidatesPage() {
 
       const result = await res.json();
 
-      // Step 3: Mark uploaded items as PARSED / FAILED in queue
       setUploadQueue(prev =>
         prev.map(q => {
           const matchedCandidate = result.candidates?.find(
@@ -532,7 +666,6 @@ export default function JobCandidatesPage() {
         })
       );
 
-      // Step 4: Refresh candidate list
       if (result.allCandidates) {
         setCandidates(result.allCandidates);
       } else {
@@ -574,6 +707,46 @@ export default function JobCandidatesPage() {
     } catch (err) {
       console.error('Error retrying candidate:', err);
       alert('Network error while attempting retry.');
+    }
+  };
+
+  // ── Delete Candidate Handlers ─────────────────────────────────────────────
+  const handleDeleteCandidate = async (candidateId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this candidate profile?')) return;
+    try {
+      const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/${candidateId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setCandidates(prev => prev.filter(c => c.id !== candidateId));
+        if (selectedCandidate?.id === candidateId) {
+          setSelectedCandidate(null);
+        }
+      } else {
+        alert('Could not delete candidate profile from server.');
+      }
+    } catch (err) {
+      console.error('Failed to delete candidate:', err);
+      alert('Network error while deleting candidate.');
+    }
+  };
+
+  const handleClearAllCandidates = async () => {
+    if (!confirm('Are you sure you want to delete all uploaded candidate CVs for this job?')) return;
+    try {
+      const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setCandidates([]);
+        setSelectedCandidate(null);
+      } else {
+        alert('Could not clear candidate pipeline.');
+      }
+    } catch (err) {
+      console.error('Failed to clear candidates:', err);
+      alert('Network error while clearing candidates.');
     }
   };
 
@@ -630,13 +803,13 @@ export default function JobCandidatesPage() {
         </div>
 
         {/* ── JOB PROFILE BANNER ── */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 mb-8 shadow-sm">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 mb-8 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange">
                   <span className="w-2 h-2 rounded-full bg-brand-orange" />
-                  Active Job Context
+                  Active Job Pipeline
                 </span>
                 <span className="inline-flex px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
                   {job?.requirementsCount || 8} Confirmed Requirements
@@ -646,11 +819,11 @@ export default function JobCandidatesPage() {
                 {job?.position || 'Frontend Developer'}
               </h1>
               <p className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-2 flex-wrap">
-                <span className="text-slate-800 font-bold">{job?.client || 'TechNova Solutions'}</span>
+                <span className="text-slate-900 font-bold">{job?.client || 'TechNova Solutions'}</span>
                 <span>•</span>
                 <span>{job?.location || 'Pune, Maharashtra'}</span>
                 <span>•</span>
-                <span>{job?.work_mode || 'Hybrid'}</span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-bold">{job?.work_mode || 'Hybrid'}</span>
               </p>
             </div>
 
@@ -668,28 +841,30 @@ export default function JobCandidatesPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                 </svg>
-                {showUploadZone ? 'Hide Upload Zone' : '+ Upload CVs'}
+                {showUploadZone ? 'Hide Upload Zone' : 'Bulk Upload CVs'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* ── STATS SUMMARY CARDS (NO MATCH SCORE, NO RANKING) ── */}
+        {/* ── STATS SUMMARY CARDS ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'CVs Uploaded', value: candidates.length, color: 'text-[#1E293B]', bg: 'bg-brand-orange-pale text-brand-orange', border: 'border-slate-200' },
-            { label: 'Parsed Successfully', value: parsedCount, color: 'text-emerald-600', bg: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-200' },
-            { label: 'Processing Queue', value: processingCount, color: 'text-amber-600', bg: 'bg-amber-50 text-amber-600', border: 'border-amber-200' },
-            { label: 'Parsing Failed', value: failedCount, color: 'text-rose-600', bg: 'bg-rose-50 text-rose-600', border: 'border-rose-200' },
+            { label: 'CVs Uploaded', value: candidates.length, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+            { label: 'Parsed Successfully', value: parsedCount, color: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M5 13l4 4L19 7' },
+            { label: 'Processing Queue', value: processingCount, color: 'text-amber-700', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Parsing Failed', value: failedCount, color: 'text-rose-700', badge: 'bg-rose-50 text-rose-700 border-rose-200', icon: 'M6 18L18 6M6 6l12 12' },
           ].map((st, i) => (
-            <div key={i} className={`bg-white border ${st.border} rounded-2xl p-5 shadow-sm card-hover-lift`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{st.label}</span>
-                <span className={`w-7 h-7 rounded-xl ${st.bg} flex items-center justify-center font-extrabold text-xs`}>
-                  {i === 0 ? '∑' : i === 1 ? '✓' : i === 2 ? '⏳' : '×'}
+            <div key={i} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-all hover:shadow-sm hover:border-slate-300">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{st.label}</span>
+                <span className={`w-7 h-7 rounded-xl border ${st.badge} flex items-center justify-center flex-shrink-0 shadow-2xs`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={st.icon} />
+                  </svg>
                 </span>
               </div>
-              <div className={`text-2xl font-extrabold ${st.color}`}>{st.value}</div>
+              <div className={`text-2xl font-black ${st.color} tracking-tight`}>{st.value}</div>
             </div>
           ))}
         </div>
@@ -701,7 +876,7 @@ export default function JobCandidatesPage() {
               <div>
                 <h2 className="text-base font-bold text-[#1E293B]">Bulk Candidate CV Upload</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Upload multiple resumes for <strong className="text-slate-800">{job?.position}</strong>. Resumes will be extracted deterministically without hallucinations.
+                  Upload multiple resumes for <strong className="text-slate-800">{job?.position}</strong>. Resumes will be extracted deterministically with career gap analysis and structured work history.
                 </p>
               </div>
               <button
@@ -739,14 +914,14 @@ export default function JobCandidatesPage() {
               </div>
 
               <h3 className="text-base font-bold text-[#1E293B] mb-1">Drag & Drop Multiple CVs Here</h3>
-              <p className="text-xs text-slate-500 mb-4">or click to browse from your device</p>
+              <p className="text-xs text-slate-500 mb-4">or click to browse from your computer</p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-600">
                 <span>PDF</span>
                 <span>•</span>
                 <span>DOCX</span>
                 <span>•</span>
                 <span>TXT</span>
-                <span>(Max 15MB each)</span>
+                <span>(Max 15MB per file)</span>
               </div>
             </div>
 
@@ -832,54 +1007,78 @@ export default function JobCandidatesPage() {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search candidate name, role, skills, or email..."
+              placeholder="Search candidate name, company, role, or tech skills..."
               className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-colors"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto">
-            {(['ALL', 'PARSED', 'PROCESSING', 'FAILED'] as const).map(f => (
+          <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto justify-between md:justify-end">
+            <div className="flex items-center gap-1.5">
+              {(['ALL', 'PARSED', 'PROCESSING', 'FAILED'] as const).map(f => {
+                const count = f === 'ALL' ? candidates.length : f === 'PARSED' ? parsedCount : f === 'PROCESSING' ? processingCount : failedCount;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setStatusFilter(f)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      statusFilter === f
+                        ? 'bg-brand-orange text-white shadow-orange'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    <span>{f}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${statusFilter === f ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {candidates.length > 0 && (
               <button
-                key={f}
-                onClick={() => setStatusFilter(f)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  statusFilter === f
-                    ? 'bg-brand-orange text-white shadow-orange'
-                    : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200/70'
-                }`}
+                onClick={handleClearAllCandidates}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 rounded-xl text-xs font-bold transition-all cursor-pointer flex-shrink-0"
+                title="Delete all uploaded candidate files"
               >
-                {f}
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Clear All</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* ── CANDIDATES TABLE / LIST ── */}
+        {/* ── CANDIDATES TABLE / DIRECTORY ── */}
         {filteredCandidates.length > 0 ? (
           <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-4">Candidate</th>
+                    <th className="px-6 py-4">Candidate Profile</th>
                     <th className="px-4 py-4 hidden md:table-cell">Contact</th>
-                    <th className="px-4 py-4">Experience</th>
-                    <th className="px-4 py-4 hidden lg:table-cell">Current Position & Company</th>
+                    <th className="px-4 py-4">Experience & Companies</th>
+                    <th className="px-4 py-4 hidden lg:table-cell">Current Position & Organization</th>
                     <th className="px-4 py-4 text-center">Parsing Status</th>
                     <th className="px-4 py-4 hidden sm:table-cell">Source CV</th>
-                    <th className="px-4 py-4 hidden xl:table-cell">Uploaded Date</th>
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {filteredCandidates.map(c => {
                     const badge = statusBadge(c.parsingStatus);
+                    const expInfo = getNumericExperienceDetails(c);
+                    const compInfo = getCompanyBreakdown(c);
+                    const gapInfo = getCandidateCareerGaps(c);
+
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/80 transition-colors group">
                         {/* Candidate Name & Avatar */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-xl font-extrabold text-sm flex items-center justify-center flex-shrink-0 ${avatarColor(c.name)} shadow-xs`}>
+                            <div className={`w-10 h-10 rounded-xl font-extrabold text-sm flex items-center justify-center flex-shrink-0 border ${avatarColor(c.name)} shadow-xs`}>
                               {c.name.charAt(0)}
                             </div>
                             <div>
@@ -888,9 +1087,14 @@ export default function JobCandidatesPage() {
                                   setSelectedCandidate(c);
                                   setShowRawText(false);
                                 }}
-                                className="font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors text-left cursor-pointer"
+                                className="font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors text-left cursor-pointer flex items-center gap-1.5"
                               >
-                                {c.name}
+                                <span>{c.name}</span>
+                                {gapInfo.hasGap && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded font-bold" title={gapInfo.statusText}>
+                                    ⚠️ Gap
+                                  </span>
+                                )}
                               </button>
                               <div className="text-xs text-slate-500 truncate max-w-[180px]">{c.location || 'Location not specified'}</div>
                             </div>
@@ -903,29 +1107,29 @@ export default function JobCandidatesPage() {
                           <div className="text-slate-400">{c.phone || '—'}</div>
                         </td>
 
-                        {/* Experience */}
+                        {/* Experience & Number of Companies in Brackets */}
                         <td className="px-4 py-4 text-xs font-bold text-slate-800">
-                          {(() => {
-                            const expInfo = getNumericExperienceDetails(c);
-                            return (
-                              <div className="flex flex-col items-start gap-1">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-xs">
-                                  {expInfo.badgeText}
-                                </span>
-                                {expInfo.months > 0 && (
-                                  <span className="text-[10px] text-slate-400 font-medium">
-                                    {expInfo.subText} total
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
+                          <div className="flex flex-col items-start gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-xs">
+                                {expInfo.badgeText}
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-blue-50 text-blue-800 border border-blue-200">
+                                {compInfo.bracketLabel}
+                              </span>
+                            </div>
+                            {expInfo.months > 0 && (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {expInfo.subText} total tenure
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Current Title & Company */}
                         <td className="px-4 py-4 hidden lg:table-cell text-xs">
                           <div className="font-semibold text-slate-800">{c.currentTitle || '—'}</div>
-                          <div className="text-slate-500">{c.currentCompany || '—'}</div>
+                          <div className="text-brand-orange font-medium">{c.currentCompany || '—'}</div>
                         </td>
 
                         {/* Parsing Status */}
@@ -940,11 +1144,6 @@ export default function JobCandidatesPage() {
                         <td className="px-4 py-4 hidden sm:table-cell text-xs text-slate-600">
                           <div className="font-medium truncate max-w-[160px]">{c.fileName}</div>
                           <div className="text-[10px] text-slate-400">{formatBytes(c.fileSize)}</div>
-                        </td>
-
-                        {/* Uploaded Date */}
-                        <td className="px-4 py-4 hidden xl:table-cell text-xs text-slate-500">
-                          {formatDate(c.uploadedAt)}
                         </td>
 
                         {/* Actions */}
@@ -963,9 +1162,21 @@ export default function JobCandidatesPage() {
                                 setSelectedCandidate(c);
                                 setShowRawText(false);
                               }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 cursor-pointer"
                             >
-                              View Profile →
+                              <span>View Profile</span>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteCandidate(c.id, e)}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-transparent hover:border-rose-200 transition-all cursor-pointer"
+                              title="Delete candidate CV"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
                             </button>
                           </div>
                         </td>
@@ -990,7 +1201,7 @@ export default function JobCandidatesPage() {
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
               {searchQuery
                 ? 'Try adjusting your search keywords or clear the active status filter.'
-                : 'Upload resumes (PDF, DOCX, TXT) to automatically extract candidate profiles and build your talent pool for this job.'}
+                : 'Upload resumes (PDF, DOCX, TXT) to automatically extract candidate profiles, career timelines, and build your candidate pipeline.'}
             </p>
             {!searchQuery && (
               <button
@@ -1000,164 +1211,207 @@ export default function JobCandidatesPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                 </svg>
-                Upload CVs
+                Upload Candidate CVs
               </button>
             )}
           </div>
         )}
 
-        {/* ── CANDIDATE PROFILE & RAW CV DETAILS DRAWER / MODAL ── */}
+        {/* ── CANDIDATE PROFILE MODAL / SLIDEOUT DRAWER ── */}
         {selectedCandidate && (
-          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex justify-end animate-fadeIn">
-            <div className="w-full max-w-2xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col justify-between">
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex justify-end animate-fadeIn">
+            <div className="w-full max-w-3xl bg-white h-screen max-h-screen overflow-y-auto shadow-2xl flex flex-col justify-between border-l border-slate-200/80 animate-slideLeft">
               <div>
-                {/* Modal Header */}
-                <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-[#F8FAFC]">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-14 h-14 rounded-2xl font-extrabold text-xl flex items-center justify-center ${avatarColor(selectedCandidate.name)} shadow-xs`}>
-                      {selectedCandidate.name.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-extrabold text-[#1E293B]">{selectedCandidate.name}</h2>
-                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold border ${statusBadge(selectedCandidate.parsingStatus).bg}`}>
-                          {selectedCandidate.parsingStatus}
-                        </span>
+                {/* ── Modal Header ── */}
+                <div className="p-6 border-b border-slate-200/80 bg-white sticky top-0 z-30 shadow-xs">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={`w-14 h-14 rounded-2xl font-black text-xl flex items-center justify-center flex-shrink-0 border ${avatarColor(selectedCandidate.name)} shadow-xs`}>
+                        {selectedCandidate.name.charAt(0)}
                       </div>
-                      <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                        {selectedCandidate.currentTitle} • {selectedCandidate.currentCompany}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h2 className="text-xl font-black text-slate-900 tracking-tight truncate">{selectedCandidate.name}</h2>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${statusBadge(selectedCandidate.parsingStatus).bg}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge(selectedCandidate.parsingStatus).dot}`} />
+                            {selectedCandidate.parsingStatus === 'PARSED' ? 'Profile Verified' : selectedCandidate.parsingStatus}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 font-semibold mt-1 truncate">
+                          {selectedCandidate.currentTitle || 'Applicant'} • <span className="text-slate-900 font-bold">{selectedCandidate.currentCompany || 'Organization'}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${selectedCandidate.name} | ${selectedCandidate.email} | ${selectedCandidate.phone}`);
+                          setCopiedEmail(true);
+                          setTimeout(() => setCopiedEmail(false), 2000);
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        title="Copy contact details"
+                      >
+                        {copiedEmail ? '✓ Copied' : 'Copy Contact'}
+                      </button>
+                      <button
+                        onClick={() => setSelectedCandidate(null)}
+                        className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedCandidate(null)}
-                    className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm cursor-pointer shadow-xs"
-                  >
-                    ✕
-                  </button>
+
+                  {/* Contact Info Pills */}
+                  <div className="flex items-center gap-4 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex-wrap">
+                    {selectedCandidate.email && (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-slate-700 font-semibold">{selectedCandidate.email}</span>
+                      </span>
+                    )}
+                    {selectedCandidate.phone && (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <span className="text-slate-700 font-semibold">{selectedCandidate.phone}</span>
+                      </span>
+                    )}
+                    {selectedCandidate.location && (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-slate-700 font-semibold">{selectedCandidate.location}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Candidate Overview Bar */}
-                <div className="grid grid-cols-3 gap-2 p-6 border-b border-slate-100 bg-white">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Total Experience</span>
-                    {(() => {
-                      const expInfo = getNumericExperienceDetails(selectedCandidate);
-                      return (
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100/80 text-amber-900 border border-amber-300">
+                {/* ── Candidate KPI Stat Cards ── */}
+                {(() => {
+                  const expInfo = getNumericExperienceDetails(selectedCandidate);
+                  const compInfo = getCompanyBreakdown(selectedCandidate);
+                  const gapInfo = getCandidateCareerGaps(selectedCandidate);
+
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 p-6 bg-slate-50/70 border-b border-slate-200/80">
+                      {/* Stat 1: Total Experience */}
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Total Experience</span>
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="text-base font-black text-slate-900">
                             {expInfo.badgeText}
                           </span>
                           {expInfo.months > 0 && (
-                            <span className="text-xs font-bold text-slate-700">
+                            <span className="text-[11px] font-semibold text-slate-500">
                               ({expInfo.subText})
                             </span>
                           )}
                         </div>
-                      );
-                    })()}
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Email</span>
-                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{selectedCandidate.email || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Location</span>
-                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{selectedCandidate.location || '—'}</p>
-                  </div>
-                </div>
+                      </div>
 
-                {/* Tab Switcher: Structured Profile vs Raw CV Text */}
-                <div className="px-6 pt-4 flex items-center gap-3 border-b border-slate-100">
+                      {/* Stat 2: Number of Companies in Brackets */}
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Organizations</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base font-black text-slate-900">
+                            {compInfo.count}
+                          </span>
+                          <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-lg">
+                            {compInfo.bracketLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Stat 3: Career Gap Status */}
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Career Continuity</span>
+                        <div>
+                          {gapInfo.hasGap ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                              <span>⚠️</span>
+                              <span>{gapInfo.totalGapMonths} mos Gap</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                              <span>✓</span>
+                              <span>Continuous</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stat 4: Location */}
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Location</span>
+                        <p className="text-xs font-bold text-slate-800 truncate" title={selectedCandidate.location || 'Not Specified'}>
+                          {selectedCandidate.location || 'Remote / Unspecified'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── Segmented Tab Switcher ── */}
+                <div className="px-6 pt-4 flex items-center gap-2 border-b border-slate-200/80 bg-white">
                   <button
                     onClick={() => setShowRawText(false)}
-                    className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                      !showRawText ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
+                    className={`px-4 py-2.5 text-xs font-bold transition-all rounded-t-xl cursor-pointer border-b-2 ${
+                      !showRawText
+                        ? 'text-brand-orange border-brand-orange bg-brand-orange-pale/20'
+                        : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
                     Structured Profile
-                    {!showRawText && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
                   </button>
                   <button
                     onClick={() => setShowRawText(true)}
-                    className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                      showRawText ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
+                    className={`px-4 py-2.5 text-xs font-bold transition-all rounded-t-xl cursor-pointer border-b-2 ${
+                      showRawText
+                        ? 'text-brand-orange border-brand-orange bg-brand-orange-pale/20'
+                        : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
                     }`}
                   >
-                    Raw CV Extraction & Debug
-                    {showRawText && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
+                    Raw Document & Diagnostics
                   </button>
                 </div>
 
-                {/* Tab 1: Structured Profile View */}
+                {/* ── TAB 1: STRUCTURED CANDIDATE PROFILE ── */}
                 {!showRawText ? (
                   <div className="p-6 space-y-6">
-                    {/* Professional Summary */}
+
+                    {/* Section: Professional Summary */}
                     {(selectedCandidate.professionalSummary || selectedCandidate.summary) && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Professional Summary</h3>
-                        <p className="text-xs text-slate-700 leading-relaxed bg-[#F8FAFC] p-4 rounded-2xl border border-slate-200">
+                      <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                        <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Executive Summary</h3>
+                        <p className="text-xs text-slate-700 leading-relaxed font-normal">
                           {selectedCandidate.professionalSummary || selectedCandidate.summary}
                         </p>
                       </div>
                     )}
 
-                    {/* Career Gap Analysis */}
-                    {(() => {
-                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
-                      return (
-                        <div className={`border rounded-2xl p-4.5 transition-all ${
-                          gapInfo.hasGap 
-                            ? 'bg-amber-50/50 border-amber-200' 
-                            : 'bg-emerald-50/40 border-emerald-200/80'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm ${
-                                gapInfo.hasGap ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                              }`}>
-                                {gapInfo.hasGap ? '⚠️' : '✓'}
-                              </div>
-                              <div>
-                                <h4 className="text-xs font-bold text-[#1E293B]">Career Gap Analysis</h4>
-                                <p className="text-[11px] text-slate-600 font-medium">{gapInfo.statusText}</p>
-                              </div>
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold border ${
-                              gapInfo.hasGap
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-emerald-100/80 text-emerald-800 border-emerald-300'
-                            }`}>
-                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos total gap` : 'No Gap Identified'}
-                            </span>
-                          </div>
-                          {gapInfo.hasGap && gapInfo.gaps.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-amber-200/60 space-y-2">
-                              {gapInfo.gaps.map((g, gi) => (
-                                <div key={gi} className="text-xs text-amber-950 bg-white/80 border border-amber-200 px-3 py-2 rounded-xl flex items-center justify-between">
-                                  <span className="font-semibold">{g.gapLabel}</span>
-                                  <span className="text-[11px] text-slate-500 font-medium">{g.startDate} → {g.endDate}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Extracted Competencies & Tech Stack */}
+                    {/* Section: Tech Stack & Competencies */}
                     {(() => {
                       const effectiveSkills = getEffectiveSkills(selectedCandidate);
                       if (effectiveSkills.length === 0) return null;
                       return (
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tech Stack & Competencies</h3>
-                            <span className="text-[11px] font-bold text-slate-500">{effectiveSkills.length} Identified</span>
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">Demonstrated Tech Stack & Skills</h3>
+                            <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                              {effectiveSkills.length} Verified
+                            </span>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {effectiveSkills.map((s, i) => (
-                              <span key={i} className="px-2.5 py-1 bg-[#F8FAFC] border border-slate-200/90 rounded-lg text-xs font-semibold text-slate-700 hover:border-brand-orange/40 transition-colors">
+                              <span key={i} className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 hover:border-brand-orange hover:bg-brand-orange-pale/30 transition-colors">
                                 {s}
                               </span>
                             ))}
@@ -1166,61 +1420,155 @@ export default function JobCandidatesPage() {
                       );
                     })()}
 
-                    {/* Experience Timeline */}
-                    {selectedCandidate.experience && selectedCandidate.experience.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work History</h3>
-                          {(() => {
-                            const expInfo = getNumericExperienceDetails(selectedCandidate);
-                            return (
-                              <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
-                                Total: {expInfo.fullLabel}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        <div className="space-y-3">
-                          {selectedCandidate.experience.map((exp, i) => {
-                            const titleText = (exp.title && exp.title.toLowerCase() !== 'role') ? exp.title : (selectedCandidate.currentTitle || 'Role / Position');
-                            const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
-                            const durPill = durMonths > 0 ? (durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`) : null;
-                            return (
-                              <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-                                <div className="flex items-start justify-between">
-                                  <h4 className="text-xs font-bold text-[#1E293B]">{titleText}</h4>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-slate-500">
-                                      {exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} – ${exp.endDate}` : exp.startDate || exp.endDate || '')}
-                                    </span>
-                                    {durPill && !exp.duration?.includes('•') && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-[10px] font-bold text-slate-700">
-                                        {durPill}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                {exp.company && <p className="text-xs text-brand-orange font-semibold mt-0.5">{exp.company}</p>}
-                                {exp.description && <p className="text-xs text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</p>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* ── Section: WORK HISTORY TIMELINE WITH ELEGANT GAPS BETWEEN COMPANIES ── */}
+                    <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
+                      {(() => {
+                        const compInfo = getCompanyBreakdown(selectedCandidate);
+                        const expInfo = getNumericExperienceDetails(selectedCandidate);
+                        const timelineItems = getTimelineWithGaps(selectedCandidate);
 
-                    {/* Education */}
+                        return (
+                          <div>
+                            {/* Work History Header */}
+                            <div className="flex items-center justify-between mb-6 flex-wrap gap-2 pb-4 border-b border-slate-100">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-black text-slate-900">
+                                  Work History & Timeline
+                                </h3>
+                                <span className="px-2.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-full text-xs font-bold">
+                                  {compInfo.bracketLabel}
+                                </span>
+                              </div>
+                              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                                Total Tenure: {expInfo.badgeText} {expInfo.months > 0 ? `(${expInfo.subText})` : ''}
+                              </span>
+                            </div>
+
+                            {/* Elegant Vertical Timeline */}
+                            {timelineItems.length > 0 ? (
+                              <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+                                {timelineItems.map((item, idx) => {
+                                  if (item.type === 'GAP' && item.gap) {
+                                    /* ── ELEGANT CAREER GAP BANNER BETWEEN COMPANIES ── */
+                                    return (
+                                      <div
+                                        key={`gap-${idx}`}
+                                        className="relative -ml-6 my-4 pl-6"
+                                      >
+                                        {/* Timeline Node */}
+                                        <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-white shadow-xs z-10" />
+
+                                        <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                                          <div className="flex items-center gap-2.5">
+                                            <span className="text-sm">⚠️</span>
+                                            <div className="text-xs text-amber-950 font-medium">
+                                              <span className="font-bold">{item.gap.gapLabel}</span>
+                                              <span className="text-slate-500 text-[11px] block sm:inline sm:ml-1">
+                                                between <strong className="text-slate-800 font-semibold">{item.gap.fromCompany}</strong> and <strong className="text-slate-800 font-semibold">{item.gap.toCompany}</strong>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <span className="text-[11px] font-bold text-amber-900 bg-white border border-amber-200 px-2.5 py-0.5 rounded-md self-start sm:self-center shadow-2xs">
+                                            {item.gap.startDate} → {item.gap.endDate}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  /* ── COMPANY WORK EXPERIENCE CARD ── */
+                                  const exp = item.company!;
+                                  const titleText = (exp.title && exp.title.toLowerCase() !== 'role') ? exp.title : (selectedCandidate.currentTitle || 'Professional Role');
+                                  const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
+                                  const durPill = durMonths > 0 ? (durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`) : null;
+                                  const companyName = exp.company || selectedCandidate.currentCompany || 'Organization';
+
+                                  return (
+                                    <div
+                                      key={`comp-${idx}`}
+                                      className="relative bg-slate-50/80 hover:bg-slate-50 border border-slate-200/80 rounded-2xl p-4.5 transition-all shadow-2xs group"
+                                    >
+                                      {/* Timeline Node */}
+                                      <div className="absolute -left-6 top-5 w-3.5 h-3.5 rounded-full bg-slate-900 border-2 border-white shadow-xs z-10 group-hover:bg-brand-orange transition-colors" />
+
+                                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-2">
+                                        <div>
+                                          <h4 className="text-sm font-black text-slate-900">{titleText}</h4>
+                                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                            <span className="text-xs font-bold text-slate-800">
+                                              {companyName}
+                                            </span>
+                                            {exp.location && (
+                                              <>
+                                                <span className="text-slate-300">•</span>
+                                                <span className="text-[11px] text-slate-500 font-medium">{exp.location}</span>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 self-start sm:self-center">
+                                          <span className="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1 rounded-lg shadow-2xs">
+                                            {exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} – ${exp.endDate}` : exp.startDate || exp.endDate || 'Tenure not specified')}
+                                          </span>
+                                          {durPill && !exp.duration?.includes('•') && (
+                                            <span className="px-2 py-1 rounded-md bg-slate-200/70 text-[10px] font-bold text-slate-700">
+                                              {durPill}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Highlights & Description with Clean Dot Bullets */}
+                                      {(() => {
+                                        const rawBulletList = exp.highlights && exp.highlights.length > 0
+                                          ? exp.highlights.flatMap(h => sanitizeBulletText(h))
+                                          : sanitizeBulletText(exp.description || '');
+
+                                        if (rawBulletList.length === 0) return null;
+
+                                        return (
+                                          <ul className="space-y-2 mt-3 pt-3 border-t border-slate-200/60">
+                                            {rawBulletList.map((bullet, bi) => (
+                                              <li key={bi} className="text-xs text-slate-600 flex items-start gap-2.5 leading-relaxed">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5 flex-shrink-0" />
+                                                <span className="flex-1">{bullet}</span>
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        );
+                                      })()}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center text-xs text-slate-500">
+                                No distinct employment history records could be extracted from this document.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Section: Education */}
                     {selectedCandidate.education && selectedCandidate.education.length > 0 && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Education</h3>
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                        <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Education & Qualifications</h3>
                         <div className="space-y-2.5">
                           {selectedCandidate.education.map((edu, i) => (
-                            <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-3.5 flex items-start justify-between">
-                              <div>
-                                <h4 className="text-xs font-bold text-slate-800">{edu.degree}</h4>
-                                <p className="text-[11px] text-slate-500">
-                                  {edu.institution} {edu.year ? `• ${edu.year}` : ''} {edu.details ? `• ${edu.details}` : ''}
-                                </p>
+                            <div key={i} className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 flex items-start justify-between gap-3 shadow-2xs">
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs">
+                                  🎓
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-bold text-slate-900">{edu.degree}</h4>
+                                  <p className="text-[11px] text-slate-500 mt-0.5">
+                                    {edu.institution} {edu.year ? `• ${edu.year}` : ''} {edu.details ? `• ${edu.details}` : ''}
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -1228,27 +1576,32 @@ export default function JobCandidatesPage() {
                       </div>
                     )}
 
-                    {/* Projects */}
+                    {/* Section: Key Projects */}
                     {selectedCandidate.projects && selectedCandidate.projects.length > 0 && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Key Projects</h3>
+                      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                        <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-3">Featured Projects</h3>
                         <div className="space-y-3">
                           {selectedCandidate.projects.map((proj, i) => (
-                            <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-                              <div className="flex items-start justify-between">
-                                <h4 className="text-xs font-bold text-[#1E293B]">{proj.name}</h4>
-                              </div>
+                            <div key={i} className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 shadow-2xs">
+                              <h4 className="text-xs font-bold text-slate-900">{proj.name}</h4>
                               {proj.technologies && proj.technologies.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1.5 mb-2">
                                   {proj.technologies.map((t, ti) => (
-                                    <span key={ti} className="px-2 py-0.5 bg-slate-200/70 rounded text-[10px] font-medium text-slate-700">
+                                    <span key={ti} className="px-2 py-0.5 bg-white border border-slate-200 rounded-md text-[10px] font-semibold text-slate-700 shadow-2xs">
                                       {t}
                                     </span>
                                   ))}
                                 </div>
                               )}
                               {proj.description && (
-                                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{proj.description}</p>
+                                <ul className="space-y-1.5 mt-2">
+                                  {sanitizeBulletText(proj.description).map((b, bi) => (
+                                    <li key={bi} className="text-xs text-slate-600 flex items-start gap-2 leading-relaxed">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5 flex-shrink-0" />
+                                      <span className="flex-1">{b}</span>
+                                    </li>
+                                  ))}
+                                </ul>
                               )}
                             </div>
                           ))}
@@ -1256,27 +1609,29 @@ export default function JobCandidatesPage() {
                       </div>
                     )}
 
-                    {/* Certifications & Languages */}
+                    {/* Section: Certifications & Languages */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {selectedCandidate.certifications && selectedCandidate.certifications.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Certifications</h3>
-                          <ul className="space-y-1 text-xs text-slate-700">
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                          <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-2.5">Certifications</h3>
+                          <ul className="space-y-1.5 text-xs text-slate-700">
                             {selectedCandidate.certifications.map((c, i) => (
-                              <li key={i} className="flex items-center gap-1.5 bg-[#F8FAFC] border border-slate-200 p-2 rounded-xl">
-                                <span className="text-emerald-500 font-bold">✓</span> <span>{c}</span>
+                              <li key={i} className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 p-2.5 rounded-lg shadow-2xs">
+                                <span className="text-emerald-600 font-bold">✓</span>
+                                <span className="font-semibold text-slate-800 truncate">{c}</span>
                               </li>
                             ))}
                           </ul>
                         </div>
                       )}
                       {selectedCandidate.languages && selectedCandidate.languages.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Languages</h3>
-                          <ul className="space-y-1 text-xs text-slate-700">
+                        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+                          <h3 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-2.5">Languages</h3>
+                          <ul className="space-y-1.5 text-xs text-slate-700">
                             {selectedCandidate.languages.map((l, i) => (
-                              <li key={i} className="flex items-center gap-1.5 bg-[#F8FAFC] border border-slate-200 p-2 rounded-xl">
-                                <span className="text-brand-orange">🌐</span> <span>{l}</span>
+                              <li key={i} className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/80 p-2.5 rounded-lg shadow-2xs">
+                                <span className="text-slate-400 font-bold">🌐</span>
+                                <span className="font-semibold text-slate-800">{l}</span>
                               </li>
                             ))}
                           </ul>
@@ -1285,12 +1640,12 @@ export default function JobCandidatesPage() {
                     </div>
                   </div>
                 ) : (
-                  /* Tab 2: Raw CV Debugging & Text Quality Viewer */
+                  /* ── TAB 2: RAW CV TEXT & PARSER DIAGNOSTICS ── */
                   <div className="p-6 space-y-5">
-                    {/* Metadata Box */}
-                    <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-                      <h3 className="text-xs font-bold text-[#1E293B] mb-3">Document Extraction Diagnostics</h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                    {/* Document Diagnostics */}
+                    <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-5 shadow-xs">
+                      <h3 className="text-xs font-bold text-slate-900 mb-3 uppercase tracking-wider">Document Extraction Diagnostics</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
                         <div>
                           <span className="text-slate-400 font-semibold text-[10px] uppercase">File Name</span>
                           <p className="font-bold text-slate-800 truncate">{selectedCandidate.parsingMetadata?.fileName || selectedCandidate.fileName}</p>
@@ -1305,14 +1660,14 @@ export default function JobCandidatesPage() {
                         </div>
                         <div>
                           <span className="text-slate-400 font-semibold text-[10px] uppercase">Extraction Method</span>
-                          <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.extractionMethod || 'python-pdfplumber'}</p>
+                          <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.extractionMethod || 'pymupdf-layout'}</p>
                         </div>
                         <div>
                           <span className="text-slate-400 font-semibold text-[10px] uppercase">OCR Used</span>
                           <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.ocrUsed ? 'Yes' : 'No'}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">Characters / Words</span>
+                          <span className="text-slate-400 font-semibold text-[10px] uppercase">Character / Word Count</span>
                           <p className="font-bold text-slate-800">
                             {selectedCandidate.parsingMetadata?.characterCount || 0} / {selectedCandidate.parsingMetadata?.wordCount || 0}
                           </p>
@@ -1323,19 +1678,19 @@ export default function JobCandidatesPage() {
                     {/* Raw Text Viewer */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">RAW CV EXTRACTED TEXT</h4>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Extracted Document Text</h4>
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(selectedCandidate.rawText || '');
                             setCopiedRawText(true);
                             setTimeout(() => setCopiedRawText(false), 2000);
                           }}
-                          className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 shadow-xs cursor-pointer"
+                          className="px-3 py-1 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 shadow-xs cursor-pointer"
                         >
-                          {copiedRawText ? '✓ Copied' : 'Copy Text'}
+                          {copiedRawText ? '✓ Copied to Clipboard' : 'Copy Text'}
                         </button>
                       </div>
-                      <div className="bg-[#1E293B] text-slate-200 rounded-2xl p-4 font-mono text-[11px] leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap border border-slate-700 shadow-inner">
+                      <div className="bg-[#0F172A] text-slate-200 rounded-2xl p-5 font-mono text-[11px] leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap border border-slate-700 shadow-inner">
                         {selectedCandidate.rawText || 'No raw extracted text available for this candidate record.'}
                       </div>
                     </div>
@@ -1343,12 +1698,20 @@ export default function JobCandidatesPage() {
                 )}
               </div>
 
-              {/* Drawer Footer */}
-              <div className="p-5 border-t border-slate-100 bg-[#F8FAFC] flex items-center justify-between">
-                <span className="text-xs text-slate-500">Candidate ID: <code className="font-mono text-slate-700">{selectedCandidate.id}</code></span>
+              {/* ── Drawer Footer ── */}
+              <div className="p-5 border-t border-slate-200 bg-white flex items-center justify-between sticky bottom-0 z-20 shadow-xs">
+                <button
+                  onClick={() => handleDeleteCandidate(selectedCandidate.id)}
+                  className="px-4 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Delete Candidate</span>
+                </button>
                 <button
                   onClick={() => setSelectedCandidate(null)}
-                  className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
                 >
                   Close Profile
                 </button>

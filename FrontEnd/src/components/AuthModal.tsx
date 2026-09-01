@@ -71,15 +71,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           {/* Header */}
           <div className="mb-6 pr-6">
-            <div className="w-10 h-10 rounded-xl bg-brand-orange-pale flex items-center justify-center mb-4">
-              <svg className="w-5 h-5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {mode === 'signin'
-                  ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                  : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                }
-              </svg>
+            <div className="w-11 h-11 mb-3 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/tasknera-logo-symbol.png" alt="TaskNera" className="w-full h-full object-contain" />
             </div>
-            <h2 className="text-xl font-bold text-brand-charcoal">
+            <h2 className="text-xl font-bold text-slate-900">
               {mode === 'signin' ? 'Welcome back' : 'Create your account'}
             </h2>
             <p className="text-brand-charcoal-3 text-sm mt-1">

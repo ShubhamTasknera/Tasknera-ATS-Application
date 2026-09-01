@@ -271,6 +271,9 @@ export const cleanAndNormalizeText = (rawText: string): string => {
     .replace(/obj[\s\S]*?endobj/gi, '')
     // Normalize zero-width and invisible unicode characters to regular spaces
     .replace(/[\u200B\u200C\u200D\uFEFF\u00A0]/g, ' ')
+    // Normalize corrupted rupee / currency symbols
+    .replace(/(?:[■▪●]|\bI)\s*(?=\d{1,3}(?:,\d{2,3})+|\d+\s*(?:lpa|lakh|crore|k|m)\b)/gi, '₹')
+    .replace(/■(?=\d)/g, '₹')
     // Normalize linebreaks
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -294,13 +297,14 @@ export const extractSalary = (text: string): { salary: string | null; debug: Sal
 
   const normText = text
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212~]/g, '–')
+    .replace(/(?:[■▪●]|\bI)\s*(?=\d)/g, '₹')
     .replace(/[ \t]+/g, ' ');
 
   const salaryPatterns: RegExp[] = [
-    /(?:Salary|Compensation|Package|Pay|Remuneration|Budget)?\s*:?\s*((?:Up to\s*)?(?:₹|INR|\$|USD)?\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?\s*[-–]\s*(?:₹|INR|\$|USD)?\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?(?:\s*(?:LPA|per annum|PA|p\.a\.|yr|year|k|K))?)/i,
+    /(?:Salary|Compensation|Package|Pay|Remuneration|Budget|CTC)?\s*:?\s*((?:Up to\s*)?(?:₹|INR|\$|USD)?\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?\s*[-–]\s*(?:₹|INR|\$|USD)?\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?(?:\s*(?:LPA|per annum|PA|p\.a\.|yr|year|k|K))?(?:\s*\([^)]*\))?(?:,\s*[^,\n]+)*)/i,
     /\b(\d{1,2}(?:\.\d+)?\s*[-–]\s*\d{1,2}(?:\.\d+)?\s*(?:LPA|per annum|PA|p\.a\.))\b/i,
     /((?:₹|INR|\$|USD)\s*\d{1,2}(?:,\d{2,3})+\s*[-–]\s*(?:₹|INR|\$|USD)?\s*\d{1,2}(?:,\d{2,3})+\s*(?:per annum|PA|p\.a\.|LPA))/i,
-    /(?:Salary|Compensation|Package|Budget)?\s*:?\s*((?:Up to\s*)?(?:₹|INR|\$|USD)\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?\s*(?:LPA|per annum|PA|p\.a\.|Lakhs?))/i,
+    /(?:Salary|Compensation|Package|Budget|CTC)?\s*:?\s*((?:Up to\s*)?(?:₹|INR|\$|USD)\s*\d{1,3}(?:,\d{2,3})*(?:\.\d+)?\s*(?:LPA|per annum|PA|p\.a\.|Lakhs?))/i,
     /\b(\d{1,2}(?:\.\d+)?\s*(?:LPA|per annum|PA|p\.a\.))\b/i
   ];
 
@@ -308,7 +312,6 @@ export const extractSalary = (text: string): { salary: string | null; debug: Sal
     const match = normText.match(pattern);
     if (match && match[1]) {
       let rawMatch = match[1].trim();
-      rawMatch = rawMatch.replace(/(LPA|per annum|PA|p\.a\.|year|yr|k|K)[\s\S]*/i, '$1').trim();
 
       let normalized = rawMatch
         .replace(/\s*[-–]\s*/g, '–')
@@ -316,7 +319,7 @@ export const extractSalary = (text: string): { salary: string | null; debug: Sal
         .trim();
 
       if (/^\$0\d{1,3}$/.test(normalized) || normalized.length < 3) continue;
-      if (/year|exp|req|joining|date/i.test(normalized) && !/per annum|PA|p\.a\.|yr|LPA/i.test(normalized)) continue;
+      if (/year|exp|req|joining|date/i.test(normalized) && !/per annum|PA|p\.a\.|yr|LPA|Fixed|Bonus|Payout/i.test(normalized)) continue;
 
       if (
         !normalized.startsWith('₹') &&
@@ -327,7 +330,7 @@ export const extractSalary = (text: string): { salary: string | null; debug: Sal
         !normalized.toLowerCase().startsWith('usd') &&
         !normalized.toLowerCase().startsWith('up to ₹')
       ) {
-        if (normText.includes('₹') || normText.includes('\u20b9') || /\bLPA\b/i.test(normalized) || /\bLakhs?\b/i.test(normalized)) {
+        if (normText.includes('₹') || normText.includes('\u20b9') || /\bLPA\b/i.test(normalized) || /\bLakhs?\b/i.test(normalized) || /,\d{2,3}/.test(normalized)) {
           normalized = normalized.toLowerCase().startsWith('up to') ? normalized.replace(/^up to\s*/i, 'Up to ₹') : '₹' + normalized;
         } else if (normText.includes('$') || /\bUSD\b/i.test(normText)) {
           normalized = '$' + normalized;
@@ -361,29 +364,42 @@ export const extractSalary = (text: string): { salary: string | null; debug: Sal
 
 const KNOWN_FIELD_LABELS = [
   'client / company', 'company / client', 'client name', 'company name', 'hiring company', 'hiring organization',
-  'position title', 'job title', 'work mode', 'workmode', 'employment type', 'interview process',
-  'company', 'client', 'position', 'location', 'salary', 'compensation', 'package', 'pay', 'ctc', 'budget',
-  'job summary', 'experience', 'education', 'certification', 'skills', 'responsibilities', 'requirements'
+  'position title', 'job title', 'work mode', 'workmode', 'employment type', 'workplace type', 'interview process',
+  'company', 'client', 'position', 'location', 'locations', 'salary', 'compensation', 'package', 'pay', 'ctc', 'budget',
+  'job summary', 'experience', 'education', 'certification', 'skills', 'responsibilities', 'requirements', 'openings',
+  'key responsibilities', 'mandatory skills', 'preferred skills', 'core competencies', 'company overview', 'recruitment information'
 ];
 
-export const cleanExtractedName = (raw: string | null): string | null => {
+const GENERIC_COMPANY_STOP_WORDS = [
+  'the company', 'our client', 'we', 'this role', 'the candidate', 'the team', 'not specified',
+  'confidential', 'leading company', 'top mnc', 'multinational company', 'client', 'company', 'unknown',
+  'job description', 'jd', 'job specification', 'role description', 'job summary', 'key responsibilities',
+  'mandatory skills', 'preferred skills', 'core competencies', 'company overview', 'recruitment information',
+  'location', 'locations', 'experience', 'education', 'compensation', 'ctc', 'salary', 'openings'
+];
+
+export const cleanExtractedName = (raw: string | null, isCompany: boolean = false): string | null => {
   if (!raw || typeof raw !== 'string') return null;
 
   let cleaned = raw
-    .replace(/^(?:client\s*(?:\/|&|and)\s*company|company\s*(?:\/|&|and)\s*client|client\s+name|company\s+name|hiring\s+company|hiring\s+organization|position\s+title|job\s+title|client|company|employer|organization|position|role|designation|title)\s*[:\-–]\s*/i, '')
+    .replace(/^(?:client\s*(?:\/|&|and)\s*company|company\s*(?:\/|&|and)\s*client|client\s+name|company\s+name|hiring\s+company|hiring\s+organization|job\s+description|position\s+title|job\s+title|client|company|employer|organization|position|role|designation|title)\s*[:\-–]\s*/i, '')
     .replace(/^[:\s–\-•●*|]+|[:\s–\-•●*|]+$/g, '')
+    .replace(/\s*[-–|:]\s*(?:job\s+description|job\s+specification|role\s+description|jd)\s*$/i, '')
+    .replace(/\s*[•●*|]\s*(?:employment\s+type|work\s+mode|workplace\s+type|budget|salary|compensation|experience\s+required|experience)[\s\S]*/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 
   // Strip wrapping quotes
   cleaned = cleaned.replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, '').trim();
 
-  const genericStopWords = [
-    'the company', 'our client', 'we', 'this role', 'the candidate', 'the team', 'not specified',
-    'confidential', 'leading company', 'top mnc', 'multinational company', 'client', 'company', 'unknown'
-  ];
-  if (genericStopWords.includes(cleaned.toLowerCase()) || cleaned.length < 2) {
-    return null;
+  if (isCompany) {
+    if (GENERIC_COMPANY_STOP_WORDS.includes(cleaned.toLowerCase()) || cleaned.length < 2) {
+      return null;
+    }
+  } else {
+    if (['not specified', 'unknown', 'n/a', 'na', 'none'].includes(cleaned.toLowerCase()) || cleaned.length < 2) {
+      return null;
+    }
   }
 
   return cleaned;
@@ -392,7 +408,8 @@ export const cleanExtractedName = (raw: string | null): string | null => {
 const POSITION_KEYWORDS = [
   'developer', 'engineer', 'consultant', 'architect', 'manager', 'lead', 'analyst',
   'specialist', 'administrator', 'designer', 'director', 'intern', 'associate', 'officer',
-  'executive', 'tester', 'qa', 'scientist', 'technician', 'programmer', 'expert'
+  'executive', 'tester', 'qa', 'scientist', 'technician', 'programmer', 'expert',
+  'sales', 'account executive', 'ae', 'bdr', 'sdr', 'vp', 'head of', 'representative'
 ];
 
 export const isKnownPositionTitle = (str: string | null): boolean => {
@@ -426,10 +443,19 @@ export const validateCleanFieldValue = (value: string | null, fieldName: string)
  */
 export const detectHeading = (line: string): { isHeading: boolean; type: JobSection['type']; title: string } => {
   const trimmed = line.trim();
-  const lower = trimmed.toLowerCase().replace(/[:\-_]+$/, '').trim();
+  if (!trimmed || trimmed.length > 130) return { isHeading: false, type: 'GENERAL', title: '' };
+
+  // Strip emojis, leading numbers/bullets/special symbols (🚫, 📋, 🚀, 🎁, 📅, 📝, ⚡, 🔍, 📞, 📊, 🎯, etc.)
+  const cleanLine = trimmed
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+    .replace(/\s*\([^)]*\)\s*$/, '') // remove trailing (recruiter checks)
+    .replace(/\s*\[[^\]]*\]\s*$/, '')
+    .trim();
+
+  const lower = cleanLine.toLowerCase().replace(/[:\-_]+$/, '').trim();
 
   // Mandatory Skills Headings
-  if (/^(mandatory\s+skills|mandatory\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must-have\s+skills|mandatory)$/i.test(lower)) {
+  if (/^(mandatory\s+skills|mandatory\s+requirements|non-negotiable\s+mandatory\s+requirements|non-negotiable\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must-have\s+skills|mandatory|knock-out\s+rules|knockout\s+criteria|dealbreakers)$/i.test(lower)) {
     return { isHeading: true, type: 'MANDATORY_SKILLS', title: trimmed };
   }
 
@@ -439,17 +465,17 @@ export const detectHeading = (line: string): { isHeading: boolean; type: JobSect
   }
 
   // Key Responsibilities Headings
-  if (/^(key\s+responsibilities|responsibilities|roles\s+and\s+responsibilities|job\s+responsibilities|primary\s+responsibilities|what\s+you\s+will\s+do|day\s+to\s+day\s+responsibilities|duties)$/i.test(lower)) {
+  if (/^(key\s+responsibilities|responsibilities|roles\s+and\s+responsibilities|job\s+responsibilities|primary\s+responsibilities|what\s+you\s+will\s+do|day\s+to\s+day\s+responsibilities|role\s+overview\s*(?:&|and)?\s*key\s+responsibilities|role\s+overview|duties)$/i.test(lower)) {
     return { isHeading: true, type: 'RESPONSIBILITIES', title: trimmed };
   }
 
   // Summary Headings
-  if (/^(job\s+summary|summary|about\s+the\s+role|overview|role\s+overview|position\s+summary|about\s+us|company\s+overview|job\s+purpose)$/i.test(lower)) {
+  if (/^(job\s+summary|summary|about\s+the\s+role|overview|position\s+summary|about\s+us|about\s+[a-z0-9&.,'-]+|company\s+overview|why\s+join\s+us|job\s+purpose|role\s+snapshot|snapshot)$/i.test(lower)) {
     return { isHeading: true, type: 'SUMMARY', title: trimmed };
   }
 
-  // Commercials & Interview Logistics Headings
-  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms)$/i.test(lower)) {
+  // Commercials & Interview Logistics & Cheat Sheets & Pre-Screening Questions
+  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms|core\s+competencies|recruitment\s+information|recruiter\s+cheat\s+sheet.*|recruiter[’']s\s+cheat\s+code.*|boolean\s+search\s+strings.*|candidate\s+pre-screening\s+questionnaire.*|screening\s+&\s+evaluation\s+parameters.*|the\s+30-second\s+resume\s+scan.*|the\s+30-second\s+resume\s+screening\s+checklist.*|the\s+5-minute\s+screening\s+script.*|3-minute\s+phone\s+screening\s+script.*|quick-reference\s+match\s+scorecard.*|quick\s+.*instant\s+disqualification.*|instant\s+disqualification.*|profile\s+identifiers.*)$/i.test(lower)) {
     return { isHeading: true, type: 'COMMERCIALS', title: trimmed };
   }
 
@@ -507,8 +533,9 @@ export const extractBulletsFromSection = (section: JobSection): string[] => {
   const bullets: string[] = [];
   const lines = section.lines;
   let currentBullet = '';
+  let hadBulletPrefix = false;
 
-  const bulletRegex = /^[\s\t]*[●•\*\-–—▪▫➢✓✔]|\d+[\.\)]\s/;
+  const bulletRegex = /^[\s\t]*([●•\*\-–—▪▫➢✓✔]|\[\s*[xX✓✔]?\s*\]|\d+[\.\)])\s*/;
 
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i].trim();
@@ -521,6 +548,7 @@ export const extractBulletsFromSection = (section: JobSection): string[] => {
         if (isValidRequirement(cleaned)) bullets.push(cleaned);
         currentBullet = '';
       }
+      hadBulletPrefix = true;
       // Peek at next line and attach
       if (i + 1 < lines.length) {
         currentBullet = lines[i + 1].trim();
@@ -534,12 +562,25 @@ export const extractBulletsFromSection = (section: JobSection): string[] => {
         const cleaned = cleanBulletText(currentBullet);
         if (isValidRequirement(cleaned)) bullets.push(cleaned);
       }
-      currentBullet = line.replace(/^[\s\t]*([●•\*\-–—▪▫➢✓✔]|\d+[\.\)])\s*/, '').trim();
+      hadBulletPrefix = true;
+      currentBullet = line.replace(/^[\s\t]*([●•\*\-–—▪▫➢✓✔]|\[\s*[xX✓✔]?\s*\]|\d+[\.\)])\s*/, '').trim();
     } else {
-      // Continuation of previous bullet or new unbulleted line
-      if (currentBullet) {
+      // Check for table headers or meta lines to ignore
+      if (/^(category\s+requirement\s+details|candidates\s+must\s+meet|recruiter\s+note)/i.test(line)) {
+        continue;
+      }
+      // Check if this line is an unbulleted requirement / table row in a requirements section
+      if (hadBulletPrefix && currentBullet) {
         currentBullet += ' ' + line;
-      } else if (line.length > 10 && !line.includes(':')) {
+      } else if ((section.type === 'MANDATORY_SKILLS' || section.type === 'PREFERRED_SKILLS') && line.length >= 8 && !line.endsWith(':')) {
+        if (currentBullet) {
+          const cleaned = cleanBulletText(currentBullet);
+          if (isValidRequirement(cleaned)) bullets.push(cleaned);
+        }
+        currentBullet = line;
+      } else if (currentBullet) {
+        currentBullet += ' ' + line;
+      } else if (line.length > 5 && !line.includes(':')) {
         currentBullet = line;
       }
     }
@@ -554,21 +595,38 @@ export const extractBulletsFromSection = (section: JobSection): string[] => {
 };
 
 export const cleanBulletText = (text: string): string => {
+  if (!text) return '';
   return text
-    .replace(/^[:\s–\-•●*]+/, '')
+    // Convert LaTeX math symbols
+    .replace(/\$\\le\$/gi, '≤')
+    .replace(/\\le\b/gi, '≤')
+    .replace(/\$\\ge\$/gi, '≥')
+    .replace(/\\ge\b/gi, '≥')
+    .replace(/\$\\sim\$/gi, '~')
+    // Strip emojis
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, '')
+    // Strip leading bullets, numbers, dashes, colons
+    .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+    // Strip checkbox tokens: [ ], [x], [X], [✓], [✔], ( ), (x), (✓)
+    .replace(/^\[\s*[xX✓✔]?\s*\]\s*/, '')
+    .replace(/^\(\s*[xX✓✔]?\s*\)\s*/, '')
+    .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+    .replace(/\[\s*[xX✓✔]?\s*\]/g, '') // remove inline [ ] if any
     .replace(/\s+/g, ' ')
     .trim();
 };
 
 export const isValidRequirement = (text: string): boolean => {
-  if (!text || text.length < 8) return false;
-  // Reject single word fragments
-  if (!text.includes(' ') && text.length < 15) return false;
+  if (!text || text.length < 4) return false;
+  // Reject single word fragments if too short
+  if (!text.includes(' ') && text.length < 10) return false;
   // Reject common fragment tails
   if (/^(experience\.|implementations\.|knowledge\.|along with|practical knowledge\.\.\.)$/i.test(text.trim())) return false;
   // Reject section headings accidentally captured
   const headingCheck = detectHeading(text);
   if (headingCheck.isHeading) return false;
+  // Reject table header artifacts
+  if (/^(category\s+requirement\s+details|requirement\s+details)/i.test(text.trim())) return false;
   // Reject salary, budget, or interview metadata
   if (/^(\d+\s*lpa|up to ₹|budget:|interview process:|total incentive)/i.test(text)) return false;
   return true;
@@ -586,22 +644,27 @@ export const categorizeRequirement = (req: string): string => {
   if (/\b(sap|oracle|erp|mulesoft|middleware|rest|soap|api|apis|integrat(e|ing|ion))\b/i.test(lower)) {
     return 'Integration';
   }
+  if (/\b(quota|arr|acv|pipeline|sales cycle|sourcing|deal size|b2b saas|fintech|billing|cfo|controller|revops|full-cycle|account executive|hunter)\b/i.test(lower)) {
+    if (/\b(quota|arr|acv|deal size|target)\b/i.test(lower)) return 'Technical Skill';
+    if (/\b(experience|tenure|years|stability)\b/i.test(lower)) return 'Experience';
+    return 'Technical Skill';
+  }
   if (/\b(manufacturing cloud|sales cloud|service cloud|experience cloud|cpq|data cloud|devops|copado|gearset|jenkins|github actions)\b/i.test(lower)) {
     return 'Technology';
   }
   if (/\b(apex|lwc|lightning web components|soql|sosl|triggers|batch apex|queueable|flows|declarative automation|data model|security|sharing|profiles|permission sets|governor limits)\b/i.test(lower)) {
     return 'Technical Skill';
   }
-  if (/\b(agile|scrum|kanban|sprint|jira|methodology)\b/i.test(lower)) {
+  if (/\b(agile|scrum|kanban|sprint|jira|methodology|consultative sales)\b/i.test(lower)) {
     return 'Methodology';
   }
   if (/\b(analytical|problem-solving|communication|leadership|collaboration|teamwork)\b/i.test(lower)) {
     return 'Soft Skill';
   }
-  if (/\b(\d+\+?\s*years|years of|hands-on.*experience|enterprise.*implementations)\b/i.test(lower)) {
+  if (/\b(\d+\+?\s*years|years of|hands-on.*experience|enterprise.*implementations|tenure|stability|work stability)\b/i.test(lower)) {
     return 'Experience';
   }
-  if (/\b(degree|bachelor|master|b\.e|b\.tech|m\.tech|bca|mca)\b/i.test(lower)) {
+  if (/\b(degree|bachelor|master|b\.e|b\.tech|m\.tech|bca|mca|10th|12th|graduation|graduate|postgraduate|aggregate marks)\b/i.test(lower)) {
     return 'Education';
   }
   return 'Technical Skill';
@@ -629,7 +692,7 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
         mandatory: true,
         evidenceRequired: true,
         recruiterConfirmed: false,
-        sourceEvidence: trimmed,
+        sourceEvidence: 'Manufacturing Cloud experience required in resume',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
         needsVerification: false
@@ -644,7 +707,7 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
         mandatory: true,
         evidenceRequired: true,
         recruiterConfirmed: false,
-        sourceEvidence: trimmed,
+        sourceEvidence: 'Local to NCR',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
         needsVerification: false
@@ -659,7 +722,7 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
         mandatory: true,
         evidenceRequired: true,
         recruiterConfirmed: false,
-        sourceEvidence: trimmed,
+        sourceEvidence: 'Previous MNC experience',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
         needsVerification: false
@@ -674,7 +737,7 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
         mandatory: true,
         evidenceRequired: true,
         recruiterConfirmed: false,
-        sourceEvidence: trimmed,
+        sourceEvidence: 'Immediate Joiner / Serving Notice',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
         needsVerification: false
@@ -691,7 +754,7 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
 export const extractCompanyAndPosition = (
   fullText: string,
   lines: string[],
-  sections: JobSection[]
+  sections: JobSection[] = []
 ): {
   companyName: string | null;
   positionTitle: string | null;
@@ -707,23 +770,36 @@ export const extractCompanyAndPosition = (
 
   const candidates = new Set<string>();
 
-  // PRIORITY 1: Explicit labels
+  const isLabelLine = (str: string): boolean => {
+    const l = str.toLowerCase().replace(/[:\-–]/g, '').trim();
+    return KNOWN_FIELD_LABELS.some(lbl => l === lbl || l.startsWith(lbl + ' '));
+  };
+
+  // PRIORITY 1: Explicit labels (supports single line "Company: XYZ" or multi-line "Company\nXYZ")
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
+
+    // Strip leading emojis and bullets before label checking
+    const line = rawLine
+      .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+      .trim();
 
     // Filter out recruitment agency / partner labels
     const isAgencyLine = /^(?:recruitment\s+partner|staffing\s+partner|hiring\s+partner|agency|consultancy)\s*[:\-–]/i.test(line);
     if (isAgencyLine) continue;
 
     // Explicit Company Label
-    const compLabelMatch = line.match(/^(?:client\s*(?:\/|&|and)\s*company|company\s*(?:\/|&|and)\s*client|client\s+name|company\s+name|hiring\s+company|hiring\s+organization|client|company|employer|organization)\s*[:\-–]\s*(.*)$/i);
+    const compLabelMatch = line.match(/^(?:client\s*(?:\/|&|and)\s*company|company\s*(?:\/|&|and)\s*client|client\s+name|company\s+name|hiring\s+company|hiring\s+organization|client|company|employer|organization)\s*[:\-–]?\s*(.*)$/i);
     if (compLabelMatch) {
       let val = compLabelMatch[1].trim();
-      if (!val && i + 1 < lines.length && !lines[i + 1].includes(':')) {
-        val = lines[i + 1].trim();
+      if (!val && i + 1 < lines.length) {
+        const next = lines[i + 1].trim();
+        if (!detectHeading(next).isHeading && !isLabelLine(next)) {
+          val = next;
+        }
       }
-      const cleaned = cleanExtractedName(val);
+      const cleaned = cleanExtractedName(val, true);
       if (cleaned && !explicitCompany) {
         explicitCompany = cleaned;
         candidates.add(cleaned);
@@ -731,33 +807,84 @@ export const extractCompanyAndPosition = (
     }
 
     // Explicit Position Label
-    const posLabelMatch = line.match(/^(?:position\s+title|job\s+title|position|role|designation|title)\s*[:\-–]\s*(.*)$/i);
+    const posLabelMatch = line.match(/^(?:position\s+title|job\s+title|position|role\s+title|role|designation|title|requisition\s+title)\s*[:\-–]?\s*(.*)$/i);
     if (posLabelMatch) {
       let val = posLabelMatch[1].trim();
-      if (!val && i + 1 < lines.length && !lines[i + 1].includes(':')) {
-        val = lines[i + 1].trim();
+      if (!val && i + 1 < lines.length) {
+        const next = lines[i + 1].trim();
+        if (!detectHeading(next).isHeading && !isLabelLine(next)) {
+          val = next;
+        }
       }
-      const cleaned = cleanExtractedName(val);
+      // Check if next line continues the title (e.g. "Account Executive (B2B SaaS / Fintech)")
+      if (i + 1 < lines.length && !lines[i + 1].includes(':') && !detectHeading(lines[i + 1]).isHeading) {
+        const nextLine = lines[i + 1].trim();
+        if (
+          isKnownPositionTitle(nextLine) ||
+          nextLine.startsWith('(') ||
+          (val && val.length < 35 && !/^(company|location|client|salary|experience|openings|employment)/i.test(nextLine))
+        ) {
+          val = val ? `${val} ${nextLine}` : nextLine;
+        }
+      }
+      const cleaned = cleanExtractedName(val, false);
       if (cleaned && !explicitPosition) {
         explicitPosition = cleaned;
       }
     }
   }
 
-  // PRIORITY 2: Document Header Lines (first 5 non-empty lines before section headings)
-  const headerLines = lines.slice(0, 5);
-  for (const hLine of headerLines) {
-    const line = hLine.trim();
-    if (!line || line.includes(':')) continue;
+  // PRIORITY 2: Document Header Lines (first 6 non-empty lines before section headings)
+  const headerLines = lines.slice(0, 6);
+  for (let hIdx = 0; hIdx < headerLines.length; hIdx++) {
+    const rawLine = headerLines[hIdx].trim();
+    if (!rawLine) continue;
+
+    // Pattern: "<Position> – Job Description" or "<Position> - JD"
+    const jdSuffixMatch = rawLine.match(/^(.+?)\s*[\u2014\u2013\-\|:]\s*(?:job\s+description|job\s+specification|role\s+description|jd)$/i);
+    if (jdSuffixMatch) {
+      const pos = cleanExtractedName(jdSuffixMatch[1], false);
+      if (pos && !headerPosition) {
+        headerPosition = pos;
+      }
+      continue;
+    }
+
+    // Check if line is a job description heading like "Job Description: Mid-Market Sales"
+    if (/^(?:job\s+description|jd|role\s+description)\s*[:\-–]/i.test(rawLine)) {
+      let val = rawLine.replace(/^(?:job\s+description|jd|role\s+description)\s*[:\-–]\s*/i, '').trim();
+      if (hIdx + 1 < headerLines.length && !headerLines[hIdx + 1].includes(':')) {
+        const nextLine = headerLines[hIdx + 1].trim();
+        if (isKnownPositionTitle(nextLine) || nextLine.startsWith('(')) {
+          val = val ? `${val} ${nextLine}` : nextLine;
+        }
+      }
+      const cleaned = cleanExtractedName(val, false);
+      if (cleaned && !headerPosition) {
+        headerPosition = cleaned;
+      }
+      continue;
+    }
+
+    if (rawLine.includes(':')) continue;
     // Header lines are concise titles, not full sentences or descriptions
-    if (line.length > 90 || line.split(/\s+/).length > 10) continue;
-    if (/\b(is looking for|is seeking|is hiring|we are|to join|experience|responsible|summary|requirements)\b/i.test(line)) continue;
+    if (rawLine.length > 90 || rawLine.split(/\s+/).length > 10) continue;
+    if (/\b(is looking for|is seeking|is hiring|we are|to join|experience|responsible|summary|requirements)\b/i.test(rawLine)) continue;
+
+    // Direct match if line itself is a known position title
+    if (isKnownPositionTitle(rawLine) && !headerPosition) {
+      let fullPos = rawLine;
+      if (hIdx + 1 < headerLines.length && headerLines[hIdx + 1].trim().startsWith('(')) {
+        fullPos += ' ' + headerLines[hIdx + 1].trim();
+      }
+      headerPosition = cleanExtractedName(fullPos, false);
+    }
 
     // Pattern: "Position at Company" or "Position @ Company"
-    const atMatch = line.match(/^(.+?)\s+(?:at|@)\s+(.+)$/i);
+    const atMatch = rawLine.match(/^(.+?)\s+(?:at|@)\s+(.+)$/i);
     if (atMatch) {
-      const part1 = cleanExtractedName(atMatch[1]);
-      const part2 = cleanExtractedName(atMatch[2]);
+      const part1 = cleanExtractedName(atMatch[1], false);
+      const part2 = cleanExtractedName(atMatch[2], true);
       if (part1 && part2) {
         if (isKnownPositionTitle(part1)) {
           if (!headerPosition) headerPosition = part1;
@@ -776,22 +903,24 @@ export const extractCompanyAndPosition = (
     }
 
     // Pattern: "Company — Position" or "Position — Company"
-    const delimMatch = line.split(/\s*[\u2014\u2013\-\|]\s*/);
+    const delimMatch = rawLine.split(/\s*[\u2014\u2013\-\|]\s*/);
     if (delimMatch.length === 2) {
-      const part1 = cleanExtractedName(delimMatch[0]);
-      const part2 = cleanExtractedName(delimMatch[1]);
+      const part1 = cleanExtractedName(delimMatch[0], false);
+      const part2 = cleanExtractedName(delimMatch[1], false);
       if (part1 && part2 && part1.length <= 50 && part2.length <= 50) {
         if (isKnownPositionTitle(part2) && !isKnownPositionTitle(part1)) {
-          if (!headerCompany) {
-            headerCompany = part1;
-            candidates.add(part1);
+          const compClean = cleanExtractedName(part1, true);
+          if (compClean && !headerCompany) {
+            headerCompany = compClean;
+            candidates.add(compClean);
           }
           if (!headerPosition) headerPosition = part2;
         } else if (isKnownPositionTitle(part1) && !isKnownPositionTitle(part2)) {
           if (!headerPosition) headerPosition = part1;
-          if (!headerCompany) {
-            headerCompany = part2;
-            candidates.add(part2);
+          const compClean = cleanExtractedName(part2, true);
+          if (compClean && !headerCompany) {
+            headerCompany = compClean;
+            candidates.add(compClean);
           }
         }
       }
@@ -800,24 +929,39 @@ export const extractCompanyAndPosition = (
 
   // PRIORITY 3: Job Summary / About Section Fallback
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
 
-    // Match "About <Company>"
-    const aboutMatch = line.match(/^(?:about|about\s+the\s+company|company\s+overview)\s*[:\-–]?\s*([A-Z][A-Za-z0-9\s&.,'-]+)$/i);
+    // Strip leading emojis and bullets before checking
+    const cleanLine = rawLine
+      .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+      .trim();
+
+    // Match "About <Company>" or "About: <Company>"
+    const aboutMatch = cleanLine.match(/^(?:about|about\s+the\s+company|company\s+overview)\s*[:\-–]?\s*([A-Z][A-Za-z0-9\s&.,'-]+)$/i);
     if (aboutMatch) {
-      const val = cleanExtractedName(aboutMatch[1]);
+      const val = cleanExtractedName(aboutMatch[1], true);
       if (val && !summaryCompany) {
         summaryCompany = val;
         candidates.add(val);
       }
     }
 
+    // Match "<Company> (an affiliate of ...) is a leader..." or "<Company> is a leader/provider/pioneer..."
+    const introMatch = cleanLine.match(/^([A-Z][A-Za-z0-9&.,'-]+(?:\s+[A-Z][A-Za-z0-9&.,'-]+){0,3}?)\s*(?:\([^)]*\))?\s+is\s+(?:a|an|the)\s+(?:leader|provider|platform|pioneer|global|leading|innovative|software|financial)/i);
+    if (introMatch) {
+      const comp = cleanExtractedName(introMatch[1], true);
+      if (comp && !summaryCompany) {
+        summaryCompany = comp;
+        candidates.add(comp);
+      }
+    }
+
     // Match "<Company> is looking for / seeking / hiring <Position>"
-    const hiringMatch = line.match(/^([A-Z][A-Za-z0-9&.,'-]+(?:\s+[A-Z][A-Za-z0-9&.,'-]+){0,4}?)\s+(?:is\s+(?:looking\s+for|seeking|hiring|in\s+search\s+of)|invites\s+applications\s+for)\s+(?:an?\s+|experienced\s+)?([^.,;]+?)(?:\s+(?:to\s+join|in\s+our|with|for|at)\b|[.,;]|$)/i);
+    const hiringMatch = cleanLine.match(/^([A-Z][A-Za-z0-9&.,'-]+(?:\s+[A-Z][A-Za-z0-9&.,'-]+){0,4}?)\s+(?:is\s+(?:looking\s+for|seeking|hiring|in\s+search\s+of)|invites\s+applications\s+for)\s+(?:an?\s+|experienced\s+)?([^.,;]+?)(?:\s+(?:to\s+join|in\s+our|with|for|at)\b|[.,;]|$)/i);
     if (hiringMatch) {
-      const comp = cleanExtractedName(hiringMatch[1]);
-      const pos = cleanExtractedName(hiringMatch[2]);
+      const comp = cleanExtractedName(hiringMatch[1], true);
+      const pos = cleanExtractedName(hiringMatch[2], false);
       if (comp && !summaryCompany) {
         summaryCompany = comp;
         candidates.add(comp);
@@ -869,43 +1013,146 @@ export const extractJobMetadata = (
     interviewProcess: null
   };
 
+  const isLabelLine = (str: string): boolean => {
+    const l = str.toLowerCase().replace(/[:\-–]/g, '').trim();
+    return KNOWN_FIELD_LABELS.some(lbl => l === lbl || l.startsWith(lbl + ' '));
+  };
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const rawLine = lines[i].trim();
+    if (!rawLine) continue;
 
-    // Location
-    if (/^(?:location|city|work\s+location)\s*[:\-–]/i.test(line)) {
-      metadata.location = cleanExtractedName(line.replace(/^(?:location|city|work\s+location)\s*[:\-–]?\s*/i, ''));
+    const cleanLine = rawLine
+      .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+      .trim();
+
+    // Helper to get value either on same line or continuing across next line(s)
+    const getMultiLineValue = (matchResult: RegExpMatchArray | null, maxLines: number = 3): string | null => {
+      if (!matchResult) return null;
+      let val = (matchResult[1] || '').trim();
+      if (!val) {
+        const collected: string[] = [];
+        let j = i + 1;
+        while (j < lines.length && collected.length < maxLines) {
+          const next = lines[j].trim();
+          if (!next || detectHeading(next).isHeading || isLabelLine(next)) {
+            break;
+          }
+          collected.push(next);
+          if (j + 1 < lines.length) {
+            const lookAhead = lines[j + 1].trim();
+            if (isLabelLine(lookAhead) || detectHeading(lookAhead).isHeading) {
+              break;
+            }
+          }
+          j++;
+        }
+        val = collected.join(' ');
+      } else {
+        if (val.endsWith(',') && i + 1 < lines.length) {
+          const next = lines[i + 1].trim();
+          if (!isLabelLine(next) && !detectHeading(next).isHeading) {
+            val += ' ' + next;
+          }
+        }
+      }
+      return val || null;
+    };
+
+    // Location / Locations
+    const locMatch = cleanLine.match(/^(?:locations?|city|cities|work\s+locations?|job\s+locations?)\s*[:\-–]?\s*(.*)$/i);
+    if (locMatch && !metadata.location) {
+      const locVal = getMultiLineValue(locMatch, 4);
+      if (locVal) {
+        metadata.location = cleanExtractedName(locVal.replace(/\s+/g, ' ').trim(), false);
+      }
     }
-    // Employment Type
-    if (/^(?:employment\s+type|job\s+type|engagement\s+type|type)\s*[:\-–]/i.test(line)) {
-      metadata.employmentType = cleanExtractedName(line.replace(/^(?:employment\s+type|job\s+type|engagement\s+type|type)\s*[:\-–]?\s*/i, ''));
+
+    // Work Mode / Workplace Type
+    const wmMatch = cleanLine.match(/^(?:work\s+mode|workplace\s+type|working\s+mode|work\s+type)\s*[:\-–]?\s*(.*)$/i);
+    if (wmMatch) {
+      const modeVal = getMultiLineValue(wmMatch, 1) || '';
+      if (/in-office|office|onsite|on-site|in office/i.test(modeVal)) {
+        metadata.workMode = 'Onsite';
+      } else if (/hybrid/i.test(modeVal)) {
+        metadata.workMode = 'Hybrid';
+      } else if (/remote/i.test(modeVal)) {
+        metadata.workMode = 'Remote';
+      }
     }
+
+    // Employment Type (e.g. "Full-Time | On-site")
+    const empMatch = cleanLine.match(/^(?:employment\s+type|job\s+type|engagement\s+type|type)\s*[:\-–]?\s*(.*)$/i);
+    if (empMatch && !metadata.employmentType) {
+      const empVal = getMultiLineValue(empMatch, 1);
+      if (empVal) {
+        if (empVal.includes('|')) {
+          const parts = empVal.split('|').map(p => p.trim());
+          metadata.employmentType = cleanExtractedName(parts[0], false);
+          if (!metadata.workMode && parts[1]) {
+            if (/in-office|office|onsite|on-site/i.test(parts[1])) metadata.workMode = 'Onsite';
+            else if (/hybrid/i.test(parts[1])) metadata.workMode = 'Hybrid';
+            else if (/remote/i.test(parts[1])) metadata.workMode = 'Remote';
+          }
+        } else {
+          metadata.employmentType = cleanExtractedName(empVal, false);
+        }
+      }
+    }
+
     // Experience
-    if (/^(?:experience|required\s+experience|exp|total\s+experience)\s*[:\-–]/i.test(line)) {
-      metadata.experience = cleanExtractedName(line.replace(/^(?:experience|required\s+experience|exp|total\s+experience)\s*[:\-–]?\s*/i, ''));
+    const expMatch = cleanLine.match(/^(?:experience\s+required|required\s+experience|experience|exp|total\s+experience)\s*[:\-–]?\s*(.*)$/i);
+    if (expMatch && !metadata.experience) {
+      const expVal = getMultiLineValue(expMatch, 1);
+      if (expVal && /\d/.test(expVal)) {
+        metadata.experience = cleanExtractedName(expVal, false);
+      }
     }
-    // Budget / Salary
-    if (/^(?:budget|salary|compensation|package|ctc|remuneration)\s*[:\-–]/i.test(line)) {
-      const budgetVal = line.replace(/^(?:budget|salary|compensation|package|ctc|remuneration)\s*[:\-–]?\s*/i, '').trim();
-      metadata.budget = budgetVal;
-      metadata.salary = budgetVal;
+
+    // Budget / Salary / Compensation / CTC
+    const salMatch = cleanLine.match(/^(?:budget|salary|compensation|package|ctc|remuneration)\s*[:\-–]?\s*(.*)$/i);
+    if (salMatch && !metadata.salary) {
+      const salVal = getMultiLineValue(salMatch, 1);
+      if (salVal) {
+        const cleanedSal = salVal
+          .replace(/^(?:ctc|salary|compensation|budget|package)\s*[:\-–]\s*/i, '')
+          .replace(/(?:[■▪●]|\bI)\s*(?=\d)/g, '₹')
+          .trim();
+        metadata.budget = cleanedSal;
+        metadata.salary = cleanedSal;
+      }
     }
+
     // Interview Process
-    if (/^(?:interview\s+process|interviews|interview\s+mode|interview\s+rounds)\s*[:\-–]/i.test(line)) {
-      metadata.interviewProcess = cleanExtractedName(line.replace(/^(?:interview\s+process|interviews|interview\s+mode|interview\s+rounds)\s*[:\-–]?\s*/i, ''));
+    const intMatch = cleanLine.match(/^(?:interview\s+process|interviews|interview\s+mode|interview\s+rounds)\s*[:\-–]?\s*(.*)$/i);
+    if (intMatch && !metadata.interviewProcess) {
+      const intVal = getMultiLineValue(intMatch, 2);
+      if (intVal) {
+        metadata.interviewProcess = cleanExtractedName(intVal, false);
+      }
+    }
+
+    // Recruitment Information SPOC (e.g. "Client SPOC: Pooja Kakran | Contact: 8826859619 | Posted On: 20 May 2026 | Interview Mode: Mixed")
+    if (/client\s+spoc/i.test(cleanLine) || /recruitment\s+information/i.test(cleanLine)) {
+      if (/interview\s+mode\s*:\s*([^|\n]+)/i.test(cleanLine)) {
+        const mode = cleanLine.match(/interview\s+mode\s*:\s*([^|\n]+)/i)?.[1]?.trim();
+        if (mode && !metadata.interviewProcess) {
+          metadata.interviewProcess = `Interview Mode: ${mode}`;
+        }
+      } else if (i + 1 < lines.length && /interview\s+mode/i.test(cleanLine)) {
+        const next = lines[i + 1].trim();
+        if (!isLabelLine(next) && !detectHeading(next).isHeading) {
+          metadata.interviewProcess = `Interview Mode: ${next}`;
+        }
+      }
     }
   }
 
-  // Determine work mode
-  if (metadata.location) {
-    if (/remote/i.test(metadata.location)) metadata.workMode = 'Remote';
-    else if (/hybrid/i.test(metadata.location)) metadata.workMode = 'Hybrid';
-    else if (/onsite|on-site/i.test(metadata.location)) metadata.workMode = 'Onsite';
-  }
+  // Determine work mode from location text or fulltext if not explicitly set
   if (!metadata.workMode) {
-    if (/\bremote\b/i.test(fullText)) metadata.workMode = 'Remote';
-    else if (/\bhybrid\b/i.test(fullText)) metadata.workMode = 'Hybrid';
-    else if (/\b(onsite|on-site)\b/i.test(fullText)) metadata.workMode = 'Onsite';
+    if (/100%\s+in-office|in-office|5\s*days\/week|onsite|on-site/i.test(fullText)) metadata.workMode = 'Onsite';
+    else if (/hybrid/i.test(fullText)) metadata.workMode = 'Hybrid';
+    else if (/remote/i.test(fullText)) metadata.workMode = 'Remote';
   }
 
   return metadata;
@@ -1016,51 +1263,57 @@ export const parseJobDescription = (
   // 4. Extract Mandatory Skills (Strictly isMandatory = true)
   const mandSection = sections.find(s => s.type === 'MANDATORY_SKILLS');
   const rawMandatoryBullets = mandSection ? extractBulletsFromSection(mandSection) : [];
-  const mandatoryRequirementsList: ParsedRequirement[] = rawMandatoryBullets.map((bullet) => ({
-    requirement: bullet,
-    category: categorizeRequirement(bullet),
-    type: 'SKILL',
-    weight: 1.0,
-    isMandatory: true,
-    mandatory: true,
-    evidenceRequired: true,
-    recruiterConfirmed: false,
-    sourceEvidence: bullet,
-    sourceSection: 'Mandatory Skills',
-    confidence: 'HIGH',
-    needsVerification: false
-  }));
+  const mandatoryRequirementsList: ParsedRequirement[] = rawMandatoryBullets.map((bullet) => {
+    const clean = cleanBulletText(bullet);
+    return {
+      requirement: clean,
+      category: categorizeRequirement(clean),
+      type: 'SKILL',
+      weight: 1.0,
+      isMandatory: true,
+      mandatory: true,
+      evidenceRequired: true,
+      recruiterConfirmed: false,
+      sourceEvidence: clean,
+      sourceSection: 'Mandatory Skills',
+      confidence: 'HIGH',
+      needsVerification: false
+    };
+  });
 
   // 5. Extract Preferred Skills (Strictly isMandatory = false)
   const prefSection = sections.find(s => s.type === 'PREFERRED_SKILLS');
   const rawPreferredBullets = prefSection ? extractBulletsFromSection(prefSection) : [];
-  const preferredRequirementsList: ParsedRequirement[] = rawPreferredBullets.map((bullet) => ({
-    requirement: bullet,
-    category: categorizeRequirement(bullet),
-    type: 'SKILL',
-    weight: 1.0,
-    isMandatory: false,
-    mandatory: false,
-    evidenceRequired: true,
-    recruiterConfirmed: false,
-    sourceEvidence: bullet,
-    sourceSection: 'Preferred Skills',
-    confidence: 'HIGH',
-    needsVerification: false
-  }));
+  const preferredRequirementsList: ParsedRequirement[] = rawPreferredBullets.map((bullet) => {
+    const clean = cleanBulletText(bullet);
+    return {
+      requirement: clean,
+      category: categorizeRequirement(clean),
+      type: 'SKILL',
+      weight: 1.0,
+      isMandatory: false,
+      mandatory: false,
+      evidenceRequired: true,
+      recruiterConfirmed: false,
+      sourceEvidence: clean,
+      sourceSection: 'Preferred Skills',
+      confidence: 'HIGH',
+      needsVerification: false
+    };
+  });
 
   // 6. Extract Responsibilities (Separated collection; never converted into requirements)
   const respSection = sections.find(s => s.type === 'RESPONSIBILITIES');
-  const responsibilityBullets = respSection ? extractBulletsFromSection(respSection) : [];
+  const responsibilityBullets = respSection ? extractBulletsFromSection(respSection).map(b => cleanBulletText(b)) : [];
 
   // Fallback for unsegmented legacy JDs without explicit section headings
   if (mandatoryRequirementsList.length === 0 && preferredRequirementsList.length === 0) {
     console.log('[JD Parser] No explicit Mandatory/Preferred sections found; running fallback keyword classifier...');
     lines.forEach((line) => {
       const lower = line.toLowerCase();
-      const isNumberedOrBullet = /^\d+[\.\)]\s/.test(line) || line.startsWith('-') || line.startsWith('•') || line.startsWith('*') || line.startsWith('●');
+      const isNumberedOrBullet = /^\d+[\.\)]\s/.test(line) || line.startsWith('-') || line.startsWith('•') || line.startsWith('*') || line.startsWith('●') || line.startsWith('[');
       if (isNumberedOrBullet && line.length >= 8) {
-        const cleanReq = line.replace(/^[\s\t]*([●•*\-–—▪▫➢✓✔]|\d+[\.\)])\s*/, '').trim();
+        const cleanReq = cleanBulletText(line);
         if (isValidRequirement(cleanReq)) {
           const isMand = lower.includes('required') || lower.includes('mandatory') || lower.includes('must');
           const reqItem: ParsedRequirement = {
@@ -1072,7 +1325,7 @@ export const parseJobDescription = (
             mandatory: isMand,
             evidenceRequired: true,
             recruiterConfirmed: false,
-            sourceEvidence: line.trim(),
+            sourceEvidence: cleanReq,
             sourceSection: 'General Requirements',
             confidence: 'MEDIUM',
             needsVerification: !isMand

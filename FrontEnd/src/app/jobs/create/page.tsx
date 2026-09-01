@@ -139,18 +139,38 @@ export default function CreateJobPage() {
       setNormalizedText(resData.normalizedText || resData.rawText || '');
       setJdText(resData.rawText || '');
 
+      const cleanRequirementText = (str: string): string => {
+        if (!str) return '';
+        return str
+          .replace(/\$\\le\$/gi, '≤')
+          .replace(/\\le\b/gi, '≤')
+          .replace(/\$\\ge\$/gi, '≥')
+          .replace(/\\ge\b/gi, '≥')
+          .replace(/\$\\sim\$/gi, '~')
+          .replace(/^[\s•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+          .replace(/^\[\s*[xX✓✔]?\s*\]\s*/, '')
+          .replace(/^\(\s*[xX✓✔]?\s*\)\s*/, '')
+          .replace(/^[:\s–\-•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
+          .replace(/\[\s*[xX✓✔]?\s*\]/g, '')
+          .trim();
+      };
+
       // Format requirements
       const formattedReqs: ExtractedRequirement[] = Array.isArray(extractedReqs)
-        ? extractedReqs.map((r: any, idx: number) => ({
-            id: `req-${Date.now()}-${idx}`,
-            requirement: r.requirement,
-            category: r.category || 'Technical Skill',
-            mandatory: Boolean(r.isMandatory ?? r.mandatory),
-            type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
-            weight: r.weight || (Boolean(r.isMandatory ?? r.mandatory) ? 1.5 : 1.0),
-            sourceEvidence: r.sourceEvidence || r.requirement,
-            sourceSection: r.sourceSection || ''
-          }))
+        ? extractedReqs.map((r: any, idx: number) => {
+            const cleanText = cleanRequirementText(r.requirement);
+            const cleanEvidence = cleanRequirementText(r.sourceEvidence || r.requirement);
+            return {
+              id: `req-${Date.now()}-${idx}`,
+              requirement: cleanText,
+              category: r.category || 'Technical Skill',
+              mandatory: Boolean(r.isMandatory ?? r.mandatory),
+              type: r.type || (r.category === 'Hiring Criteria' || r.sourceSection === 'Top Hiring Criteria' ? 'HIRING_CRITERIA' : 'SKILL'),
+              weight: r.weight || (Boolean(r.isMandatory ?? r.mandatory) ? 1.5 : 1.0),
+              sourceEvidence: cleanEvidence,
+              sourceSection: r.sourceSection || ''
+            };
+          }).filter(r => r.requirement.length > 5)
         : [];
 
       setRequirements(formattedReqs);
@@ -801,7 +821,7 @@ export default function CreateJobPage() {
                             onClick={() => handleToggleMandatory(req.id)}
                             className="mt-0.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border bg-brand-orange-pale text-brand-orange border-brand-orange-border hover:bg-brand-orange/10 cursor-pointer flex-shrink-0"
                           >
-                            + Preferred
+                            Preferred
                           </button>
                           <div>
                             <span className="text-xs font-semibold text-slate-800 block leading-relaxed">{req.requirement}</span>

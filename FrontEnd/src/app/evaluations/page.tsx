@@ -93,20 +93,22 @@ export default function EvaluationsPage() {
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           {[
-            { label: 'Evaluations', value: counts.All, color: 'text-[#1E293B]', border: 'border-slate-200', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', iconColor: 'text-slate-600', bg: 'bg-slate-100' },
-            { label: 'Submit Ready', value: counts.SUBMIT, color: 'text-emerald-600', border: 'border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', iconColor: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'Needs Review', value: counts.REVIEW, color: 'text-amber-600', border: 'border-amber-200', icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z', iconColor: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: 'Rejected', value: counts['DO NOT SUBMIT'], color: 'text-rose-600', border: 'border-rose-200', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636', iconColor: 'text-rose-600', bg: 'bg-rose-50' },
-            { label: 'Mean Score', value: `${avgScore}%`, color: 'text-brand-orange', border: 'border-orange-200', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6', iconColor: 'text-brand-orange', bg: 'bg-brand-orange-pale' },
+            { label: 'Evaluations', value: counts.All, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+            { label: 'Submit Ready', value: counts.SUBMIT, color: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Needs Review', value: counts.REVIEW, color: 'text-amber-700', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Rejected', value: counts['DO NOT SUBMIT'], color: 'text-rose-700', badge: 'bg-rose-50 text-rose-700 border-rose-200', icon: 'M6 18L18 6M6 6l12 12' },
+            { label: 'Mean Score', value: `${avgScore}%`, color: 'text-brand-orange', badge: 'bg-brand-orange-pale text-brand-orange border-brand-orange-border', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
           ].map((s, i) => (
-            <div key={i} className={`bg-white border ${s.border} rounded-2xl p-5 shadow-sm card-hover-lift`}>
-              <div className={`w-8 h-8 rounded-xl ${s.bg} flex items-center justify-center mb-3`}>
-                <svg className={`w-4 h-4 ${s.iconColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={s.icon} />
-                </svg>
+            <div key={i} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-all hover:shadow-sm hover:border-slate-300">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{s.label}</span>
+                <span className={`w-7 h-7 rounded-xl border ${s.badge} flex items-center justify-center flex-shrink-0 shadow-2xs`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={s.icon} />
+                  </svg>
+                </span>
               </div>
-              <div className={`text-2xl font-extrabold ${s.color}`}>{s.value}</div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">{s.label}</div>
+              <div className={`text-2xl font-black ${s.color} tracking-tight`}>{s.value}</div>
             </div>
           ))}
         </div>

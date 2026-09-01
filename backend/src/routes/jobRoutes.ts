@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { createJob, getAllJobs, getJobById, updateJob, parseJobDescriptionController } from '../controllers/jobController';
+import { createJob, getAllJobs, getJobById, updateJob, deleteJob, parseJobDescriptionController } from '../controllers/jobController';
 import { protect } from '../middleware/authMiddleware';
 
 const upload = multer({
@@ -33,6 +33,7 @@ router.post('/', protect, createJob);
 router.get('/', protect, getAllJobs);
 router.get('/:id', protect, getJobById);
 router.put('/:id', protect, updateJob);
+router.delete('/:id', protect, deleteJob);
 
 // Requirement CRUD & Confirmation API Routes
 router.get('/:jobId/requirements', protect, getRequirements);
