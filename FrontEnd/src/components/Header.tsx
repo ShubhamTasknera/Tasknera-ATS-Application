@@ -151,35 +151,38 @@ const Header: React.FC = () => {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className={`lg:hidden border-t px-4 py-3 space-y-0.5 ${isAuth ? 'bg-brand-charcoal border-white/10' : 'bg-white border-brand-border'}`}>
+          <div className="lg:hidden border-t px-4 py-3 space-y-1 bg-white/95 backdrop-blur-md border-slate-200/90 shadow-xl">
             {isAuth && nav.map(item => (
               <Link key={item.href} href={item.href}
                 onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                   active(item.href)
-                    ? 'bg-brand-orange text-white'
-                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                    ? 'bg-brand-orange text-white shadow-orange'
+                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100/80'
                 }`}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={item.icon} />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                 </svg>
                 {item.label}
               </Link>
             ))}
-            <div className={`border-t pt-3 mt-2 space-y-2 ${isAuth ? 'border-white/10' : 'border-brand-border'}`}>
+            <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
               {isAuth ? (
                 <button onClick={() => { setMobileOpen(false); logout(); }}
-                  className="w-full text-left px-3 py-2 text-sm text-red-400 font-medium">
-                  Sign Out
+                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-2">
+                  <svg className="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>Sign Out</span>
                 </button>
               ) : (
                 <>
                   <button onClick={() => { setMobileOpen(false); setAuthMode('signin'); setAuthOpen(true); }}
-                    className="block w-full text-left px-3 py-2 text-sm text-brand-charcoal-2 font-medium">
+                    className="block w-full text-left px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
                     Sign In
                   </button>
                   <button onClick={() => { setMobileOpen(false); setAuthMode('signup'); setAuthOpen(true); }}
-                    className="block w-full text-center px-4 py-2.5 bg-brand-orange text-white rounded-xl text-sm font-semibold">
+                    className="block w-full text-center px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-xl text-xs font-bold shadow-orange transition-all cursor-pointer">
                     Get Started
                   </button>
                 </>

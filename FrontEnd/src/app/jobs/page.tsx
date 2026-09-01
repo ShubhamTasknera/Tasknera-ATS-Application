@@ -132,17 +132,21 @@ export default function JobsPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Requisitions', value: counts.All, color: 'text-[#1E293B]', border: 'border-slate-200', dot: 'bg-slate-700' },
-            { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-600', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-            { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-600', border: 'border-amber-200', dot: 'bg-amber-500' },
-            { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
+            { label: 'Total Requisitions', value: counts.All, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+            { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-700', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+            { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-600', badge: 'bg-slate-100 text-slate-600 border-slate-200', icon: 'M5 13l4 4L19 7' },
           ].map((s, i) => (
-            <div key={i} className={`bg-white border ${s.border} rounded-2xl p-5 shadow-sm card-hover-lift`}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`} />
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{s.label}</span>
+            <div key={i} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-all hover:shadow-sm hover:border-slate-300">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{s.label}</span>
+                <span className={`w-7 h-7 rounded-xl border ${s.badge} flex items-center justify-center flex-shrink-0 shadow-2xs`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={s.icon} />
+                  </svg>
+                </span>
               </div>
-              <div className={`text-2xl font-extrabold ${s.color}`}>{s.value}</div>
+              <div className={`text-2xl font-black ${s.color} tracking-tight`}>{s.value}</div>
             </div>
           ))}
         </div>

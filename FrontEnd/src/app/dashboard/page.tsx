@@ -247,8 +247,8 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
-                          href={`/jobs/${j.id}/upload-cvs`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-lg transition-all shadow-xs"
+                          href={`/jobs/${j.id}/candidates`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
                         >
                           Evaluate CVs →
                         </Link>
