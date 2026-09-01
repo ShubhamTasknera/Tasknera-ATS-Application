@@ -1,10 +1,157 @@
 import re
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 
-def analyze_document_quality(text: str, page_count: int = 1) -> Dict[str, Any]:
+# Comprehensive technical and professional skill catalog for instant matching
+SKILL_CATALOG = [
+    # Programming & Languages
+    "Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "C", "Go", "Golang", "Rust", "PHP", "Ruby", "Swift", "Kotlin", "Scala", "R", "Dart", "SQL", "HTML5", "HTML", "CSS3", "CSS", "Sass", "SCSS",
+    # Frameworks & Libraries
+    "React", "React.js", "React Native", "Next.js", "Vue.js", "Vue", "Angular", "AngularJS", "Node.js", "Node", "Express.js", "Express", "FastAPI", "Django", "Flask", "Spring Boot", "Spring", ".NET", "ASP.NET", "Tailwind CSS", "Tailwind", "Bootstrap", "Redux", "GraphQL", "REST APIs", "REST API", "Microservices",
+    # Cloud, DevOps & Containers
+    "AWS", "Amazon Web Services", "Azure", "Google Cloud", "GCP", "Docker", "Kubernetes", "K8s", "Terraform", "CI/CD", "GitHub Actions", "GitLab CI", "Jenkins", "Ansible", "Linux", "Unix", "Bash", "Shell",
+    # Databases & Storage
+    "PostgreSQL", "Postgres", "MySQL", "MongoDB", "Redis", "SQLite", "Supabase", "Firebase", "DynamoDB", "Elasticsearch", "Prisma", "Prisma ORM", "TypeORM", "Mongoose", "Cassandra", "Oracle",
+    # AI / ML & Data
+    "Machine Learning", "Deep Learning", "NLP", "PyTorch", "TensorFlow", "Pandas", "NumPy", "Scikit-Learn", "OpenCV", "LLM", "Generative AI", "LangChain",
+    # Methodologies & Tools
+    "Git", "GitHub", "GitLab", "Jira", "Postman", "Figma", "Agile", "Scrum", "TDD", "Unit Testing", "Jest", "Cypress", "Selenium", "Webpack", "Vite"
+]
+
+def extract_email(text: str) -> Optional[str]:
+    match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b', text)
+    return match.group(0) if match else None
+
+def extract_phone(text: str) -> Optional[str]:
+    # Match patterns like +91 98234 56789, (555) 123-4567, +1-800-555-0199, 9876543210
+    match = re.search(r'(?:\+\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,5}[\s-]?\d{3,5}\b', text)
+    if match:
+        raw_phone = match.group(0).strip()
+        digits = re.sub(r'\D', '', raw_phone)
+        if 8 <= len(digits) <= 15:
+            return raw_phone
+    return None
+
+def extract_candidate_name(text: str, filename: str = "") -> str:
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    
+    # 1. Inspect top 5 lines for a clean 2-4 word capitalized name
+    for line in lines[:5]:
+        cleaned_line = re.sub(r'[^\w\s]', '', line).strip()
+        words = cleaned_line.split()
+        if 2 <= len(words) <= 4:
+            # Check if line does not contain keywords like resume, cv, engineer, email, etc.
+            lower_line = line.lower()
+            if not any(k in lower_line for k in ['resume', 'curriculum', 'vitae', 'email', 'phone', 'page', 'http', 'developer', 'engineer', 'architect', 'profile', 'summary']):
+                # Check capitalization
+                if all(w[0].isupper() for w in words if w):
+                    return " ".join(words)
+    
+    # 2. Heuristic fallback: Extract from filename (e.g. CV_Rahul_Sharma.pdf -> Rahul Sharma)
+    if filename:
+        clean_fn = re.sub(r'\.(pdf|docx|doc|txt)$', '', filename, flags=re.IGNORECASE)
+        clean_fn = re.sub(r'^(?:CV|Resume|Profile)[_\-\s]*', '', clean_fn, flags=re.IGNORECASE)
+        clean_fn = re.sub(r'[_\-]+', ' ', clean_fn).strip()
+        words = [w.capitalize() for w in clean_fn.split() if w.isalpha() and len(w) > 1]
+        if 1 <= len(words) <= 4:
+            return " ".join(words)
+
+    return "Candidate"
+
+def extract_skills(text: str) -> List[str]:
+    matched_skills = set()
+    for skill in SKILL_CATALOG:
+        # Regex boundary matching
+        pattern = r'(?:^|[^a-zA-Z0-9_#+])' + re.escape(skill) + r'(?:$|[^a-zA-Z0-9_#+])'
+        if re.search(pattern, text, re.IGNORECASE):
+            matched_skills.add(skill)
+    return sorted(list(matched_skills))
+
+def extract_years_of_experience(text: str) -> Optional[str]:
+    # Match patterns like "5+ years", "4-6 years of experience", "8 years exp"
+    match = re.search(r'(\d+(?:\.\d+)?(?:\s*-\s*\d+)?)\+?\s*(?:years?|yrs?)(?:\s+(?:of\s+)?experience)?', text, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)} years".replace(" ", "")
+    
+    # Check date range spans (e.g. 2018 - 2024 -> 6 years)
+    years = [int(y) for y in re.findall(r'\b(19\d\d|20\d\d)\b', text)]
+    if len(years) >= 2:
+        valid_years = [y for y in years if 1980 <= y <= 2030]
+        if valid_years:
+            span = max(valid_years) - min(valid_years)
+            if 0 < span <= 35:
+                return f"{span} years"
+    return None
+
+def extract_education(text: str) -> List[Dict[str, Any]]:
+    edu_list = []
+    degree_patterns = [
+        (r'\b(?:B\.?E\.?|Bachelor of Engineering)\b', 'Bachelor of Engineering (B.E.)'),
+        (r'\b(?:B\.?Tech\.?|Bachelor of Technology)\b', 'Bachelor of Technology (B.Tech)'),
+        (r'\b(?:M\.?Tech\.?|Master of Technology)\b', 'Master of Technology (M.Tech)'),
+        (r'\b(?:M\.?S\.?|Master of Science)\b', 'Master of Science (M.S.)'),
+        (r'\b(?:B\.?S\.?|Bachelor of Science|B\.?Sc\.?)\b', 'Bachelor of Science (B.S.)'),
+        (r'\b(?:M\.?C\.?A\.?|Master of Computer Applications)\b', 'Master of Computer Applications (MCA)'),
+        (r'\b(?:B\.?C\.?A\.?|Bachelor of Computer Applications)\b', 'Bachelor of Computer Applications (BCA)'),
+        (r'\b(?:Ph\.?D\.?|Doctor of Philosophy)\b', 'Ph.D.'),
+        (r'\b(?:MBA|Master of Business Administration)\b', 'Master of Business Administration (MBA)'),
+    ]
+
+    for pattern, title in degree_patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            # Try finding year near degree
+            year_match = re.search(pattern + r'.*?\b(20\d\d|19\d\d)\b', text, re.IGNORECASE | re.DOTALL)
+            year = year_match.group(1) if year_match else None
+            edu_list.append({
+                "degree": title,
+                "institution": "University / Institute",
+                "year": year
+            })
+    return edu_list
+
+def extract_past_companies(text: str) -> List[str]:
+    companies = []
+    # Match lines like "Software Engineer at TechNova" or "Developer — Google" or "Company: Microsoft"
+    patterns = [
+        r'(?:at|@)\s+([A-Z][A-Za-z0-9\s&.,]{2,35})(?:\s+from|\s+\(|\n|\.|\,)',
+        r'(?:Company|Employer)\s*:\s*([A-Z][A-Za-z0-9\s&.,]{2,35})',
+        r'([A-Z][A-Za-z0-9\s&.,]{2,30})\s*(?:—|–|-)\s*(?:Present|\d{4})'
+    ]
+
+    for p in patterns:
+        for m in re.finditer(p, text):
+            comp = m.group(1).strip()
+            # Filter non-company noise
+            if comp and len(comp) > 2 and comp.lower() not in ['present', 'developer', 'engineer', 'experience', 'education', 'project']:
+                if comp not in companies:
+                    companies.append(comp)
+    return companies[:5]
+
+def extract_summary(text: str) -> str:
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    
+    # Try finding Summary or Profile section
+    summary_idx = -1
+    for i, line in enumerate(lines[:15]):
+        if re.match(r'^(?:summary|professional summary|profile|about me|objective)\b', line, re.IGNORECASE):
+            summary_idx = i
+            break
+            
+    if summary_idx != -1 and summary_idx + 1 < len(lines):
+        collected = []
+        for l in lines[summary_idx + 1: summary_idx + 6]:
+            if re.match(r'^(?:experience|skills|education|projects|work history)\b', l, re.IGNORECASE):
+                break
+            collected.append(l)
+        if collected:
+            return " ".join(collected)
+
+    # Fallback to first few informative lines
+    meaningful = [l for l in lines[:8] if len(l.split()) >= 4 and not re.search(r'[@\+]', l)]
+    return " ".join(meaningful[:2]) if meaningful else (lines[0] if lines else "")
+
+def analyze_document_quality(text: str, page_count: int = 1, filename: str = "") -> Dict[str, Any]:
     """
-    Validates whether extracted text is legible and CV-like.
-    Detects and rejects HTML documents, source code, and corrupted binary streams.
+    Validates whether extracted text is legible and CV-like, and extracts structured entities.
     """
     cleaned = (text or "").strip()
     words = [w for w in cleaned.split() if w]
@@ -40,6 +187,16 @@ def analyze_document_quality(text: str, page_count: int = 1) -> Dict[str, Any]:
     else:
         quality = "GOOD"
 
+    # Extract structured JSON entities
+    candidate_name = extract_candidate_name(cleaned, filename)
+    email = extract_email(cleaned)
+    phone = extract_phone(cleaned)
+    skills = extract_skills(cleaned)
+    experience_yrs = extract_years_of_experience(cleaned)
+    education = extract_education(cleaned)
+    past_companies = extract_past_companies(cleaned)
+    summary_text = extract_summary(cleaned)
+
     return {
         "textQuality": quality,
         "characterCount": char_count,
@@ -48,5 +205,16 @@ def analyze_document_quality(text: str, page_count: int = 1) -> Dict[str, Any]:
         "pageCount": page_count,
         "hasCvSections": has_cv_sections,
         "isHtml": is_html,
-        "isSourceCode": is_source_code
+        "isSourceCode": is_source_code,
+        # Structured Fields
+        "candidateName": candidate_name,
+        "email": email,
+        "phone": phone,
+        "skills": skills,
+        "yearsOfExperience": experience_yrs,
+        "education": education,
+        "pastCompanies": past_companies,
+        "summary": summary_text,
+        "rawTextSummary": summary_text or (cleaned[:300] + "..." if len(cleaned) > 300 else cleaned)
     }
+

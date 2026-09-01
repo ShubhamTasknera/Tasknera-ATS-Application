@@ -352,22 +352,44 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
 
 /**
  * Bulk upload CVs for a specific job
+/**
+ * Bulk upload CVs for a specific job
  * POST /api/jobs/:jobId/candidates/upload
+ * Supports multi-part form data array of file inputs ('files' or 'files[]')
  */
 export const uploadCandidateCVs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const jobId = String(req.params.jobId || '');
-    const files = req.files as Express.Multer.File[];
+    const jobId = String(req.params.jobId || req.body?.jobId || '');
+    
+    // Support files from multer array, any fields, or single file fallback
+    let files: Express.Multer.File[] = [];
+    if (Array.isArray(req.files)) {
+      files = req.files;
+    } else if (req.files && typeof req.files === 'object') {
+      // If multer.fields was used
+      const filesObj = req.files as Record<string, Express.Multer.File[]>;
+      for (const fieldKey of Object.keys(filesObj)) {
+        if (Array.isArray(filesObj[fieldKey])) {
+          files.push(...filesObj[fieldKey]);
+        }
+      }
+    } else if (req.file) {
+      files = [req.file];
+    }
 
     if (!jobId) {
-      res.status(400).json({ error: 'Job ID is required in URL parameters' });
+      res.status(400).json({ error: 'Job ID is required in URL parameters or request body' });
       return;
     }
 
     if (!files || files.length === 0) {
-      res.status(400).json({ error: 'No files provided for candidate CV upload' });
+      res.status(400).json({ error: 'No files provided for candidate CV upload. Ensure field is named "files" or "files[]"' });
       return;
     }
+
+    console.log(`\n=============================================================`);
+    console.log(`[Batch CV Upload] Received ${files.length} file(s) for Job ID: ${jobId}`);
+    console.log(`=============================================================`);
 
     let existingCandidates = CANDIDATE_STORE.get(jobId);
     if (!existingCandidates) {
@@ -376,6 +398,21 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
     }
 
     const processedCandidates: CandidateRecord[] = [];
+    const candidateIds: string[] = [];
+
+    // Find default user or authenticated user for database attribution
+    let defaultUserId: string | null = null;
+    try {
+      const authUser = (req as any).user;
+      if (authUser && authUser.id) {
+        defaultUserId = authUser.id;
+      } else {
+        const user = await prisma.user.findFirst();
+        if (user) defaultUserId = user.id;
+      }
+    } catch {
+      // Prisma user lookup fallback
+    }
 
     // Process each uploaded CV file
     for (const file of files) {
@@ -383,14 +420,88 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       const fileSize = file.size;
       const fileMime = file.mimetype || 'application/pdf';
       const fileHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+      const fileMd5 = crypto.createHash('md5').update(file.buffer).digest('hex');
 
-      console.log(`\n=== [CV Processing] Starting processing for: ${fileName} (${fileSize} bytes, Hash: ${fileHash.substring(0, 10)}) ===`);
+      console.log(`\n--- [Processing File] ${fileName} (${fileSize} bytes, Hash: ${fileHash.substring(0, 10)}) ---`);
 
-      // ── DUPLICATE CANDIDATE CHECK ──────────────────────────────────────────
-      // Check if this CV was already parsed globally
-      const existingProfile = GLOBAL_CANDIDATES.get(fileHash);
+      // ── DUPLICATE CANDIDATE CHECK (FILE HASH / CLIENT VALIDATION) ───────────
+      let existingDbCandidate: any = null;
+      try {
+        existingDbCandidate = await prisma.candidate.findFirst({
+          where: {
+            OR: [
+              { file_hash: fileHash },
+              { file_hash: fileMd5 },
+              ...(defaultUserId ? [{ created_by: defaultUserId, resume_file_url: fileName }] : [])
+            ]
+          },
+          include: {
+            experiences: true,
+            education: true,
+            skills: true,
+          }
+        });
+      } catch {
+        // Fallback to memory store if DB lookup fails
+      }
+
+      const existingProfile = GLOBAL_CANDIDATES.get(fileHash) || GLOBAL_CANDIDATES.get(fileMd5) || (existingDbCandidate ? {
+        id: existingDbCandidate.id,
+        jobId,
+        name: existingDbCandidate.name,
+        email: existingDbCandidate.email,
+        phone: existingDbCandidate.phone,
+        location: existingDbCandidate.location,
+        totalExperience: existingDbCandidate.total_experience,
+        relevantExperience: existingDbCandidate.total_experience,
+        currentTitle: existingDbCandidate.current_title,
+        currentCompany: existingDbCandidate.current_company,
+        summary: existingDbCandidate.summary,
+        professionalSummary: existingDbCandidate.summary,
+        skills: existingDbCandidate.skills?.map((s: any) => s.skill) || [],
+        technologies: existingDbCandidate.skills?.map((s: any) => s.skill) || [],
+        tools: [],
+        industries: [],
+        education: existingDbCandidate.education?.map((e: any) => ({
+          degree: e.degree,
+          institution: e.institution,
+          field: e.field,
+          year: e.start_year ? `${e.start_year}` : undefined,
+        })) || [],
+        certifications: [],
+        languages: [],
+        experience: existingDbCandidate.experiences?.map((ex: any) => ({
+          title: ex.title,
+          company: ex.company,
+          startDate: ex.start_date,
+          endDate: ex.end_date,
+          duration: ex.duration,
+          description: ex.description,
+        })) || [],
+        responsibilities: [],
+        achievements: [],
+        projects: [],
+        rawText: existingDbCandidate.raw_text || '',
+        parsingStatus: 'PARSED' as const,
+        validationErrors: [],
+        parsingMetadata: {
+          fileName,
+          fileType: fileMime,
+          pageCount: 1,
+          extractionMethod: 'cached-duplicate',
+          ocrUsed: false,
+          characterCount: (existingDbCandidate.raw_text || '').length,
+          wordCount: 0,
+        },
+        fileName,
+        fileSize,
+        fileHash,
+        uploadedAt: existingDbCandidate.created_at.toISOString(),
+        isDuplicate: true,
+      } : null);
+
       if (existingProfile) {
-        console.log(`[CV Processing] Duplicate detected via file hash for: ${fileName}. Reusing candidate profile (ID: ${existingProfile.id}) for Job: ${jobId}`);
+        console.log(`[CV Processing] Duplicate detected via file hash/client record for: ${fileName}. Skipping duplicate insertion.`);
         const linkedCandidate: CandidateRecord = {
           ...existingProfile,
           jobId,
@@ -403,14 +514,47 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           existingCandidates.unshift(linkedCandidate);
         }
         processedCandidates.push(linkedCandidate);
+        candidateIds.push(linkedCandidate.id);
+
+        if (files.length === 1) {
+          res.status(200).json({
+            status: 'duplicate',
+            message: 'Candidate CV already exists in your account',
+            candidate: linkedCandidate,
+            candidates: [linkedCandidate]
+          });
+          return;
+        }
         continue;
       }
 
       const candidateId = `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      candidateIds.push(candidateId);
+
+      // Step 0: Record initial candidate in Prisma database with status PROCESSING
+      let dbCandidateId: string | null = null;
+      if (defaultUserId) {
+        try {
+          const initialDbCand = await prisma.candidate.create({
+            data: {
+              job_id: jobId.includes('-') && jobId.length === 36 ? jobId : undefined,
+              name: fileName.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' '),
+              resume_file_url: fileName,
+              file_hash: fileHash,
+              parsing_status: 'PROCESSING',
+              created_by: defaultUserId,
+            }
+          });
+          dbCandidateId = initialDbCand.id;
+          console.log(`[Prisma DB] Stored initial candidate record ${dbCandidateId} with status PROCESSING`);
+        } catch (dbInitErr) {
+          console.warn('[Prisma DB Init Notice] Initial candidate record creation bypassed:', dbInitErr);
+        }
+      }
 
       try {
         // Step 1: Extract text via Python FastAPI Document processor
-        console.log(`[CV Processing Step 1] Calling Python document processor on port 8000 for ${fileName}...`);
+        console.log(`[CV Processing Step 1] Passing file buffer directly to Python document processor on port 8000 for ${fileName}...`);
         const pythonResult: PythonDocumentResponse = await extractDocumentTextViaPython(
           file.buffer,
           fileName,
@@ -431,12 +575,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         // Step 2: Quality validation of raw extracted text
         const textQuality = validateCvTextQuality(rawText);
         console.log(`[CV Processing Step 2] Extracted ${rawText.length} chars. Quality check valid: ${textQuality.isValid} (Reason: ${textQuality.reason || 'OK'})`);
-        console.log(`[CV Processing Step 2 Preview] Text excerpt: "${rawText.substring(0, 150).replace(/\n/g, ' ')}..."`);
 
         if (!rawText || !textQuality.isValid) {
           console.warn(`[CV Processing FAILED] Rejected document ${fileName}: ${textQuality.reason || 'Insufficient text'}`);
           const failedRecord: CandidateRecord = {
-            id: candidateId,
+            id: dbCandidateId || candidateId,
             jobId,
             name: null,
             email: null,
@@ -472,28 +615,30 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
               characterCount: rawText.length,
               wordCount: wordCount || 0,
             },
-            debug: {
-              rawTextPreview: rawText.substring(0, 300),
-              extractionMethod: extractionMethod || 'failed',
-              ocrUsed,
-              characterCount: rawText.length,
-              wordCount,
-              parserInputPreview: rawText.substring(0, 200),
-              parsedCandidate: {},
-              validationErrors: [textQuality.reason || 'Unable to extract valid CV text from this document.'],
-            },
             fileName,
             fileSize,
             fileHash,
             uploadedAt: new Date().toISOString(),
           };
 
+          // Update Prisma candidate record status to FAILED if exists
+          if (dbCandidateId) {
+            await prisma.candidate.update({
+              where: { id: dbCandidateId },
+              data: {
+                parsing_status: 'FAILED',
+                error_message: textQuality.reason || 'Unable to extract valid CV text',
+                raw_text: rawText || '',
+              }
+            }).catch(() => null);
+          }
+
           existingCandidates.unshift(failedRecord);
           processedCandidates.push(failedRecord);
           continue;
         }
 
-        // Step 3: Run strict evidence-based CV Parser
+        // Step 3: Run strict evidence-based CV Parser & Entity Extraction
         console.log(`[CV Processing Step 3] Running strict evidence extractor on ${fileName}...`);
         const structuredProfile = extractStructuredCandidateFromText(rawText, fileName, {
           fileType: fileMime,
@@ -504,17 +649,74 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           wordCount: wordCount || rawText.split(/\s+/).filter(Boolean).length,
         });
 
-        console.log(`[CV Processing Step 4] Structured Extraction Results for ${fileName}:`, {
+        console.log(`[CV Processing Step 4] Structured Extraction for ${fileName}:`, {
           name: structuredProfile.name,
           email: structuredProfile.email,
-          phone: structuredProfile.phone,
           currentTitle: structuredProfile.currentTitle,
           currentCompany: structuredProfile.currentCompany,
-          skillsFound: structuredProfile.skills.length,
+          skillsCount: structuredProfile.skills.length,
+          expCount: structuredProfile.experience.length,
         });
 
+        // Step 3b: Check if candidate already exists in client account by extracted Email or Phone
+        if (structuredProfile.email || structuredProfile.phone) {
+          try {
+            const existingByEmailOrPhone = await prisma.candidate.findFirst({
+              where: {
+                AND: [
+                  ...(defaultUserId ? [{ created_by: defaultUserId }] : []),
+                  {
+                    OR: [
+                      ...(structuredProfile.email ? [{ email: { equals: structuredProfile.email, mode: 'insensitive' as const } }] : []),
+                      ...(structuredProfile.phone ? [{ phone: structuredProfile.phone }] : [])
+                    ]
+                  }
+                ]
+              }
+            });
+
+            if (existingByEmailOrPhone) {
+              console.log(`[CV Processing] Candidate with matching email/phone already exists in client account (ID: ${existingByEmailOrPhone.id}). Skipping duplicate entry.`);
+              
+              if (dbCandidateId && dbCandidateId !== existingByEmailOrPhone.id) {
+                await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
+              }
+
+              const dupRecord: CandidateRecord = {
+                id: existingByEmailOrPhone.id,
+                jobId,
+                ...structuredProfile,
+                isDuplicate: true,
+                fileName,
+                fileSize,
+                fileHash,
+                uploadedAt: existingByEmailOrPhone.created_at.toISOString(),
+              };
+
+              GLOBAL_CANDIDATES.set(fileHash, dupRecord);
+              GLOBAL_CANDIDATES.set(fileMd5, dupRecord);
+              existingCandidates.unshift(dupRecord);
+              processedCandidates.push(dupRecord);
+
+              if (files.length === 1) {
+                res.status(200).json({
+                  status: 'duplicate',
+                  message: 'Candidate CV already exists in your account',
+                  candidate: dupRecord,
+                  candidates: [dupRecord],
+                });
+                return;
+              }
+              continue;
+            }
+          } catch (dupLookupErr) {
+            console.warn('[Duplicate Check] Email/Phone lookup note:', dupLookupErr);
+          }
+        }
+
+
         const newRecord: CandidateRecord = {
-          id: candidateId,
+          id: dbCandidateId || candidateId,
           jobId,
           ...structuredProfile,
           fileName,
@@ -525,15 +727,52 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
         // Cache globally for duplicate detection across jobs
         GLOBAL_CANDIDATES.set(fileHash, newRecord);
-        GLOBAL_CANDIDATES.set(candidateId, newRecord);
+        GLOBAL_CANDIDATES.set(newRecord.id, newRecord);
 
-        // Try persisting into Supabase PostgreSQL if database is ready
+        // Update / Persist full candidate metadata into Prisma database
         try {
-          const user = await prisma.user.findFirst();
-          if (user) {
-            const dbCand = await prisma.candidate.create({
+          if (dbCandidateId) {
+            await prisma.candidate.update({
+              where: { id: dbCandidateId },
               data: {
-                id: candidateId.includes('-') && candidateId.length === 36 ? candidateId : undefined,
+                name: newRecord.name,
+                email: newRecord.email,
+                phone: newRecord.phone,
+                location: newRecord.location,
+                total_experience: newRecord.totalExperience,
+                current_title: newRecord.currentTitle,
+                current_company: newRecord.currentCompany,
+                summary: newRecord.summary,
+                raw_text: rawText,
+                parsing_status: 'PARSED',
+              }
+            });
+
+            // Link candidate to job application record if job exists
+            const validJob = await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
+            if (validJob) {
+              await prisma.candidateApplication.upsert({
+                where: {
+                  job_id_candidate_id: {
+                    job_id: validJob.id,
+                    candidate_id: dbCandidateId,
+                  }
+                },
+                update: {
+                  stage: 'PARSED',
+                  status: 'active',
+                },
+                create: {
+                  job_id: validJob.id,
+                  candidate_id: dbCandidateId,
+                  stage: 'PARSED',
+                  status: 'active',
+                }
+              }).catch(() => null);
+            }
+          } else if (defaultUserId) {
+            const createdDbCand = await prisma.candidate.create({
+              data: {
                 job_id: jobId.includes('-') && jobId.length === 36 ? jobId : undefined,
                 name: newRecord.name,
                 email: newRecord.email,
@@ -547,24 +786,13 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 raw_text: rawText,
                 file_hash: fileHash,
                 parsing_status: 'PARSED',
-                created_by: user.id,
+                created_by: defaultUserId,
               }
             });
-
-            // Create CandidateApplication join record linking candidate to job
-            const validJob = await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
-            if (validJob && (prisma as any).candidateApplication) {
-              await (prisma as any).candidateApplication.create({
-                data: {
-                  job_id: validJob.id,
-                  candidate_id: dbCand.id,
-                  stage: 'PARSED',
-                }
-              }).catch((err: any) => console.warn('[Application Link Error]', err));
-            }
+            newRecord.id = createdDbCand.id;
           }
         } catch (dbSaveErr) {
-          console.warn('[Candidate DB Save Info] Candidate saved to memory store:', dbSaveErr);
+          console.warn('[Prisma DB Save Notice] Candidate metadata stored in memory cache:', dbSaveErr);
         }
 
         existingCandidates.unshift(newRecord);
@@ -572,7 +800,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       } catch (err: any) {
         console.error(`Error processing CV ${fileName}:`, err);
         const errRecord: CandidateRecord = {
-          id: candidateId,
+          id: dbCandidateId || candidateId,
           jobId,
           name: null,
           email: null,
@@ -614,6 +842,16 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           uploadedAt: new Date().toISOString(),
         };
 
+        if (dbCandidateId) {
+          await prisma.candidate.update({
+            where: { id: dbCandidateId },
+            data: {
+              parsing_status: 'FAILED',
+              error_message: err.message || 'Processing error',
+            }
+          }).catch(() => null);
+        }
+
         existingCandidates.unshift(errRecord);
         processedCandidates.push(errRecord);
       }
@@ -621,10 +859,15 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
     CANDIDATE_STORE.set(jobId, existingCandidates);
 
+    // Return aggregated response for real-time frontend feedback
     res.status(201).json({
       success: true,
       jobId,
       uploadedCount: processedCandidates.length,
+      successfulCount: processedCandidates.filter(c => c.parsingStatus === 'PARSED').length,
+      failedCount: processedCandidates.filter(c => c.parsingStatus === 'FAILED').length,
+      candidateIds,
+      processingStatus: 'COMPLETED',
       candidates: processedCandidates,
       allCandidates: existingCandidates
     });

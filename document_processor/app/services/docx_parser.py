@@ -1,13 +1,17 @@
 import io
+import re
 from docx import Document
 from typing import Dict, Any
 from app.services.text_cleaner import clean_extracted_text
 from app.services.document_analyzer import analyze_document_quality
 
-def parse_docx_bytes(docx_bytes: bytes) -> Dict[str, Any]:
+def parse_docx_bytes(docx_bytes: bytes, filename: str = "") -> Dict[str, Any]:
     """
-    Parses Word (.docx) documents using python-docx, extracting text from paragraphs and tables.
+    Parses Word (.docx) documents using python-docx with fallback text recovery for malformed files.
     """
+    extracted_text = ""
+    extraction_method = "python-docx"
+
     try:
         doc = Document(io.BytesIO(docx_bytes))
         chunks = []
@@ -26,17 +30,37 @@ def parse_docx_bytes(docx_bytes: bytes) -> Dict[str, Any]:
 
         extracted_text = "\n".join(chunks)
     except Exception as e:
-        extracted_text = ""
+        extraction_method = "docx-stream-recovery"
+        # Binary text recovery fallback for corrupted or legacy .doc containers
+        try:
+            raw_str = docx_bytes.decode('utf-8', errors='ignore')
+            clean_printable = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', ' ', raw_str)
+            # Find runs of alphanumeric characters
+            words = re.findall(r'[A-Za-z0-9@+.,\-/\s]{4,}', clean_printable)
+            extracted_text = "\n".join([w.strip() for w in words if len(w.strip()) > 3])
+        except Exception:
+            extracted_text = ""
 
     cleaned_text = clean_extracted_text(extracted_text)
-    metrics = analyze_document_quality(cleaned_text, 1)
+    metrics = analyze_document_quality(cleaned_text, 1, filename)
 
     return {
         "text": cleaned_text,
         "pageCount": 1,
-        "extractionMethod": "python-docx",
+        "extractionMethod": extraction_method,
         "ocrUsed": False,
         "textQuality": metrics["textQuality"],
         "characterCount": metrics["characterCount"],
-        "wordCount": metrics["wordCount"]
+        "wordCount": metrics["wordCount"],
+        # Structured Fields
+        "candidateName": metrics["candidateName"],
+        "email": metrics["email"],
+        "phone": metrics["phone"],
+        "skills": metrics["skills"],
+        "yearsOfExperience": metrics["yearsOfExperience"],
+        "education": metrics["education"],
+        "pastCompanies": metrics["pastCompanies"],
+        "summary": metrics["summary"],
+        "rawTextSummary": metrics["rawTextSummary"],
     }
+

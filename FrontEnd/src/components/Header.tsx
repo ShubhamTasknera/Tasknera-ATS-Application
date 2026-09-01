@@ -13,10 +13,12 @@ const Header: React.FC = () => {
   const [authOpen, setAuthOpen]       = useState(false);
   const [authMode, setAuthMode]       = useState<'signin' | 'signup'>('signin');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pathname   = usePathname();
   const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
+    setMounted(true);
     const h = () => setScrolled(window.scrollY > 8);
     window.addEventListener('scroll', h, { passive: true });
     return () => window.removeEventListener('scroll', h);
@@ -41,7 +43,8 @@ const Header: React.FC = () => {
     pathname === href || (href !== '/' && pathname?.startsWith(href + '/'));
 
   // Unified sleek glassmorphic header across all pages
-  const isAuth = isAuthenticated && user;
+  const isAuth = mounted && Boolean(isAuthenticated && user);
+  const currentUser = isAuth ? user : null;
   const navBg = 'bg-white/90 backdrop-blur-xl';
   const navBorder = 'border-slate-200/80';
   const shadow = scrolled ? 'shadow-[0_4px_20px_rgba(30,41,59,0.06)]' : '';
@@ -53,13 +56,13 @@ const Header: React.FC = () => {
 
           {/* Logo */}
           <Logo
-            href={isAuth ? '/dashboard' : '/home'}
+            href={currentUser ? '/dashboard' : '/home'}
             size="sm"
             variant="dark"
           />
 
           {/* Nav links */}
-          {isAuth && (
+          {currentUser && (
             <div className="hidden lg:flex items-center justify-center gap-1 flex-1 overflow-x-auto mx-4">
               {nav.map(item => (
                 <Link
@@ -82,7 +85,7 @@ const Header: React.FC = () => {
 
           {/* Right actions */}
           <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-            {isAuth ? (
+            {currentUser ? (
               <>
                 <div className="relative" data-dropdown>
                   <button
@@ -90,10 +93,10 @@ const Header: React.FC = () => {
                     className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <div className="w-7 h-7 rounded-lg bg-brand-orange text-white text-xs font-bold flex items-center justify-center">
-                      {(user.name || user.email)[0].toUpperCase()}
+                      {(currentUser.name || currentUser.email)[0].toUpperCase()}
                     </div>
                     <span className="text-sm font-semibold text-slate-700 max-w-[100px] truncate">
-                      {user.name || user.email.split('@')[0]}
+                      {currentUser.name || currentUser.email.split('@')[0]}
                     </span>
                     <svg className={`w-3 h-3 text-slate-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -107,8 +110,8 @@ const Header: React.FC = () => {
                       className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl py-1 z-[200]"
                     >
                       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
-                        <p className="text-sm font-bold text-slate-800 truncate">{user.name || 'User'}</p>
-                        <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
+                        <p className="text-sm font-bold text-slate-800 truncate">{currentUser.name || 'User'}</p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{currentUser.email}</p>
                       </div>
                       <button
                         onClick={() => { setDropdownOpen(false); logout(); }}
@@ -152,7 +155,7 @@ const Header: React.FC = () => {
         {/* Mobile menu */}
         {mobileOpen && (
           <div className="lg:hidden border-t px-4 py-3 space-y-1 bg-white/95 backdrop-blur-md border-slate-200/90 shadow-xl">
-            {isAuth && nav.map(item => (
+            {currentUser && nav.map(item => (
               <Link key={item.href} href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
@@ -167,7 +170,7 @@ const Header: React.FC = () => {
               </Link>
             ))}
             <div className="border-t border-slate-100 pt-3 mt-2 space-y-2">
-              {isAuth ? (
+              {currentUser ? (
                 <button onClick={() => { setMobileOpen(false); logout(); }}
                   className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-2">
                   <svg className="w-4 h-4 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -196,5 +199,6 @@ const Header: React.FC = () => {
     </>
   );
 };
+
 
 export default Header;

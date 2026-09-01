@@ -51,12 +51,15 @@ def extract_multi_column_aware_page(page) -> str:
             sorted_blocks = sorted(text_blocks, key=lambda b: (b[1], b[0]))
             return "\n\n".join([b[4].strip() for b in sorted_blocks if b[4].strip()])
     except Exception:
-        return page.get_text("text") or ""
+        try:
+            return page.get_text("text") or ""
+        except Exception:
+            return ""
 
-def parse_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
+def parse_pdf_bytes(pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
     """
-    Parses PDF using PyMuPDF (fitz) text extraction across all pages.
-    Detects complex 2-column resume formats and triggers OCR fallback for scanned PDFs.
+    Parses PDF using PyMuPDF (fitz) text extraction across all pages safely.
+    Handles malformed or password-protected PDFs gracefully with OCR fallback.
     """
     page_count = 1
     extracted_raw = ""
@@ -66,19 +69,22 @@ def parse_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
 
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        page_count = len(doc)
+        page_count = max(1, len(doc))
         
         raw_texts = []
         layout_texts = []
-        for page_num in range(page_count):
-            page = doc[page_num]
-            raw_txt = page.get_text("text") or ""
-            layout_txt = extract_multi_column_aware_page(page)
+        for page_num in range(len(doc)):
+            try:
+                page = doc[page_num]
+                raw_txt = page.get_text("text") or ""
+                layout_txt = extract_multi_column_aware_page(page)
 
-            if raw_txt.strip():
-                raw_texts.append(raw_txt.strip())
-            if layout_txt.strip():
-                layout_texts.append(layout_txt.strip())
+                if raw_txt.strip():
+                    raw_texts.append(raw_txt.strip())
+                if layout_txt.strip():
+                    layout_texts.append(layout_txt.strip())
+            except Exception as page_err:
+                continue
         
         extracted_raw = "\n\n".join(raw_texts)
         extracted_layout = "\n\n".join(layout_texts)
@@ -88,18 +94,21 @@ def parse_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
         extracted_layout = ""
 
     cleaned_normalized = clean_extracted_text(extracted_layout or extracted_raw)
-    metrics = analyze_document_quality(cleaned_normalized, page_count)
+    metrics = analyze_document_quality(cleaned_normalized, page_count, filename)
 
     # Trigger OCR fallback if text is INSUFFICIENT or FAILED (< 50 chars or < 10 words)
-    if metrics["textQuality"] in ["INSUFFICIENT", "FAILED"] or len(cleaned_normalized) < 40:
-        ocr_text = perform_pdf_ocr(pdf_bytes)
-        cleaned_ocr = clean_extracted_text(ocr_text)
-        if len(cleaned_ocr.strip()) > len(cleaned_normalized.strip()):
-            cleaned_normalized = cleaned_ocr
-            extracted_layout = cleaned_ocr
-            metrics = analyze_document_quality(cleaned_ocr, page_count)
-            extraction_method = "pymupdf+tesseract-ocr"
-            ocr_used = True
+    if (metrics["textQuality"] in ["INSUFFICIENT", "FAILED"] or len(cleaned_normalized) < 40) and len(pdf_bytes) > 0:
+        try:
+            ocr_text = perform_pdf_ocr(pdf_bytes)
+            cleaned_ocr = clean_extracted_text(ocr_text)
+            if len(cleaned_ocr.strip()) > len(cleaned_normalized.strip()):
+                cleaned_normalized = cleaned_ocr
+                extracted_layout = cleaned_ocr
+                metrics = analyze_document_quality(cleaned_ocr, page_count, filename)
+                extraction_method = "pymupdf+tesseract-ocr"
+                ocr_used = True
+        except Exception:
+            pass
 
     return {
         "text": clean_extracted_text(extracted_raw) or cleaned_normalized,
@@ -110,5 +119,16 @@ def parse_pdf_bytes(pdf_bytes: bytes) -> Dict[str, Any]:
         "ocrUsed": ocr_used,
         "textQuality": metrics["textQuality"],
         "characterCount": metrics["characterCount"],
-        "wordCount": metrics["wordCount"]
+        "wordCount": metrics["wordCount"],
+        # Structured Fields
+        "candidateName": metrics["candidateName"],
+        "email": metrics["email"],
+        "phone": metrics["phone"],
+        "skills": metrics["skills"],
+        "yearsOfExperience": metrics["yearsOfExperience"],
+        "education": metrics["education"],
+        "pastCompanies": metrics["pastCompanies"],
+        "summary": metrics["summary"],
+        "rawTextSummary": metrics["rawTextSummary"],
     }
+

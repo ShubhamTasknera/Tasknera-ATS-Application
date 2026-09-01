@@ -43,7 +43,7 @@ router.delete('/:jobId/requirements/:requirementId', protect, deleteRequirement)
 router.post('/:jobId/requirements/confirm', protect, confirmRequirements);
 
 // Candidate CV Upload, Extraction & Status Routes
-router.post('/:jobId/candidates/upload', upload.array('files', 50), uploadCandidateCVs);
+router.post('/:jobId/candidates/upload', upload.any(), uploadCandidateCVs);
 router.get('/:jobId/candidates', getCandidatesForJob);
 router.get('/:jobId/candidates/:candidateId', getCandidateById);
 router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);
