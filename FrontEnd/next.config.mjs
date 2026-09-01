@@ -2,9 +2,10 @@ import { imageHosts } from './image-hosts.config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
+  reactStrictMode: true,
   typescript: {
+
     ignoreBuildErrors: false,
   },
   eslint: {
@@ -13,6 +14,7 @@ const nextConfig = {
   images: {
     remotePatterns: imageHosts,
   },
+
   async redirects() {
     return [
       {
@@ -25,9 +27,31 @@ const nextConfig = {
   webpack(
     config,
     {
-      dev: dev
+      dev: dev,
+      isServer,
     }
   ) {
+    if (isServer) {
+      config.plugins.push({
+        apply(compiler) {
+          compiler.hooks.afterEmit.tap('EnsurePagesManifest', () => {
+            try {
+              import('fs').then(fs => {
+                import('path').then(path => {
+                  const serverDir = path.resolve('.next/server');
+                  if (!fs.existsSync(serverDir)) fs.mkdirSync(serverDir, { recursive: true });
+                  const manifestPath = path.join(serverDir, 'pages-manifest.json');
+                  if (!fs.existsSync(manifestPath)) {
+                    fs.writeFileSync(manifestPath, JSON.stringify({}));
+                  }
+                });
+              });
+            } catch {}
+          });
+        }
+      });
+    }
+
     if (dev) {
       config.module.rules.push({
         test: /\.(jsx|tsx)$/,
@@ -49,5 +73,6 @@ const nextConfig = {
     return config;
   },
 };
+
 
 export default nextConfig;

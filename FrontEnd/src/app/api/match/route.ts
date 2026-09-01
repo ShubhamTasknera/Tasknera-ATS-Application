@@ -1,101 +1,156 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  computeComprehensiveMatchScore,
+  ComprehensiveMatchResult,
+} from '@/utils/requirementUtils';
 
 export const dynamic = 'force-dynamic';
 
-// POST - Match candidates with job description
+export interface EvaluatedCandidate {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  currentTitle?: string;
+  currentCompany?: string;
+  totalExperience?: string;
+  skills: string[];
+  education?: any[];
+  matchScore: number;
+  matchLevel: string;
+  breakdown: ComprehensiveMatchResult['breakdown'];
+  summary: string;
+  evaluatedAt: string;
+}
+
+// In-memory evaluations store for fast retrieval and persistence
+const EVALUATIONS_STORE: Map<string, any[]> = new Map();
+
+// POST - Match candidate CV data with Job Requirements & JD
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { jobDescription, candidates } = body;
+    const { jobId, jobDescription, requirements, candidates } = body;
 
-    if (!jobDescription) {
+    if (!jobDescription && !jobId && (!requirements || requirements.length === 0)) {
       return NextResponse.json(
-        { success: false, error: 'Job description is required' },
+        { success: false, error: 'Job description, jobId, or requirements are required' },
         { status: 400 }
       );
     }
 
     if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'Candidates array is required' },
+        { success: false, error: 'Candidates array is required and must not be empty' },
         { status: 400 }
       );
     }
 
-    // Simulate AI matching (Replace with actual AI logic)
-    const matchedCandidates = candidates.map((candidate) => {
-      // Simple keyword matching simulation
-      const jdLower = jobDescription.toLowerCase();
-      const candidateSkills = candidate.skills || [];
-      
-      let matchScore = 70; // Base score
-      
-      // Increase score for skill matches
-      candidateSkills.forEach((skill: string) => {
-        if (jdLower.includes(skill.toLowerCase())) {
-          matchScore += 5;
-        }
-      });
+    const effectiveJdText = typeof jobDescription === 'string'
+      ? jobDescription
+      : jobDescription?.jd_text || jobDescription?.jdText || jobDescription?.position || '';
 
-      // Cap at 100
-      matchScore = Math.min(matchScore, 100);
+    const effectiveRequirements = Array.isArray(requirements)
+      ? requirements
+      : (jobDescription?.requirements || []);
+
+    const targetJob = {
+      id: jobId || jobDescription?.id || 'job-req',
+      jd_text: effectiveJdText,
+      position: jobDescription?.position || jobDescription?.title || 'Target Requisition',
+      requirements: effectiveRequirements,
+    };
+
+    // Process each candidate using the 4-part comprehensive matching algorithm
+    const evaluatedCandidates: EvaluatedCandidate[] = candidates.map((candidate: any) => {
+      const matchResult = computeComprehensiveMatchScore(
+        {
+          skills: candidate.skills || [],
+          totalExperience: candidate.totalExperience || candidate.experience || candidate.totalExperienceYears,
+          totalExperienceYears: candidate.totalExperienceYears,
+          education: candidate.education || [],
+          rawText: candidate.rawText || candidate.raw_text || '',
+          summary: candidate.summary || candidate.professionalSummary || '',
+          currentTitle: candidate.currentTitle || candidate.current_title || '',
+        },
+        targetJob
+      );
+
+      const candidateId = candidate.id || `cand-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const candidateName = candidate.name || candidate.candidateName || 'Candidate';
 
       return {
         ...candidate,
-        matchScore: matchScore,
-        matchedSkills: candidateSkills.filter((skill: string) =>
-          jdLower.includes(skill.toLowerCase())
-        ),
-        missingSkills: extractMissingSkills(jdLower, candidateSkills),
+        id: candidateId,
+        name: candidateName,
+        matchScore: matchResult.overallScore,
+        matchLevel: matchResult.matchLevel,
+        breakdown: matchResult.breakdown,
+        summary: matchResult.summary,
+        evaluatedAt: new Date().toISOString(),
       };
     });
 
-    // Sort by match score
-    matchedCandidates.sort((a, b) => b.matchScore - a.matchScore);
+    // Rank candidates by matchScore descending
+    evaluatedCandidates.sort((a, b) => b.matchScore - a.matchScore);
+
+    // Save evaluation records to memory cache / evaluation records store
+    const evalKey = jobId || targetJob.id;
+    const evaluationRecords = evaluatedCandidates.map(c => ({
+      id: `eval-${Date.now()}-${c.id}`,
+      jobId: evalKey,
+      candidateId: c.id,
+      candidateName: c.name,
+      overallScore: c.matchScore,
+      matchLevel: c.matchLevel,
+      scoreBreakdown: c.breakdown,
+      summary: c.summary,
+      evaluatedAt: c.evaluatedAt,
+    }));
+
+    EVALUATIONS_STORE.set(evalKey, evaluationRecords);
+
+    // Calculate aggregated statistics
+    const scores = evaluatedCandidates.map(c => c.matchScore);
+    const averageMatch = scores.length > 0
+      ? Math.round(scores.reduce((acc, s) => acc + s, 0) / scores.length)
+      : 0;
+
+    const strongMatchesCount = evaluatedCandidates.filter(c => c.matchScore >= 85).length;
+    const goodMatchesCount = evaluatedCandidates.filter(c => c.matchScore >= 70 && c.matchScore < 85).length;
+    const moderateMatchesCount = evaluatedCandidates.filter(c => c.matchScore >= 50 && c.matchScore < 70).length;
+    const lowFitCount = evaluatedCandidates.filter(c => c.matchScore < 50).length;
 
     return NextResponse.json({
       success: true,
+      jobId: evalKey,
       data: {
-        totalCandidates: matchedCandidates.length,
-        averageMatch: calculateAverage(matchedCandidates.map(c => c.matchScore)),
-        topCandidates: matchedCandidates.slice(0, 10),
-        allCandidates: matchedCandidates,
+        totalCandidates: evaluatedCandidates.length,
+        averageMatch,
+        distribution: {
+          strongMatches: strongMatchesCount,
+          goodMatches: goodMatchesCount,
+          moderateMatches: moderateMatchesCount,
+          lowFit: lowFitCount,
+        },
+        weightsApplied: {
+          skillsWeight: '40%',
+          experienceWeight: '30%',
+          educationWeight: '15%',
+          keywordCosineSimilarityWeight: '15%',
+        },
+        topCandidates: evaluatedCandidates.slice(0, 10),
+        allCandidates: evaluatedCandidates,
+        evaluationRecords,
       },
-      message: 'Candidates matched successfully',
+      message: `Successfully evaluated ${evaluatedCandidates.length} candidate(s) against job requirements`,
     });
-  } catch (error) {
-    console.error('Match error:', error);
+  } catch (error: any) {
+    console.error('Match evaluation API error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to match candidates' },
+      { success: false, error: error.message || 'Failed to match candidates against job requirements' },
       { status: 500 }
     );
   }
 }
 
-// Helper function to extract missing skills
-function extractMissingSkills(jd: string, candidateSkills: string[]): string[] {
-  // Common skills to check for
-  const commonSkills = [
-    'JavaScript', 'Python', 'Java', 'React', 'Node.js', 'TypeScript',
-    'AWS', 'Docker', 'Kubernetes', 'SQL', 'MongoDB', 'Git',
-    'Agile', 'Scrum', 'Leadership', 'Communication'
-  ];
-
-  const missingSkills: string[] = [];
-  
-  commonSkills.forEach(skill => {
-    if (jd.includes(skill.toLowerCase()) && 
-        !candidateSkills.some(cs => cs.toLowerCase() === skill.toLowerCase())) {
-      missingSkills.push(skill);
-    }
-  });
-
-  return missingSkills;
-}
-
-// Helper function to calculate average
-function calculateAverage(numbers: number[]): number {
-  if (numbers.length === 0) return 0;
-  const sum = numbers.reduce((acc, num) => acc + num, 0);
-  return Math.round(sum / numbers.length);
-}

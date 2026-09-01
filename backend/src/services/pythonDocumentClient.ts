@@ -13,11 +13,33 @@ export interface PythonDocumentResponse {
   text: string;
   layoutText?: string;
   normalizedText?: string;
+  // Structured CV JSON Fields
+  candidateName?: string;
+  email?: string;
+  phone?: string;
+  skills?: string[];
+  yearsOfExperience?: string;
+  education?: Array<{ degree: string; institution?: string; year?: string }>;
+  pastCompanies?: string[];
+  summary?: string;
+  rawTextSummary?: string;
   error?: string;
 }
 
+export interface PythonBatchResponse {
+  success: boolean;
+  totalFiles: number;
+  successfulCount: number;
+  failedCount: number;
+  results: PythonDocumentResponse[];
+}
+
+const PYTHON_SERVICE_PORT = parseInt(process.env.PYTHON_PORT || '8000', 10);
+const PYTHON_SERVICE_HOST = process.env.PYTHON_HOST || '127.0.0.1';
+const REQUEST_TIMEOUT_MS = 15000; // 15s timeout for resilient processing & OCR
+
 /**
- * Communicates with the Python FastAPI Document Processing Service (port 8000)
+ * Communicates with the Python FastAPI Document Processing Service (single file extraction)
  */
 export const extractDocumentTextViaPython = async (
   buffer: Buffer,
@@ -27,25 +49,24 @@ export const extractDocumentTextViaPython = async (
   return new Promise((resolve) => {
     const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
 
-    // Build multipart header and footer
+    // Build multipart payload
     const header = Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
     );
     const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
-
     const payload = Buffer.concat([header, buffer, footer]);
 
     const req = http.request(
       {
-        hostname: '127.0.0.1',
-        port: 8000,
+        hostname: PYTHON_SERVICE_HOST,
+        port: PYTHON_SERVICE_PORT,
         path: '/parse-document',
         method: 'POST',
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'Content-Length': payload.length,
         },
-        timeout: 3000,
+        timeout: REQUEST_TIMEOUT_MS,
       },
       (res) => {
         let responseData = '';
@@ -100,7 +121,7 @@ export const extractDocumentTextViaPython = async (
 
     req.on('timeout', () => {
       req.destroy();
-      console.warn('[Python Client Warning] Connection to Python service on port 8000 timed out (3s). Operating in fallback mode.');
+      console.warn(`[Python Client Warning] Connection to Python service on port ${PYTHON_SERVICE_PORT} timed out (${REQUEST_TIMEOUT_MS}ms). Operating in fallback mode.`);
       resolve({
         success: false,
         fileName: filename,
@@ -119,7 +140,7 @@ export const extractDocumentTextViaPython = async (
     });
 
     req.on('error', (err) => {
-      console.warn('[Python Client Connection Warning] Could not connect to Python FastAPI service on port 8000. Operating in fallback mode:', err.message);
+      console.warn(`[Python Client Connection Warning] Could not connect to Python FastAPI service on port ${PYTHON_SERVICE_PORT}. Operating in fallback mode:`, err.message);
       resolve({
         success: false,
         fileName: filename,
@@ -141,3 +162,36 @@ export const extractDocumentTextViaPython = async (
     req.end();
   });
 };
+
+/**
+ * Communicates with the Python FastAPI Document Processing Service for batch files
+ */
+export const extractBatchDocumentsViaPython = async (
+  files: Array<{ buffer: Buffer; filename: string; mimeType: string }>
+): Promise<PythonBatchResponse> => {
+  if (!files || files.length === 0) {
+    return {
+      success: true,
+      totalFiles: 0,
+      successfulCount: 0,
+      failedCount: 0,
+      results: []
+    };
+  }
+
+  // Process files concurrently with individual safety
+  const results = await Promise.all(
+    files.map(f => extractDocumentTextViaPython(f.buffer, f.filename, f.mimeType))
+  );
+
+  const successfulCount = results.filter(r => r.success).length;
+
+  return {
+    success: true,
+    totalFiles: results.length,
+    successfulCount,
+    failedCount: results.length - successfulCount,
+    results
+  };
+};
+
