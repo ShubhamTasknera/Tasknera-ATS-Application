@@ -2,18 +2,18 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
-import { AuthRequest } from '../middleware/authMiddleware';
+import { AuthRequest, UserRole } from '../middleware/authMiddleware';
 
-const generateToken = (userId: string, email: string): string => {
+const generateToken = (userId: string, email: string, role: UserRole): string => {
   const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-  return jwt.sign({ userId, email }, secret, { expiresIn: '24h' });
+  return jwt.sign({ userId, email, role }, secret, { expiresIn: '24h' });
 };
 
 // @desc    Register a new user
 // @route   POST /api/auth/signup
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     // Validation
     if (!email || !password) {
@@ -46,17 +46,26 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Determine initial role: if first user in DB, bootstrap as ADMIN, otherwise default to requested valid role or MEMBER
+    const userCount = await prisma.user.count();
+    let assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
+
+    if (role && ['ADMIN', 'MEMBER'].includes(role.toUpperCase())) {
+      assignedRole = role.toUpperCase() as UserRole;
+    }
+
     // Create user in Supabase DB via Prisma
     const user = await prisma.user.create({
       data: {
         name: name ? name.trim() : null,
         email: email.toLowerCase().trim(),
-        password: hashedPassword
+        password: hashedPassword,
+        role: assignedRole
       }
     });
 
     // Generate token
-    const token = generateToken(user.id, user.email);
+    const token = generateToken(user.id, user.email, user.role as UserRole);
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -65,6 +74,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
         createdAt: user.createdAt
       }
     });
@@ -103,8 +113,10 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const userRole = (user.role as UserRole) || 'MEMBER';
+
     // Generate token
-    const token = generateToken(user.id, user.email);
+    const token = generateToken(user.id, user.email, userRole);
 
     res.status(200).json({
       message: 'Signed in successfully',
@@ -113,6 +125,8 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: userRole,
+        teamId: user.teamId,
         createdAt: user.createdAt
       }
     });
@@ -137,6 +151,8 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
         id: true,
         name: true,
         email: true,
+        role: true,
+        teamId: true,
         createdAt: true,
         updatedAt: true
       }
@@ -153,3 +169,4 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Server error fetching user profile' });
   }
 };
+

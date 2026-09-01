@@ -373,26 +373,43 @@ const MONTH_MAP: Record<string, number> = {
 export function parseDateToYearMonth(str: string): { year: number; month: number } | null {
   if (!str) return null;
   const trimmed = str.trim().toLowerCase();
-  if (trimmed === 'present' || trimmed === 'current' || trimmed === 'now' || trimmed === 'till date' || trimmed === 'ongoing') {
+  if (['present', 'current', 'now', 'till date', 'ongoing', 'active', 'continue', 'continuing'].includes(trimmed)) {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
   }
   
-  const mMatch = trimmed.match(/([a-z]+)\.?\s*(\d{4})/i);
+  // Format: "Apr 2025", "April 2025", "Apr '25", "Apr 25"
+  const mMatch = trimmed.match(/([a-z]{3})[a-z]*\.?\s*'?(\d{2,4})/i);
   if (mMatch) {
     const monthKey = mMatch[1].toLowerCase().replace(/[^a-z]/g, '');
     const month = MONTH_MAP[monthKey] !== undefined ? MONTH_MAP[monthKey] : 0;
-    const year = parseInt(mMatch[2], 10);
-    return { year, month };
+    let year = parseInt(mMatch[2], 10);
+    if (year < 100) year += 2000;
+    if (year >= 1970 && year <= 2035) {
+      return { year, month };
+    }
   }
 
-  const slashMatch = trimmed.match(/(\d{1,2})\s*[\/-]\s*(\d{4})/);
+  // Format: "04/2021", "4/2021", "04-2021", "04.2021"
+  const slashMatch = trimmed.match(/(\d{1,2})\s*[\/\.-]\s*(\d{2,4})/);
   if (slashMatch) {
     const month = Math.max(0, Math.min(11, parseInt(slashMatch[1], 10) - 1));
-    const year = parseInt(slashMatch[2], 10);
+    let year = parseInt(slashMatch[2], 10);
+    if (year < 100) year += 2000;
+    if (year >= 1970 && year <= 2035) {
+      return { year, month };
+    }
+  }
+
+  // Format: "2021/04", "2021-04"
+  const yearFirstMatch = trimmed.match(/(\d{4})\s*[\/\.-]\s*(\d{1,2})/);
+  if (yearFirstMatch) {
+    const year = parseInt(yearFirstMatch[1], 10);
+    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
     return { year, month };
   }
 
+  // Format: "2021"
   const yMatch = trimmed.match(/\b(19\d\d|20\d\d)\b/);
   if (yMatch) {
     return { year: parseInt(yMatch[1], 10), month: 0 };
@@ -425,27 +442,103 @@ export function formatNumericExperience(totalMonths: number): string {
 }
 
 /**
- * Calculates Career Gap between consecutive job experiences
+ * Extracts date range from a string (e.g., "Apr 2025 – Nov 2025", "10/2021 - 04/2023", "2021 - 2023")
  */
-export function calculateCareerGaps(experiences: CandidateExperience[]): CandidateGapAnalysis {
-  if (!experiences || experiences.length <= 1) {
-    return {
-      hasGap: false,
-      totalGapMonths: 0,
-      gaps: [],
-      statusText: 'No gap identified (Continuous employment)'
-    };
+export function extractDateRange(text: string): { duration: string | null; startDate: string | null; endDate: string | null; cleanedText: string } {
+  const dateRangePattern = /\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}|\d{4}))\s*(?:[–—\-\~]|to|until)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}|\d{4}|Present|Current|Now|Ongoing|Till\s*Date))\b/i;
+  const match = text.match(dateRangePattern);
+
+  if (match) {
+    const duration = match[0].trim();
+    const startDate = match[1].trim();
+    const endDate = match[2].trim();
+    const cleanedText = text.replace(dateRangePattern, '').trim();
+    return { duration, startDate, endDate, cleanedText };
   }
 
-  // Parse start/end dates for each experience
-  const datedExps: { exp: CandidateExperience; start: { year: number; month: number }; end: { year: number; month: number } }[] = [];
+  return { duration: null, startDate: null, endDate: null, cleanedText: text };
+}
 
-  for (const exp of experiences) {
-    if (exp.startDate) {
-      const s = parseDateToYearMonth(exp.startDate);
-      const e = parseDateToYearMonth(exp.endDate || 'Present');
-      if (s && e) {
-        datedExps.push({ exp, start: s, end: e });
+/**
+ * Calculates Career Gap between consecutive job experiences with raw text fallback
+ */
+export function calculateCareerGaps(experiences: CandidateExperience[], rawText?: string): CandidateGapAnalysis {
+  // Parse start/end dates for each experience
+  const datedExps: { exp?: CandidateExperience; title?: string | null; company?: string | null; start: { year: number; month: number }; end: { year: number; month: number }; rawStart: string; rawEnd: string }[] = [];
+
+  if (experiences && experiences.length > 0) {
+    for (const exp of experiences) {
+      let startStr = exp.startDate;
+      let endStr = exp.endDate;
+
+      if (!startStr && exp.duration) {
+        const parsedRange = extractDateRange(exp.duration);
+        if (parsedRange.startDate) {
+          startStr = parsedRange.startDate;
+          endStr = parsedRange.endDate || 'Present';
+        }
+      }
+
+      if (!startStr && exp.sourceEvidence) {
+        const parsedRange = extractDateRange(exp.sourceEvidence);
+        if (parsedRange.startDate) {
+          startStr = parsedRange.startDate;
+          endStr = parsedRange.endDate || 'Present';
+        }
+      }
+
+      if (startStr) {
+        const s = parseDateToYearMonth(startStr);
+        const e = parseDateToYearMonth(endStr || 'Present');
+        if (s && e) {
+          datedExps.push({
+            exp,
+            title: exp.title,
+            company: exp.company,
+            start: s,
+            end: e,
+            rawStart: startStr,
+            rawEnd: endStr || 'Present'
+          });
+        }
+      }
+    }
+  }
+
+  // If experiences didn't yield at least 2 dated roles, scan only the EXPERIENCE section of rawText
+  if (datedExps.length < 2 && rawText) {
+    const expMatch = rawText.match(/(?:PROFESSIONAL\s+EXPERIENCE|WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|EXPERIENCE)[\s\S]*?(?=(?:TECHNICAL\s+SKILLS|SKILLS|PROJECTS|EDUCATION|ACADEMICS|CERTIFICATIONS|ACHIEVEMENTS|LANGUAGES|ADDITIONAL\s+INFORMATION)|$)/i);
+    const expSegment = expMatch ? expMatch[0] : '';
+    if (expSegment) {
+      const rangeRegex = /\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}))\s*(?:[–—\-\~]|to)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}|Present|Current|Now|Ongoing))\b/ig;
+      let match: RegExpExecArray | null;
+      const seenSpans = new Set<string>();
+
+      while ((match = rangeRegex.exec(expSegment)) !== null) {
+        const sStr = match[1].trim();
+        const eStr = match[2].trim();
+        const spanKey = `${sStr.toLowerCase()}_${eStr.toLowerCase()}`;
+        if (seenSpans.has(spanKey)) continue;
+        seenSpans.add(spanKey);
+
+        const s = parseDateToYearMonth(sStr);
+        const e = parseDateToYearMonth(eStr);
+        if (s && e && s.year >= 1990 && e.year >= 1990) {
+          const matchIndex = match.index;
+          const lineStart = expSegment.lastIndexOf('\n', matchIndex) + 1;
+          const lineEnd = expSegment.indexOf('\n', matchIndex + match[0].length);
+          const surroundingLine = expSegment.substring(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+          const cleanedTitle = surroundingLine.replace(match[0], '').replace(/[|•–—]/g, ' ').trim();
+
+          datedExps.push({
+            title: cleanedTitle || 'Employment Period',
+            company: 'Role',
+            start: s,
+            end: e,
+            rawStart: sStr,
+            rawEnd: eStr
+          });
+        }
       }
     }
   }
@@ -455,7 +548,7 @@ export function calculateCareerGaps(experiences: CandidateExperience[]): Candida
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous work history (No gap identified)'
     };
   }
 
@@ -478,18 +571,20 @@ export function calculateCareerGaps(experiences: CandidateExperience[]): Candida
 
     const diffMonths = nextStartVal - prevEndVal;
 
-    // A gap is considered if there are > 2 months between employment periods
-    if (diffMonths >= 3) {
+    // A gap is recognized if there are >= 2 months between employment periods
+    if (diffMonths >= 2) {
       const gapYears = (diffMonths / 12).toFixed(1);
+      const prevComp = prev.company || prev.title || 'Previous Position';
+      const nextComp = next.company || next.title || 'Next Position';
       const gapLabel = diffMonths >= 12
-        ? `${gapYears} yrs (${diffMonths} mos) gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`
-        : `${diffMonths} mos gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`;
+        ? `${gapYears} yrs (${diffMonths} mos) gap between ${prevComp} and ${nextComp}`
+        : `${diffMonths} mos gap between ${prevComp} and ${nextComp}`;
 
       foundGaps.push({
-        fromCompany: prev.exp.company || undefined,
-        toCompany: next.exp.company || undefined,
-        startDate: prev.exp.endDate || `${prev.end.year}`,
-        endDate: next.exp.startDate || `${next.start.year}`,
+        fromCompany: prevComp,
+        toCompany: nextComp,
+        startDate: prev.rawEnd,
+        endDate: next.rawStart,
         gapMonths: diffMonths,
         gapLabel
       });
@@ -502,7 +597,7 @@ export function calculateCareerGaps(experiences: CandidateExperience[]): Candida
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous work history (No gap identified)'
     };
   }
 
@@ -515,115 +610,147 @@ export function calculateCareerGaps(experiences: CandidateExperience[]): Candida
 }
 
 /**
- * Extracts date range from a string (e.g., "Apr 2025 – Nov 2025", "Oct 2024 – Present", "2021 - 2023")
- */
-function extractDateRange(text: string): { duration: string | null; startDate: string | null; endDate: string | null; cleanedText: string } {
-  const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current|Now|Ongoing)\b/i;
-  const match = text.match(dateRangePattern);
-
-  if (match) {
-    const duration = match[0].trim();
-    const startDate = match[1].trim();
-    const endDate = match[2].trim();
-    const cleanedText = text.replace(dateRangePattern, '').trim();
-    return { duration, startDate, endDate, cleanedText };
-  }
-
-  return { duration: null, startDate: null, endDate: null, cleanedText: text };
-}
-
-/**
- * Robust Work Experience Parser
+ * Robust Work Experience Parser (Handles multi-line titles, companies, locations, and date lines)
  */
 function parseExperienceSection(expText: string, fullText: string): CandidateExperience[] {
-  const textToScan = expText || fullText;
+  let textToScan = expText;
+  if (!textToScan || textToScan.trim().length < 20) {
+    const expMatch = fullText.match(/(?:PROFESSIONAL\s+EXPERIENCE|WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|EXPERIENCE)[\s\S]*?(?=(?:TECHNICAL\s+SKILLS|SKILLS|PROJECTS|EDUCATION|ACADEMICS|CERTIFICATIONS|ACHIEVEMENTS|LANGUAGES|ADDITIONAL\s+INFORMATION)|$)/i);
+    textToScan = expMatch ? expMatch[0] : fullText;
+  }
   if (!textToScan) return [];
 
-  const experiences: CandidateExperience[] = [];
-  const lines = textToScan.split('\n').map(l => l.trim()).filter(Boolean);
+  const rawLines = textToScan.split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = rawLines.filter(l => !/^(?:professional\s+experience|work\s+experience|employment\s+history|experience)$/i.test(l));
 
-  let currentExp: CandidateExperience | null = null;
-  const bulletLines: string[] = [];
+  interface RawJobHeader {
+    lineIndex: number;
+    title: string;
+    company: string;
+    location?: string;
+    startDate: string;
+    endDate: string;
+    duration: string;
+  }
+
+  const jobHeaders: RawJobHeader[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isBullet = /^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(line);
+    const dateInfo = extractDateRange(line);
 
-    if (!isBullet) {
-      const dateInfo = extractDateRange(line);
-      const isRoleWord = /^(role|position|designation|job title|title|employment)\b/i.test(line.trim());
-      const hasJobSeparator = line.includes('|') || line.includes('—') || line.includes('–') || /\bat\b/i.test(line) || /developer|engineer|intern|lead|architect|manager|consultant|specialist|founder|co-founder|analyst|designer|administrator|director/i.test(line);
+    if (dateInfo.startDate) {
+      let title = '';
+      let company = '';
+      let location = '';
 
-      if (currentExp && !currentExp.startDate && (dateInfo.duration || dateInfo.startDate)) {
-        currentExp.startDate = dateInfo.startDate;
-        currentExp.endDate = dateInfo.endDate;
-        const durMonths = calculateExperienceMonths(dateInfo.startDate, dateInfo.endDate);
-        currentExp.duration = dateInfo.duration
-          ? `${dateInfo.duration}${durMonths > 0 ? ` • ${durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`}` : ''}`
-          : null;
-        const locCandidate = dateInfo.cleanedText.replace(/^(role|position|designation|location)[:\s\-–]*/i, '').replace(/^[|•\-–—]\s*/, '').trim();
-        if (locCandidate && !currentExp.location) {
-          currentExp.location = locCandidate;
+      const cleanedLine = dateInfo.cleanedText.replace(/^[\#\*\-\•\–\—\s|]+|[\#\*\-\•\–\—\s|]+$/g, '').trim();
+
+      if (cleanedLine.length >= 3) {
+        if (cleanedLine.includes('|')) {
+          const parts = cleanedLine.split('|').map(p => p.trim());
+          title = parts[0];
+          company = parts[1] || '';
+          location = parts[2] || '';
+        } else if (cleanedLine.includes('—') || cleanedLine.includes('–')) {
+          const parts = cleanedLine.split(/[—–]/).map(p => p.trim());
+          title = parts[0];
+          company = parts[1] || '';
+        } else if (/\s+at\s+/i.test(cleanedLine)) {
+          const parts = cleanedLine.split(/\s+at\s+/i).map(p => p.trim());
+          title = parts[0];
+          company = parts[1] || '';
+        } else {
+          title = cleanedLine;
         }
-        continue;
       }
 
-      if (dateInfo.duration || (hasJobSeparator && !isRoleWord)) {
-        if (currentExp) {
-          currentExp.description = bulletLines.join('\n');
-          currentExp.highlights = [...bulletLines];
-          experiences.push(currentExp);
-          bulletLines.length = 0;
+      // Check preceding 1-3 lines before date line
+      const prevNonBulletLines: string[] = [];
+      for (let prevIdx = i - 1; prevIdx >= 0 && prevIdx >= i - 4; prevIdx--) {
+        const prevLine = lines[prevIdx];
+        if (/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(prevLine)) break;
+        if (extractDateRange(prevLine).startDate) break;
+        prevNonBulletLines.unshift(prevLine);
+      }
+
+      if (prevNonBulletLines.length === 1) {
+        const pLine = prevNonBulletLines[0];
+        if (pLine.includes('|') || pLine.includes('—') || pLine.includes('–') || /\s+at\s+/i.test(pLine)) {
+          const sep = pLine.includes('|') ? '|' : pLine.includes('—') ? '—' : pLine.includes('–') ? '–' : ' at ';
+          const parts = pLine.split(sep).map(p => p.trim());
+          if (!title) title = parts[0];
+          if (!company) company = parts[1] || '';
+          if (parts[2] && !location) location = parts[2];
+        } else if (!title && /developer|engineer|intern|lead|architect|manager|consultant|specialist|founder|analyst|designer|director/i.test(pLine)) {
+          title = pLine;
+        } else if (!company) {
+          company = pLine;
         }
+      } else if (prevNonBulletLines.length >= 2) {
+        const pLine1 = prevNonBulletLines[prevNonBulletLines.length - 2];
+        const pLine2 = prevNonBulletLines[prevNonBulletLines.length - 1];
 
-        let titleStr = '';
-        let companyStr = '';
-        const headerWithoutDate = dateInfo.cleanedText.replace(/^(role|position|designation)[:\s\-–]*/i, '').trim();
-
-        if (headerWithoutDate.includes('|')) {
-          const parts = headerWithoutDate.split('|').map(p => p.trim());
-          titleStr = parts[0];
-          companyStr = parts.slice(1).join(' ');
-        } else if (headerWithoutDate.includes('—') || headerWithoutDate.includes('–')) {
-          const parts = headerWithoutDate.split(/[—–]/).map(p => p.trim());
-          titleStr = parts[0];
-          companyStr = parts.slice(1).join(' ');
-        } else if (/\s+at\s+/i.test(headerWithoutDate)) {
-          const parts = headerWithoutDate.split(/\s+at\s+/i).map(p => p.trim());
-          titleStr = parts[0];
-          companyStr = parts[1] || '';
-        } else {
-          titleStr = headerWithoutDate;
-          companyStr = '';
+        if (!title) title = pLine1;
+        if (!company) {
+          if (pLine2.includes(',')) {
+            const parts = pLine2.split(',').map(p => p.trim());
+            company = parts[0];
+            location = parts.slice(1).join(', ');
+          } else {
+            company = pLine2;
+          }
         }
+      }
 
-        titleStr = titleStr.replace(/\(\s*\)|\[\s*\]/g, '').replace(/[-–—,]\s*$/, '').trim();
-        companyStr = companyStr.replace(/\(\s*\)|\[\s*\]/g, '').replace(/[-–—,]\s*$/, '').trim();
+      if (company && company.includes(',') && !location) {
+        const cParts = company.split(',').map(p => p.trim());
+        company = cParts[0];
+        location = cParts.slice(1).join(', ');
+      }
 
-        const durMonths = calculateExperienceMonths(dateInfo.startDate, dateInfo.endDate);
-        const formattedDuration = dateInfo.duration 
-          ? `${dateInfo.duration}${durMonths > 0 ? ` • ${durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`}` : ''}`
-          : null;
+      const durMonths = calculateExperienceMonths(dateInfo.startDate, dateInfo.endDate);
+      const formattedDur = dateInfo.duration
+        ? `${dateInfo.duration}${durMonths > 0 ? ` • ${durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`}` : ''}`
+        : '';
 
-        currentExp = {
-          title: titleStr || 'Software Engineer',
-          company: companyStr || 'Company',
-          duration: formattedDuration,
-          startDate: dateInfo.startDate,
-          endDate: dateInfo.endDate,
-          sourceEvidence: line
-        };
-        continue;
+      jobHeaders.push({
+        lineIndex: i,
+        title: title.trim() || 'Software Engineer',
+        company: company.trim() || 'Company',
+        location: location.trim() || undefined,
+        startDate: dateInfo.startDate,
+        endDate: dateInfo.endDate || 'Present',
+        duration: formattedDur
+      });
+    }
+  }
+
+  const experiences: CandidateExperience[] = [];
+  for (let j = 0; j < jobHeaders.length; j++) {
+    const jh = jobHeaders[j];
+    const startBulletLine = jh.lineIndex + 1;
+    const endBulletLine = j < jobHeaders.length - 1 ? jobHeaders[j + 1].lineIndex : lines.length;
+
+    const bullets: string[] = [];
+    for (let k = startBulletLine; k < endBulletLine; k++) {
+      const bLine = lines[k];
+      if (/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(bLine) || bLine.length > 20) {
+        bullets.push(bLine.replace(/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/, '').trim());
       }
     }
 
-    bulletLines.push(line.replace(/^[•*\-–—▪▫➢✓✔]\s*/, '').trim());
-  }
-
-  if (currentExp) {
-    currentExp.description = bulletLines.join('\n');
-    currentExp.highlights = [...bulletLines];
-    experiences.push(currentExp);
+    experiences.push({
+      title: jh.title,
+      company: jh.company,
+      location: jh.location,
+      startDate: jh.startDate,
+      endDate: jh.endDate,
+      duration: jh.duration,
+      description: bullets.join('\n'),
+      highlights: bullets,
+      sourceEvidence: `${jh.title} at ${jh.company} (${jh.startDate} – ${jh.endDate})`
+    });
   }
 
   return experiences;
@@ -959,7 +1086,7 @@ export function extractStructuredCandidateFromText(
   const experience = parseExperienceSection(experienceText, cleanText);
 
   // 6. Career Gap Analysis
-  const gapAnalysis = calculateCareerGaps(experience);
+  const gapAnalysis = calculateCareerGaps(experience, cleanText);
 
   // 7. Current Title & Company Extraction
   let currentTitle: string | null = null;

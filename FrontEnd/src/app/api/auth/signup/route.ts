@@ -36,6 +36,7 @@ export async function POST(req: Request) {
         id: `usr_${Date.now()}`,
         name: displayName,
         email: cleanEmail,
+        role: (body.role && ['ADMIN', 'MEMBER'].includes(body.role.toUpperCase())) ? body.role.toUpperCase() : 'MEMBER',
         createdAt: new Date().toISOString(),
       },
     }, { status: 201 });

@@ -7,6 +7,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
+  isMember: boolean;
   isLoading: boolean;
   signin: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
@@ -76,12 +78,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     }
   };
 
+  const isAdmin = user?.role === 'ADMIN';
+  const isMember = user?.role === 'MEMBER' || (!isAdmin && !!user);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isAuthenticated: !!user,
+        isAdmin,
+        isMember,
         isLoading,
         signin,
         signup,

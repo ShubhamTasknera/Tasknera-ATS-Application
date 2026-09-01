@@ -17,9 +17,9 @@ const parseParam = (param: string | string[] | undefined): string => {
 };
 
 /**
- * Helper to check if job exists and belongs to the authenticated user
+ * Helper to check if job exists and validate access for authenticated recruiters/members
  */
-async function findUserJob(jobIdParam: string | string[] | undefined, userId: string) {
+async function findUserJob(jobIdParam: string | string[] | undefined, userId: string, userRole?: string) {
   const jobId = parseParam(jobIdParam);
   if (!jobId || !UUID_REGEX.test(jobId)) {
     return { error: 'Invalid Job ID format. Must be a valid UUID.', status: 400, jobId: '' };
@@ -33,10 +33,7 @@ async function findUserJob(jobIdParam: string | string[] | undefined, userId: st
     return { error: `Job with ID "${jobId}" not found.`, status: 404, jobId };
   }
 
-  if (job.created_by !== userId) {
-    return { error: 'Unauthorized access. You do not have permission to access requirements for this job.', status: 403, jobId };
-  }
-
+  // All authenticated members and admins have access to view, edit, and confirm requirements
   return { job, jobId };
 }
 
@@ -311,7 +308,7 @@ export const confirmRequirements = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const check = await findUserJob(req.params.jobId, req.user.userId);
+    const check = await findUserJob(req.params.jobId, req.user.userId, req.user.role);
     if (check.error) {
       res.status(check.status || 400).json({ error: check.error });
       return;

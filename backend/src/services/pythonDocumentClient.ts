@@ -36,7 +36,7 @@ export interface PythonBatchResponse {
 
 const PYTHON_SERVICE_PORT = parseInt(process.env.PYTHON_PORT || '8000', 10);
 const PYTHON_SERVICE_HOST = process.env.PYTHON_HOST || '127.0.0.1';
-const REQUEST_TIMEOUT_MS = 15000; // 15s timeout for resilient processing & OCR
+const REQUEST_TIMEOUT_MS = 45000; // 45s timeout for resilient multi-file batch processing & OCR
 
 /**
  * Communicates with the Python FastAPI Document Processing Service (single file extraction)

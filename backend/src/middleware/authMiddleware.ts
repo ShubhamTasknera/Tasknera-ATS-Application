@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
+export type UserRole = 'ADMIN' | 'MEMBER';
+
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
     email: string;
+    role?: UserRole;
   };
 }
 
@@ -20,7 +23,7 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction): vo
 
   try {
     const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-    const decoded = jwt.verify(token, secret) as { userId: string; email: string };
+    const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole };
     req.user = decoded;
     next();
   } catch (error) {
@@ -28,3 +31,29 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction): vo
     return;
   }
 };
+
+/**
+ * Role-Based Access Control (RBAC) authorization middleware
+ * @param allowedRoles Array of roles permitted to access the route
+ */
+export const authorize = (...allowedRoles: UserRole[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const userRole = req.user.role || 'MEMBER';
+
+    if (!allowedRoles.includes(userRole)) {
+      res.status(403).json({
+        error: `Forbidden: Access restricted. Role "${userRole}" is not authorized for this resource.`,
+        requiredRoles: allowedRoles
+      });
+      return;
+    }
+
+    next();
+  };
+};
+
