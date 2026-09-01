@@ -13,24 +13,15 @@ interface JobItem {
   mode: string;
   salary: string;
   candidates: number;
-  topScore: number;
+  topScore: number | null;
   status: string;
   created: string;
 }
 
-const defaultInitialJobs: JobItem[] = [
-  { id: 'jd-1', title: 'SAP CO Consultant',         client: 'TechCorp Industries',  location: 'New York, NY',      mode: 'Hybrid',  salary: '$130k–$170k', candidates: 42, topScore: 94, status: 'Active',  created: '26 Aug 2026' },
-  { id: 'jd-2', title: 'Lead S/4HANA Architect',    client: 'Global Logistics Inc', location: 'Chicago, IL',       mode: 'Remote',  salary: '$160k–$200k', candidates: 28, topScore: 88, status: 'Active',  created: '25 Aug 2026' },
-  { id: 'jd-3', title: 'Financial Systems Analyst',  client: 'Pinnacle Financial',   location: 'San Francisco, CA', mode: 'Onsite',  salary: '$110k–$140k', candidates: 19, topScore: 76, status: 'Active',  created: '24 Aug 2026' },
-  { id: 'jd-4', title: 'Senior Backend Engineer',    client: 'TaskNera Enterprise',  location: 'Remote',            mode: 'Remote',  salary: '$140k–$180k', candidates: 65, topScore: 91, status: 'Active',  created: '22 Aug 2026' },
-  { id: 'jd-5', title: 'SAP FI Functional Lead',    client: 'Nexus Manufacturing',  location: 'Dallas, TX',        mode: 'Hybrid',  salary: '$145k–$175k', candidates: 12, topScore: 82, status: 'Draft',   created: '20 Aug 2026' },
-  { id: 'jd-6', title: 'DevOps Engineer',            client: 'CloudSystems Ltd',     location: 'Austin, TX',        mode: 'Remote',  salary: '$130k–$160k', candidates: 8,  topScore: 79, status: 'Closed',  created: '15 Aug 2026' },
-];
-
 const modeColors: Record<string, string> = {
   Remote: 'bg-blue-50 text-blue-700 border-blue-200',
   Hybrid: 'bg-purple-50 text-purple-700 border-purple-200',
-  Onsite: 'bg-brand-orange-pale text-brand-orange border-brand-orange-border',
+  Onsite: 'bg-amber-50 text-amber-700 border-amber-200',
 };
 
 const statusColors: Record<string, string> = {
@@ -40,54 +31,96 @@ const statusColors: Record<string, string> = {
 };
 
 export default function JobsPage() {
-  const [allJobs, setAllJobs] = useState<JobItem[]>(defaultInitialJobs);
+  const [allJobs, setAllJobs] = useState<JobItem[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadJobsFromBackend() {
-      try {
-        setIsLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
-        const res = await fetch(`${backendUrl}/jobs`, {
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.jobs) && data.jobs.length > 0) {
-            const mappedJobs: JobItem[] = data.jobs.map((j: any) => ({
+  const fetchJobs = async () => {
+    try {
+      setIsLoading(true);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const res = await fetch(`${backendUrl}/jobs`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.jobs)) {
+          const mappedJobs: JobItem[] = data.jobs.map((j: any) => {
+            const rawStatus = (j.status || 'draft').toLowerCase();
+            let normalizedStatus = 'Draft';
+            if (rawStatus === 'published' || rawStatus === 'active') {
+              normalizedStatus = 'Active';
+            } else if (rawStatus === 'closed' || rawStatus === 'archived') {
+              normalizedStatus = 'Closed';
+            } else {
+              normalizedStatus = 'Draft';
+            }
+
+            const rawMode = (j.work_mode || j.workMode || 'Remote').trim();
+            const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+
+            return {
               id: j.id,
               title: j.position || j.title || 'Untitled Position',
               client: j.client || 'Client Not Specified',
-              location: j.location || 'Remote',
-              mode: j.work_mode || j.workMode || 'Remote',
+              location: j.location || 'Location Not Specified',
+              mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
               salary: j.salary || 'Competitive',
-              candidates: j.candidatesCount || (j.id === 'jd-1' ? 42 : 0),
-              topScore: j.topScore || 90,
-              status: j.status || 'Active',
+              candidates: typeof j.candidatesCount === 'number' ? j.candidatesCount : (Array.isArray(j.candidates) ? j.candidates.length : 0),
+              topScore: typeof j.topScore === 'number' ? j.topScore : null,
+              status: normalizedStatus,
               created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent'
-            }));
-
-            // Merge unique with default templates
-            const existingIds = new Set(mappedJobs.map(j => j.id));
-            const merged = [...mappedJobs, ...defaultInitialJobs.filter(dj => !existingIds.has(dj.id))];
-            setAllJobs(merged);
-          }
+            };
+          });
+          setAllJobs(mappedJobs);
+        } else {
+          setAllJobs([]);
         }
-      } catch (err) {
-        console.warn('Backend offline or error fetching jobs, using local defaults:', err);
-      } finally {
-        setIsLoading(false);
+      } else {
+        setAllJobs([]);
       }
+    } catch (err) {
+      console.warn('Error fetching jobs:', err);
+      setAllJobs([]);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    loadJobsFromBackend();
+  useEffect(() => {
+    fetchJobs();
   }, []);
+
+  const handleDeleteJob = async (id: string, title: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
+    try {
+      setDeletingId(id);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      const res = await fetch(`${backendUrl}/jobs/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (res.ok) {
+        setAllJobs(prev => prev.filter(j => j.id !== id));
+      } else {
+        alert('Failed to delete the job.');
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Error deleting job.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filtered = allJobs.filter(j => {
     const q = search.toLowerCase();
@@ -205,7 +238,12 @@ export default function JobsPage() {
         </div>
 
         {/* Content Display */}
-        {viewMode === 'table' ? (
+        {isLoading ? (
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-12 text-center shadow-sm">
+            <div className="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs font-semibold text-slate-500">Loading requisitions...</p>
+          </div>
+        ) : viewMode === 'table' ? (
           <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
@@ -233,19 +271,29 @@ export default function JobsPage() {
                         <span className="text-xs font-semibold text-slate-700">{j.salary}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${modeColors[j.mode]}`}>{j.mode}</span>
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${modeColors[j.mode] || modeColors.Remote}`}>
+                          {j.mode}
+                        </span>
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className="font-bold text-[#1E293B]">{j.candidates}</span>
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`font-extrabold ${j.topScore >= 80 ? 'text-emerald-600' : j.topScore >= 65 ? 'text-amber-500' : 'text-rose-500'}`}>
-                          {j.topScore}
-                        </span>
-                        <span className="text-xs text-slate-400 font-semibold">/100</span>
+                        {j.topScore !== null && j.topScore > 0 ? (
+                          <>
+                            <span className={`font-extrabold ${j.topScore >= 80 ? 'text-emerald-600' : j.topScore >= 65 ? 'text-amber-500' : 'text-rose-500'}`}>
+                              {j.topScore}
+                            </span>
+                            <span className="text-xs text-slate-400 font-semibold">/100</span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-400 font-medium">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status]}`}>{j.status}</span>
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status] || statusColors.Draft}`}>
+                          {j.status}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -261,6 +309,16 @@ export default function JobsPage() {
                           >
                             Evaluate CVs
                           </Link>
+                          <button
+                            onClick={() => handleDeleteJob(j.id, j.title)}
+                            disabled={deletingId === j.id}
+                            title="Delete Job"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -272,15 +330,27 @@ export default function JobsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map(j => (
-              <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all card-hover-lift flex flex-col justify-between">
+              <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all card-hover-lift flex flex-col justify-between relative group">
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status]}`}>
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status] || statusColors.Draft}`}>
                       {j.status}
                     </span>
-                    <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${modeColors[j.mode]}`}>
-                      {j.mode}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${modeColors[j.mode] || modeColors.Remote}`}>
+                        {j.mode}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteJob(j.id, j.title)}
+                        disabled={deletingId === j.id}
+                        title="Delete Job"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   <Link href={`/jobs/${j.id}/requirements`} className="text-base font-bold text-[#1E293B] hover:text-brand-orange transition-colors">
@@ -295,7 +365,9 @@ export default function JobsPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] uppercase font-bold text-slate-500">Top Match</div>
-                      <div className="text-sm font-extrabold text-brand-orange">{j.topScore}%</div>
+                      <div className={`text-sm font-extrabold ${j.topScore !== null && j.topScore > 0 ? 'text-brand-orange' : 'text-slate-400'}`}>
+                        {j.topScore !== null && j.topScore > 0 ? `${j.topScore}%` : '—'}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -319,15 +391,19 @@ export default function JobsPage() {
           </div>
         )}
 
-        {filtered.length === 0 && (
+        {!isLoading && filtered.length === 0 && (
           <div className="bg-white border border-slate-200/90 rounded-3xl text-center py-20 shadow-sm mt-4">
             <div className="w-12 h-12 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <h3 className="text-base font-bold text-[#1E293B] mb-1">No matching requisitions</h3>
-            <p className="text-slate-500 text-xs">Try adjusting your search criteria or filter tags.</p>
+            <h3 className="text-base font-bold text-[#1E293B] mb-1">No requisitions found</h3>
+            <p className="text-slate-500 text-xs">
+              {search || filter !== 'All'
+                ? 'Try adjusting your search criteria or filter tags.'
+                : 'Get started by creating your first job evaluation requisition.'}
+            </p>
           </div>
         )}
       </main>

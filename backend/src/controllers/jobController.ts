@@ -3,6 +3,7 @@ import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { extractTextFromBuffer, parseJobDescription } from '../services/jdParsingService';
 import { extractDocumentTextViaPython } from '../services/pythonDocumentClient';
+import { parseJdWithAi } from '../services/jdAiService';
 
 // Standard 36-character UUID format regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,30 +65,95 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
     }
 
     const textToParse = normalizedText || layoutText || rawText;
-    const result = parseJobDescription(textToParse, fileName, mimeType, pageCount, method, ocrUsed);
+    
+    // 1. Run deterministic parser
+    let result = parseJobDescription(textToParse, fileName, mimeType, pageCount, method, ocrUsed);
+
+    // 2. Run Gemini AI Parser if API key is provided
+    try {
+      const aiResult = await parseJdWithAi(textToParse);
+      if (aiResult) {
+        console.log('[JD Parsing Pipeline] AI Semantic model successfully enriched extraction.');
+        if (aiResult.companyName) {
+          result.data.companyName = aiResult.companyName;
+          result.data.metadata.client = aiResult.companyName;
+          result.data.metadata.companyName = aiResult.companyName;
+          result.data.job.company = aiResult.companyName;
+          result.data.job.client = aiResult.companyName;
+        }
+        if (aiResult.positionTitle) {
+          result.data.positionTitle = aiResult.positionTitle;
+          result.data.metadata.position = aiResult.positionTitle;
+          result.data.metadata.positionTitle = aiResult.positionTitle;
+          result.data.job.positionTitle = aiResult.positionTitle;
+          result.data.job.jobTitle = aiResult.positionTitle;
+        }
+        if (aiResult.location) {
+          result.data.location = aiResult.location;
+          result.data.metadata.location = aiResult.location;
+          result.data.job.location = aiResult.location;
+        }
+        if (aiResult.workMode) {
+          result.data.workMode = aiResult.workMode;
+          result.data.metadata.workMode = aiResult.workMode;
+          result.data.job.workMode = aiResult.workMode;
+        }
+        if (aiResult.salary) {
+          result.data.salary = aiResult.salary;
+          result.data.metadata.salary = aiResult.salary;
+          result.data.metadata.budget = aiResult.salary;
+          result.data.job.salary = aiResult.salary;
+          result.data.job.budget = aiResult.salary;
+        }
+        if (Array.isArray(aiResult.mandatoryRequirements) && aiResult.mandatoryRequirements.length > 0) {
+          const aiMandatoryList = aiResult.mandatoryRequirements.map((r, idx) => ({
+            requirement: r.requirement,
+            category: r.category || 'Experience',
+            type: 'SKILL' as const,
+            weight: 1.5,
+            isMandatory: true,
+            mandatory: true,
+            evidenceRequired: true,
+            recruiterConfirmed: false,
+            sourceEvidence: r.sourceEvidence || r.requirement,
+            sourceSection: 'Mandatory Requirements',
+            confidence: 'HIGH' as const,
+            needsVerification: false
+          }));
+
+          const aiPreferredList = (aiResult.preferredRequirements || []).map((r, idx) => ({
+            requirement: r.requirement,
+            category: r.category || 'Technical Skill',
+            type: 'SKILL' as const,
+            weight: 1.0,
+            isMandatory: false,
+            mandatory: false,
+            evidenceRequired: true,
+            recruiterConfirmed: false,
+            sourceEvidence: r.sourceEvidence || r.requirement,
+            sourceSection: 'Preferred Requirements',
+            confidence: 'HIGH' as const,
+            needsVerification: false
+          }));
+
+          result.data.mandatoryRequirements = aiMandatoryList.map(r => r.requirement);
+          result.data.preferredRequirements = aiPreferredList.map(r => r.requirement);
+          result.data.requirements = [...aiMandatoryList, ...aiPreferredList];
+          result.data.job.mandatoryRequirements = aiMandatoryList.map(r => r.requirement);
+          result.data.job.preferredRequirements = aiPreferredList.map(r => r.requirement);
+          result.data.validation.counts.mandatoryCount = aiMandatoryList.length;
+          result.data.validation.counts.preferredCount = aiPreferredList.length;
+          result.data.validation.counts.totalRequirementsCount = result.data.requirements.length;
+        }
+      }
+    } catch (aiErr) {
+      console.warn('[JD Parsing Pipeline] AI parsing error, falling back to deterministic extraction:', aiErr);
+    }
 
     console.log('\n========================================');
     console.log('[JD PARSING PIPELINE DEBUG]');
-    console.log('--- 1. RAW EXTRACTED TEXT (First 300 chars) ---');
-    console.log(rawText.substring(0, 300) + '...');
-    console.log('\n--- 2. STRUCTURED PARSER RESULT ---');
-    console.log(`Company / Client: "${result.data.companyName || 'null'}" | Position: "${result.data.positionTitle || 'null'}" | Location: "${result.data.location || 'null'}"`);
-    console.log('\n--- 3. NORMALIZED JOB METADATA ---');
-    console.log(JSON.stringify(result.data.metadata, null, 2));
-    console.log('\n--- 4. FINAL API RESPONSE PAYLOAD SUMMARY ---');
-    console.log(JSON.stringify({
-      companyName: result.data.companyName,
-      positionTitle: result.data.positionTitle,
-      client: result.data.metadata.client,
-      position: result.data.metadata.position,
-      location: result.data.location,
-      workMode: result.data.workMode,
-      experience: result.data.experience,
-      salary: result.data.salary,
-      mandatoryCount: result.data.validation.counts.mandatoryCount,
-      preferredCount: result.data.validation.counts.preferredCount,
-      hiringCriteriaCount: result.data.validation.counts.hiringCriteriaCount
-    }, null, 2));
+    console.log(`Company: "${result.data.companyName}" | Position: "${result.data.positionTitle}" | Location: "${result.data.location}"`);
+    console.log(`Mandatory Count: ${result.data.validation.counts.mandatoryCount} | Preferred Count: ${result.data.validation.counts.preferredCount}`);
     console.log('========================================\n');
 
     res.status(200).json({
@@ -183,82 +249,6 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
   }
 };
 
-const DUMMY_FALLBACK_JOBS = [
-  {
-    id: 'jd-1',
-    client: 'TechCorp Industries',
-    position: 'SAP CO Lead Consultant',
-    location: 'New York, NY',
-    work_mode: 'Hybrid',
-    salary: '$145,000 – $175,000',
-    status: 'Active',
-    jd_file_url: null,
-    jd_text: 'Lead SAP CO Consultant needed for S/4HANA enterprise transformation.',
-    created_at: new Date('2026-08-26T10:00:00Z'),
-    updated_at: new Date('2026-08-26T10:00:00Z'),
-    requirements: [
-      { id: 'req-1', jobId: 'jd-1', requirement: 'Minimum 5+ years hands-on SAP CO (Controlling) & FICO configuration experience', category: 'Experience', weight: 2.0, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-2', jobId: 'jd-1', requirement: 'Proven experience leading at least 2 full-lifecycle SAP S/4HANA migration projects', category: 'Technical Skill', weight: 1.5, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-3', jobId: 'jd-1', requirement: 'In-depth expertise in SAP CO-PA (Profitability Analysis) and Material Ledger', category: 'Functional Skill', weight: 1.5, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-4', jobId: 'jd-1', requirement: 'Bachelor degree in Computer Science, Finance, Accounting, or equivalent field', category: 'Education', weight: 1.0, is_mandatory: false, evidence_required: false, recruiter_confirmed: true },
-      { id: 'req-5', jobId: 'jd-1', requirement: 'Official SAP Certified Application Associate - SAP S/4HANA for Management Accounting', category: 'Certification', weight: 1.2, is_mandatory: false, evidence_required: true, recruiter_confirmed: true }
-    ]
-  },
-  {
-    id: 'jd-2',
-    client: 'Global Logistics Inc',
-    position: 'Lead S/4HANA Architect',
-    location: 'Chicago, IL',
-    work_mode: 'Remote',
-    salary: '$160,000 – $200,000',
-    status: 'Active',
-    jd_file_url: null,
-    jd_text: 'Global supply chain enterprise seeking Lead S/4HANA Architect.',
-    created_at: new Date('2026-08-25T11:30:00Z'),
-    updated_at: new Date('2026-08-25T11:30:00Z'),
-    requirements: [
-      { id: 'req-21', jobId: 'jd-2', requirement: '8+ years SAP architecture experience across supply chain modules', category: 'Experience', weight: 2.0, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-22', jobId: 'jd-2', requirement: 'Architectural leadership on large-scale S/4HANA brownfield and greenfield deployments', category: 'Technical Skill', weight: 1.8, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-23', jobId: 'jd-2', requirement: 'Cloud integration experience with SAP BTP and AWS infrastructure', category: 'Technology', weight: 1.5, is_mandatory: false, evidence_required: true, recruiter_confirmed: true }
-    ]
-  },
-  {
-    id: 'jd-3',
-    client: 'InnovateTech Dynamics',
-    position: 'Senior Full-Stack Architect',
-    location: 'Austin, TX',
-    work_mode: 'Hybrid',
-    salary: '$150,000 – $185,000',
-    status: 'Active',
-    jd_file_url: null,
-    jd_text: 'High-growth platform building distributed enterprise SaaS applications.',
-    created_at: new Date('2026-08-24T09:15:00Z'),
-    updated_at: new Date('2026-08-24T09:15:00Z'),
-    requirements: [
-      { id: 'req-31', jobId: 'jd-3', requirement: '7+ years experience with React 19, TypeScript, and modern Next.js App Router', category: 'Technical Skill', weight: 2.0, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-32', jobId: 'jd-3', requirement: 'Demonstrated architectural experience with high-throughput micro-frontends and distributed systems', category: 'Technology', weight: 1.8, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-33', jobId: 'jd-3', requirement: 'PostgreSQL performance optimization, indexing, and Prisma ORM experience', category: 'Technical Skill', weight: 1.5, is_mandatory: true, evidence_required: true, recruiter_confirmed: true }
-    ]
-  },
-  {
-    id: 'jd-4',
-    client: 'CloudSystems Ltd',
-    position: 'DevOps & Systems Engineer',
-    location: 'Seattle, WA',
-    work_mode: 'Remote',
-    salary: '$135,000 – $160,000',
-    status: 'Active',
-    jd_file_url: null,
-    jd_text: 'Seeking DevOps specialist for multi-cloud Kubernetes clusters.',
-    created_at: new Date('2026-08-22T14:20:00Z'),
-    updated_at: new Date('2026-08-22T14:20:00Z'),
-    requirements: [
-      { id: 'req-41', jobId: 'jd-4', requirement: '5+ years Kubernetes and Docker production container orchestration', category: 'Technical Skill', weight: 2.0, is_mandatory: true, evidence_required: true, recruiter_confirmed: true },
-      { id: 'req-42', jobId: 'jd-4', requirement: 'Terraform Infrastructure as Code (IaC) and CI/CD pipelines', category: 'Tool', weight: 1.5, is_mandatory: true, evidence_required: true, recruiter_confirmed: true }
-    ]
-  }
-];
-
 // @desc    Get all Jobs (with optional filters)
 // @route   GET /api/jobs
 // @access  Private (Authenticated Recruiter)
@@ -295,25 +285,46 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
           created_at: 'desc'
         },
         include: {
-          requirements: true
+          requirements: true,
+          _count: {
+            select: {
+              candidates: true,
+              applications: true
+            }
+          },
+          applications: {
+            select: {
+              match_score: true
+            }
+          }
         }
       });
     } catch (dbErr) {
-      console.warn('[Get All Jobs] Database query failed or unseeded; using dummy fallback:', dbErr);
+      console.error('[Get All Jobs] Database query error:', dbErr);
     }
 
-    // If database returned no records, provide dummy fallback jobs
-    if (!jobs || jobs.length === 0) {
-      jobs = DUMMY_FALLBACK_JOBS;
-    }
+    const formattedJobs = jobs.map((job: any) => {
+      const matchScores = (job.applications || [])
+        .map((a: any) => a.match_score)
+        .filter((s: any) => typeof s === 'number' && !isNaN(s));
+      const topScore = matchScores.length > 0 ? Math.round(Math.max(...matchScores)) : null;
+      const candidatesCount = job._count?.candidates || job._count?.applications || 0;
+
+      const { applications, _count, ...rest } = job;
+      return {
+        ...rest,
+        candidatesCount,
+        topScore
+      };
+    });
 
     res.status(200).json({
-      count: jobs.length,
-      jobs
+      count: formattedJobs.length,
+      jobs: formattedJobs
     });
   } catch (error: any) {
     console.error('Get All Jobs Error:', error);
-    res.status(200).json({ count: DUMMY_FALLBACK_JOBS.length, jobs: DUMMY_FALLBACK_JOBS });
+    res.status(500).json({ error: 'Failed to fetch jobs', jobs: [] });
   }
 };
 
@@ -324,40 +335,33 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
   try {
     const jobId = String(req.params.id || '');
 
-    // Check dummy fallback jobs first if short ID provided
-    const dummyMatch = DUMMY_FALLBACK_JOBS.find(j => j.id === jobId);
-    if (dummyMatch) {
-      res.status(200).json({ job: dummyMatch });
-      return;
-    }
-
     if (!jobId || !UUID_REGEX.test(jobId)) {
-      // If not UUID and no exact dummy match, return first dummy template
-      res.status(200).json({ job: { ...DUMMY_FALLBACK_JOBS[0], id: jobId } });
+      res.status(400).json({ error: 'Invalid Job ID format. Must be a valid UUID.' });
       return;
     }
 
-    let job = null;
-    try {
-      job = await prisma.job.findUnique({
-        where: { id: jobId },
-        include: {
-          requirements: true
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requirements: true,
+        _count: {
+          select: {
+            candidates: true,
+            applications: true
+          }
         }
-      });
-    } catch (dbErr) {
-      console.warn('[Get Job By ID] Database query failed; using fallback:', dbErr);
-    }
+      }
+    });
 
     if (!job) {
-      res.status(200).json({ job: { ...DUMMY_FALLBACK_JOBS[0], id: jobId } });
+      res.status(404).json({ error: `Job with ID "${jobId}" not found` });
       return;
     }
 
     res.status(200).json({ job });
   } catch (error: any) {
     console.error('Get Job By ID Error:', error);
-    res.status(200).json({ job: DUMMY_FALLBACK_JOBS[0] });
+    res.status(500).json({ error: 'Server error while fetching job' });
   }
 };
 
@@ -421,3 +425,41 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
     res.status(500).json({ error: 'Server error while updating job', details: error.message || String(error) });
   }
 };
+
+// @desc    Delete Job by ID
+// @route   DELETE /api/jobs/:id
+// @access  Private (Authenticated Recruiter)
+export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const jobId = String(req.params.id || '');
+
+    if (!jobId || !UUID_REGEX.test(jobId)) {
+      res.status(400).json({ error: 'Invalid Job ID format. Must be a valid UUID.' });
+      return;
+    }
+
+    const existingJob = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+
+    if (!existingJob) {
+      res.status(404).json({ error: `Job with ID "${jobId}" not found` });
+      return;
+    }
+
+    // Cascade delete related records
+    await prisma.candidateApplication.deleteMany({ where: { job_id: jobId } });
+    await prisma.candidate.deleteMany({ where: { job_id: jobId } });
+    await prisma.requirement.deleteMany({ where: { job_id: jobId } });
+    await prisma.job.delete({ where: { id: jobId } });
+
+    res.status(200).json({
+      success: true,
+      message: 'Job deleted successfully'
+    });
+  } catch (error: any) {
+    console.error('Delete Job Error:', error);
+    res.status(500).json({ error: 'Server error while deleting job', details: error.message || String(error) });
+  }
+};
+
