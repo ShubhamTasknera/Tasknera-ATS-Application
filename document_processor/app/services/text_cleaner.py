@@ -28,13 +28,17 @@ def clean_extracted_text(raw_text: str) -> str:
     # 4. Strip zero-width spaces, non-breaking spaces, and invisible unicode artifacts
     text = re.sub(r'[\u200B\u200C\u200D\uFEFF\u00A0\u0000-\u0008\u000B\u000C\u000E-\u001F]', ' ', text)
 
-    # 5. Normalize line breaks
+    # 5. Normalize corrupted rupee / currency symbols (e.g. ■13,00,000 -> ₹13,00,000)
+    text = re.sub(r'(?:[■▪●]|\bI)\s*(?=\d{1,3}(?:,\d{2,3})+|\d+\s*(?:lpa|lakh|crore|k|m)\b)', '₹', text, flags=re.IGNORECASE)
+    text = re.sub(r'■(?=\d)', '₹', text)
+
+    # 6. Normalize line breaks
     text = text.replace('\r\n', '\n').replace('\r', '\n')
 
-    # 6. Reattach lone bullet characters on their own line to the following bullet line
+    # 7. Reattach lone bullet characters on their own line to the following bullet line
     text = re.sub(r'([●•*\-–—▪▫➢✓✔]|\d+[\.\)])[ \t]*\n+', r'\1 ', text)
 
-    # 7. Normalize spaces and excessive blank lines
+    # 8. Normalize spaces and excessive blank lines
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
 
