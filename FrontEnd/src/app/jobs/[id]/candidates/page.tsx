@@ -33,6 +33,22 @@ export interface CandidateProject {
   role?: string;
 }
 
+export interface CandidateCareerGap {
+  fromCompany?: string;
+  toCompany?: string;
+  startDate: string;
+  endDate: string;
+  gapMonths: number;
+  gapLabel: string;
+}
+
+export interface CandidateGapAnalysis {
+  hasGap: boolean;
+  totalGapMonths: number;
+  gaps: CandidateCareerGap[];
+  statusText: string;
+}
+
 export interface CandidateRecord {
   id: string;
   jobId: string;
@@ -41,13 +57,17 @@ export interface CandidateRecord {
   phone: string;
   location: string;
   totalExperience: string;
+  totalExperienceMonths?: number;
+  totalExperienceYears?: number;
   currentTitle: string;
   currentCompany: string;
-  professionalSummary: string;
+  summary?: string;
+  professionalSummary?: string;
   skills: string[];
   education: CandidateEducation[];
   certifications: string[];
   experience: CandidateExperience[];
+  gapAnalysis?: CandidateGapAnalysis;
   projects: CandidateProject[];
   languages: string[];
   rawText: string;
@@ -108,6 +128,197 @@ const formatDate = (isoString: string): string => {
   } catch {
     return 'Recently';
   }
+};
+
+const parseMonthsFromText = (text?: string | null): number => {
+  if (!text) return 0;
+  const t = text.trim();
+
+  // Pattern 1: "X years Y months" or "X.Y years" or "X yrs"
+  const yrMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+  const moMatch = t.match(/(\d+)\s*(?:months?|mos?)/i);
+
+  if (yrMatch || moMatch) {
+    let total = 0;
+    if (yrMatch) total += parseFloat(yrMatch[1]) * 12;
+    if (moMatch) total += parseInt(moMatch[1], 10);
+    return Math.round(total);
+  }
+
+  // Pattern 2: Date range like "Apr 2025 – Nov 2025" or "2021 – 2023"
+  const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current)\b/i;
+  const match = t.match(dateRangePattern);
+  if (match) {
+    const parseYM = (str: string) => {
+      const s = str.trim().toLowerCase();
+      if (s === 'present' || s === 'current' || s === 'now') {
+        const d = new Date();
+        return { y: d.getFullYear(), m: d.getMonth() };
+      }
+      const mMap: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+      const m = s.match(/([a-z]{3})[a-z]*\.?\s+(\d{4})/i);
+      if (m) {
+        return { y: parseInt(m[2], 10), m: mMap[m[1].toLowerCase()] ?? 0 };
+      }
+      const y = s.match(/\b(19\d\d|20\d\d)\b/);
+      if (y) return { y: parseInt(y[1], 10), m: 0 };
+      return null;
+    };
+    const start = parseYM(match[1]);
+    const end = parseYM(match[2]);
+    if (start && end) {
+      const diff = (end.y - start.y) * 12 + (end.m - start.m) + 1;
+      return diff > 0 ? diff : 1;
+    }
+  }
+
+  return 0;
+};
+
+const getNumericExperienceDetails = (cand: { totalExperience?: string | null; totalExperienceMonths?: number; totalExperienceYears?: number; experience?: CandidateExperience[] }) => {
+  let months = cand.totalExperienceMonths || 0;
+  if (!months && cand.totalExperienceYears) {
+    months = Math.round(cand.totalExperienceYears * 12);
+  }
+  if (!months && cand.totalExperience) {
+    months = parseMonthsFromText(cand.totalExperience);
+  }
+  if (!months && cand.experience && cand.experience.length > 0) {
+    let sum = 0;
+    for (const exp of cand.experience) {
+      sum += parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
+    }
+    months = sum;
+  }
+
+  const years = parseFloat((months / 12).toFixed(1));
+
+  const badgeText = `${years} yrs`;
+  const subText = `${months} ${months === 1 ? 'mo' : 'mos'}`;
+  const fullLabel = months > 0 
+    ? (months < 12 ? `${years} Years (${months} ${months === 1 ? 'month' : 'months'})` : `${years} Years (${Math.floor(months / 12)}y ${months % 12}m)`)
+    : (cand.totalExperience || '0 Years');
+
+  return {
+    months,
+    years,
+    badgeText,
+    subText,
+    fullLabel,
+  };
+};
+
+const parseDateToYMClient = (str: string) => {
+  if (!str) return null;
+  const s = str.trim().toLowerCase();
+  if (s === 'present' || s === 'current' || s === 'now' || s === 'till date' || s === 'ongoing') {
+    const now = new Date();
+    return { y: now.getFullYear(), m: now.getMonth() };
+  }
+  const mMap: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const mMatch = s.match(/([a-z]{3})[a-z]*\.?\s+(\d{4})/i);
+  if (mMatch) return { y: parseInt(mMatch[2], 10), m: mMap[mMatch[1].toLowerCase()] ?? 0 };
+  const yMatch = s.match(/\b(19\d\d|20\d\d)\b/);
+  if (yMatch) return { y: parseInt(yMatch[1], 10), m: 0 };
+  return null;
+};
+
+const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => {
+  if (cand.gapAnalysis && cand.gapAnalysis.statusText) {
+    return cand.gapAnalysis;
+  }
+  const exps = cand.experience || [];
+  if (exps.length <= 1) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified (Continuous employment)'
+    };
+  }
+
+  const dated: { exp: CandidateExperience; start: { y: number; m: number }; end: { y: number; m: number } }[] = [];
+  for (const exp of exps) {
+    if (exp.startDate) {
+      const s = parseDateToYMClient(exp.startDate);
+      const e = parseDateToYMClient(exp.endDate || 'Present');
+      if (s && e) dated.push({ exp, start: s, end: e });
+    }
+  }
+
+  if (dated.length <= 1) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified'
+    };
+  }
+
+  dated.sort((a, b) => (a.start.y * 12 + a.start.m) - (b.start.y * 12 + b.start.m));
+
+  const foundGaps: CandidateCareerGap[] = [];
+  let totalGapMonths = 0;
+
+  for (let i = 0; i < dated.length - 1; i++) {
+    const prev = dated[i];
+    const next = dated[i + 1];
+    const prevEnd = prev.end.y * 12 + prev.end.m;
+    const nextStart = next.start.y * 12 + next.start.m;
+    const diff = nextStart - prevEnd;
+
+    if (diff >= 3) {
+      const gapYears = (diff / 12).toFixed(1);
+      const gapLabel = diff >= 12
+        ? `${gapYears} yrs (${diff} mos) gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`
+        : `${diff} mos gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`;
+
+      foundGaps.push({
+        fromCompany: prev.exp.company,
+        toCompany: next.exp.company,
+        startDate: prev.exp.endDate || `${prev.end.y}`,
+        endDate: next.exp.startDate || `${next.start.y}`,
+        gapMonths: diff,
+        gapLabel
+      });
+      totalGapMonths += diff;
+    }
+  }
+
+  if (foundGaps.length === 0) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified'
+    };
+  }
+
+  return {
+    hasGap: true,
+    totalGapMonths,
+    gaps: foundGaps,
+    statusText: `${foundGaps.length} career gap${foundGaps.length > 1 ? 's' : ''} identified (${totalGapMonths} mos total)`
+  };
+};
+
+const getEffectiveSkills = (cand: CandidateRecord): string[] => {
+  if (cand.skills && cand.skills.length > 0) return cand.skills;
+  const text = `${cand.summary || ''} ${cand.professionalSummary || ''} ${cand.rawText || ''}`;
+  const catalog = [
+    'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
+    'Tailwind', 'Redux', 'Node.js', 'Express', 'Express.js', 'Python', 'Java', 'FastAPI', 'Django', 'Flask',
+    'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Docker', 'Git', 'GitHub',
+    'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Figma'
+  ];
+  const matched = new Set<string>();
+  for (const s of catalog) {
+    const esc = s.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+    if (new RegExp(`(?:^|[^a-zA-Z0-9_])${esc}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+      matched.add(s);
+    }
+  }
+  return Array.from(matched);
 };
 
 const avatarColor = (name: string) => {
@@ -694,7 +905,21 @@ export default function JobCandidatesPage() {
 
                         {/* Experience */}
                         <td className="px-4 py-4 text-xs font-bold text-slate-800">
-                          {c.totalExperience || '—'}
+                          {(() => {
+                            const expInfo = getNumericExperienceDetails(c);
+                            return (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-xs">
+                                  {expInfo.badgeText}
+                                </span>
+                                {expInfo.months > 0 && (
+                                  <span className="text-[10px] text-slate-400 font-medium">
+                                    {expInfo.subText} total
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Current Title & Company */}
@@ -816,7 +1041,21 @@ export default function JobCandidatesPage() {
                 <div className="grid grid-cols-3 gap-2 p-6 border-b border-slate-100 bg-white">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400">Total Experience</span>
-                    <p className="text-xs font-bold text-slate-800 mt-0.5">{selectedCandidate.totalExperience || 'Not specified'}</p>
+                    {(() => {
+                      const expInfo = getNumericExperienceDetails(selectedCandidate);
+                      return (
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100/80 text-amber-900 border border-amber-300">
+                            {expInfo.badgeText}
+                          </span>
+                          {expInfo.months > 0 && (
+                            <span className="text-xs font-bold text-slate-700">
+                              ({expInfo.subText})
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400">Email</span>
@@ -854,44 +1093,118 @@ export default function JobCandidatesPage() {
                 {!showRawText ? (
                   <div className="p-6 space-y-6">
                     {/* Professional Summary */}
-                    {selectedCandidate.professionalSummary && (
+                    {(selectedCandidate.professionalSummary || selectedCandidate.summary) && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Professional Summary</h3>
                         <p className="text-xs text-slate-700 leading-relaxed bg-[#F8FAFC] p-4 rounded-2xl border border-slate-200">
-                          {selectedCandidate.professionalSummary}
+                          {selectedCandidate.professionalSummary || selectedCandidate.summary}
                         </p>
                       </div>
                     )}
 
-                    {/* Extracted Skills */}
-                    {selectedCandidate.skills && selectedCandidate.skills.length > 0 && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Extracted Competencies & Skills</h3>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedCandidate.skills.map((s, i) => (
-                            <span key={i} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                              {s}
+                    {/* Career Gap Analysis */}
+                    {(() => {
+                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
+                      return (
+                        <div className={`border rounded-2xl p-4.5 transition-all ${
+                          gapInfo.hasGap 
+                            ? 'bg-amber-50/50 border-amber-200' 
+                            : 'bg-emerald-50/40 border-emerald-200/80'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm ${
+                                gapInfo.hasGap ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                              }`}>
+                                {gapInfo.hasGap ? '⚠️' : '✓'}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-[#1E293B]">Career Gap Analysis</h4>
+                                <p className="text-[11px] text-slate-600 font-medium">{gapInfo.statusText}</p>
+                              </div>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold border ${
+                              gapInfo.hasGap
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-emerald-100/80 text-emerald-800 border-emerald-300'
+                            }`}>
+                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos total gap` : 'No Gap Identified'}
                             </span>
-                          ))}
+                          </div>
+                          {gapInfo.hasGap && gapInfo.gaps.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-amber-200/60 space-y-2">
+                              {gapInfo.gaps.map((g, gi) => (
+                                <div key={gi} className="text-xs text-amber-950 bg-white/80 border border-amber-200 px-3 py-2 rounded-xl flex items-center justify-between">
+                                  <span className="font-semibold">{g.gapLabel}</span>
+                                  <span className="text-[11px] text-slate-500 font-medium">{g.startDate} → {g.endDate}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
+
+                    {/* Extracted Competencies & Tech Stack */}
+                    {(() => {
+                      const effectiveSkills = getEffectiveSkills(selectedCandidate);
+                      if (effectiveSkills.length === 0) return null;
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tech Stack & Competencies</h3>
+                            <span className="text-[11px] font-bold text-slate-500">{effectiveSkills.length} Identified</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {effectiveSkills.map((s, i) => (
+                              <span key={i} className="px-2.5 py-1 bg-[#F8FAFC] border border-slate-200/90 rounded-lg text-xs font-semibold text-slate-700 hover:border-brand-orange/40 transition-colors">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Experience Timeline */}
                     {selectedCandidate.experience && selectedCandidate.experience.length > 0 && (
                       <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Work History</h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work History</h3>
+                          {(() => {
+                            const expInfo = getNumericExperienceDetails(selectedCandidate);
+                            return (
+                              <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
+                                Total: {expInfo.fullLabel}
+                              </span>
+                            );
+                          })()}
+                        </div>
                         <div className="space-y-3">
-                          {selectedCandidate.experience.map((exp, i) => (
-                            <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-                              <div className="flex items-start justify-between">
-                                <h4 className="text-xs font-bold text-[#1E293B]">{exp.title}</h4>
-                                <span className="text-[11px] font-semibold text-slate-500">{exp.duration || `${exp.startDate} - ${exp.endDate}`}</span>
+                          {selectedCandidate.experience.map((exp, i) => {
+                            const titleText = (exp.title && exp.title.toLowerCase() !== 'role') ? exp.title : (selectedCandidate.currentTitle || 'Role / Position');
+                            const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
+                            const durPill = durMonths > 0 ? (durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`) : null;
+                            return (
+                              <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
+                                <div className="flex items-start justify-between">
+                                  <h4 className="text-xs font-bold text-[#1E293B]">{titleText}</h4>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] font-semibold text-slate-500">
+                                      {exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} – ${exp.endDate}` : exp.startDate || exp.endDate || '')}
+                                    </span>
+                                    {durPill && !exp.duration?.includes('•') && (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-[10px] font-bold text-slate-700">
+                                        {durPill}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {exp.company && <p className="text-xs text-brand-orange font-semibold mt-0.5">{exp.company}</p>}
+                                {exp.description && <p className="text-xs text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</p>}
                               </div>
-                              <p className="text-xs text-brand-orange font-semibold mt-0.5">{exp.company}</p>
-                              {exp.description && <p className="text-xs text-slate-600 mt-2 leading-relaxed">{exp.description}</p>}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -905,8 +1218,38 @@ export default function JobCandidatesPage() {
                             <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-3.5 flex items-start justify-between">
                               <div>
                                 <h4 className="text-xs font-bold text-slate-800">{edu.degree}</h4>
-                                <p className="text-[11px] text-slate-500">{edu.institution} {edu.year ? `• ${edu.year}` : ''}</p>
+                                <p className="text-[11px] text-slate-500">
+                                  {edu.institution} {edu.year ? `• ${edu.year}` : ''} {edu.details ? `• ${edu.details}` : ''}
+                                </p>
                               </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Projects */}
+                    {selectedCandidate.projects && selectedCandidate.projects.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Key Projects</h3>
+                        <div className="space-y-3">
+                          {selectedCandidate.projects.map((proj, i) => (
+                            <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
+                              <div className="flex items-start justify-between">
+                                <h4 className="text-xs font-bold text-[#1E293B]">{proj.name}</h4>
+                              </div>
+                              {proj.technologies && proj.technologies.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5 mb-2">
+                                  {proj.technologies.map((t, ti) => (
+                                    <span key={ti} className="px-2 py-0.5 bg-slate-200/70 rounded text-[10px] font-medium text-slate-700">
+                                      {t}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {proj.description && (
+                                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{proj.description}</p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -920,8 +1263,8 @@ export default function JobCandidatesPage() {
                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Certifications</h3>
                           <ul className="space-y-1 text-xs text-slate-700">
                             {selectedCandidate.certifications.map((c, i) => (
-                              <li key={i} className="flex items-center gap-1.5">
-                                <span className="text-emerald-500">✓</span> {c}
+                              <li key={i} className="flex items-center gap-1.5 bg-[#F8FAFC] border border-slate-200 p-2 rounded-xl">
+                                <span className="text-emerald-500 font-bold">✓</span> <span>{c}</span>
                               </li>
                             ))}
                           </ul>
@@ -932,8 +1275,8 @@ export default function JobCandidatesPage() {
                           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Languages</h3>
                           <ul className="space-y-1 text-xs text-slate-700">
                             {selectedCandidate.languages.map((l, i) => (
-                              <li key={i} className="flex items-center gap-1.5">
-                                <span className="text-brand-orange">🌐</span> {l}
+                              <li key={i} className="flex items-center gap-1.5 bg-[#F8FAFC] border border-slate-200 p-2 rounded-xl">
+                                <span className="text-brand-orange">🌐</span> <span>{l}</span>
                               </li>
                             ))}
                           </ul>

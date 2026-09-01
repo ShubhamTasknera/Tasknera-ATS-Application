@@ -223,6 +223,7 @@ export interface CandidateCV {
   experiences: CandidateExperience[];
   totalExperience: string; // e.g., "8 years 6 months"
   totalExperienceMonths: number;
+  totalExperienceYears?: number;
   
   // Skills
   skills: string[];

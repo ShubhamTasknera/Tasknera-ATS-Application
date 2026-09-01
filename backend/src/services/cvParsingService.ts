@@ -41,6 +41,22 @@ export interface CandidateCertification {
   sourceEvidence?: string;
 }
 
+export interface CandidateCareerGap {
+  fromCompany?: string;
+  toCompany?: string;
+  startDate: string;
+  endDate: string;
+  gapMonths: number;
+  gapLabel: string;
+}
+
+export interface CandidateGapAnalysis {
+  hasGap: boolean;
+  totalGapMonths: number;
+  gaps: CandidateCareerGap[];
+  statusText: string;
+}
+
 export interface CandidateParsedProfile {
   name: string | null;
   email: string | null;
@@ -49,8 +65,11 @@ export interface CandidateParsedProfile {
   currentTitle: string | null;
   currentCompany: string | null;
   totalExperience: string | null;
+  totalExperienceMonths?: number;
+  totalExperienceYears?: number;
   relevantExperience?: string | null;
   summary: string | null;
+  professionalSummary?: string | null;
   skills: string[];
   technologies: string[];
   tools: string[];
@@ -59,6 +78,7 @@ export interface CandidateParsedProfile {
   certifications: (string | CandidateCertification)[];
   languages: string[];
   experience: CandidateExperience[];
+  gapAnalysis?: CandidateGapAnalysis;
   responsibilities: string[];
   achievements: string[];
   projects: CandidateProject[];
@@ -101,7 +121,6 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
     return { isValid: false, reason: 'Extracted text length is too short (< 20 characters).' };
   }
 
-  // 1. Check for HTML or template tags
   const htmlPatterns = [
     /<!doctype\s+html/i,
     /<html[\s>]/i,
@@ -118,7 +137,6 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
     }
   }
 
-  // 2. Check for application source code
   const codePatterns = [
     /import\s+React/i,
     /from\s+['"]react['"]/i,
@@ -132,7 +150,6 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
     }
   }
 
-  // 3. Check for binary / unprintable characters
   const unprintableCount = (text.match(/[\x00-\x08\x0E-\x1F\x7F-\x9F]/g) || []).length;
   if (unprintableCount > text.length * 0.25) {
     return { isValid: false, reason: 'Extracted text contains excessive unprintable binary characters.' };
@@ -146,9 +163,8 @@ export function validateCvTextQuality(rawText: string): { isValid: boolean; reas
  */
 export function validateEmail(emailCandidate: string | null): string | null {
   if (!emailCandidate) return null;
-  const email = emailCandidate.trim().toLowerCase();
+  const email = emailCandidate.trim().toLowerCase().replace(/^mailto:/i, '');
 
-  // Reject HTML tags, .doctype, or malformed patterns
   if (
     email.includes('<') ||
     email.includes('>') ||
@@ -176,17 +192,13 @@ export function validatePhone(phoneCandidate: string | null): string | null {
   if (!phoneCandidate) return null;
   const raw = phoneCandidate.trim();
 
-  // Reject HTML, strings with letters, or extreme lengths
   if (/[a-zA-Z<>]/.test(raw)) return null;
 
   const digitsOnly = raw.replace(/\D/g, '');
-
-  // Legitimate phone number digits count is between 10 and 15
   if (digitsOnly.length < 10 || digitsOnly.length > 15) {
     return null;
   }
 
-  // Reject repeating single digit
   if (/^(\d)\1+$/.test(digitsOnly)) {
     return null;
   }
@@ -199,7 +211,7 @@ export function validatePhone(phoneCandidate: string | null): string | null {
 }
 
 /**
- * Extracts candidate name from the top lines of the CV with verified ground truth.
+ * Extracts candidate name from the top lines of the CV.
  */
 export function extractCandidateName(lines: string[], cleanText: string, fileName?: string): { name: string | null; evidence?: string } {
   const invalidNameKeywords = [
@@ -210,14 +222,11 @@ export function extractCandidateName(lines: string[], cleanText: string, fileNam
     'date of birth', 'nationality', 'languages', 'projects', 'declaration', 'career'
   ];
 
-  // 1. Direct inspection of top lines (first 8 lines)
-  for (let i = 0; i < Math.min(lines.length, 8); i++) {
+  for (let i = 0; i < Math.min(lines.length, 10); i++) {
     let line = lines[i].trim();
-
-    // Clean leading labels like "Name:", "Full Name:"
     line = line.replace(/^(?:name|full\s*name|candidate\s*name)\s*[:\-–]\s*/i, '').trim();
 
-    if (!line || line.length < 2 || line.length > 40) continue;
+    if (!line || line.length < 2 || line.length > 50) continue;
     if (line.includes('@') || /\d/.test(line) || line.includes('/') || line.includes('|') || line.includes(':')) continue;
 
     const lower = line.toLowerCase();
@@ -236,7 +245,6 @@ export function extractCandidateName(lines: string[], cleanText: string, fileNam
     }
   }
 
-  // 2. Cross-verify with clean filename if tokens appear in CV body
   if (fileName) {
     const rawBase = fileName
       .replace(/\.[^/.]+$/, '')
@@ -249,19 +257,574 @@ export function extractCandidateName(lines: string[], cleanText: string, fileNam
 
     const nameTokens = rawBase.split(/\s+/).filter(t => t.length >= 2 && /^[a-zA-Z]+$/.test(t));
     if (nameTokens.length >= 2) {
-      const allTokensInCv = nameTokens.every(token =>
-        new RegExp(`\\b${token}\\b`, 'i').test(cleanText)
-      );
-      if (allTokensInCv) {
-        const formatted = nameTokens
-          .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(' ');
-        return { name: formatted, evidence: `Verified in CV text (${rawBase})` };
+      const formatted = nameTokens
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+      return { name: formatted, evidence: `Derived from document (${rawBase})` };
+    }
+  }
+
+  return { name: 'Candidate' };
+}
+
+/**
+ * Helper: extracts structured sections from CV text with case-insensitivity, markdown tolerance, and flexible headers.
+ */
+function extractSections(text: string): Record<string, string> {
+  const sections: Record<string, string> = {};
+  
+  const sectionDefinitions: { canonical: string; patterns: RegExp[] }[] = [
+    {
+      canonical: 'SUMMARY',
+      patterns: [
+        /^(?:professional\s+summary|summary|profile|about\s+me|career\s+objective|objective|executive\s+summary|about|summary\s+statement)$/i,
+        /^(?:professional\s+summary|summary)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'SKILLS',
+      patterns: [
+        /^(?:technical\s+skills|skills\s*&\s*abilities|skills\s*&\s*competencies|skills\s*&\s*expertise|technical\s+competencies|core\s+competencies|key\s+skills|areas\s+of\s+expertise|skills|technologies|technical\s+stack|tech\s+stack|competencies|proficiencies)$/i,
+        /^(?:technical\s+skills|skills|technologies|tech\s+stack)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'EXPERIENCE',
+      patterns: [
+        /^(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history|experience|internships?|career\s+history|relevant\s+experience)$/i,
+        /^(?:work\s+experience|professional\s+experience|experience)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'EDUCATION',
+      patterns: [
+        /^(?:education|academic\s+background|academics|qualifications|educational\s+qualifications|degrees?|education\s*&\s*training|academic\s+history)$/i,
+        /^(?:education|academic\s+background)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'PROJECTS',
+      patterns: [
+        /^(?:projects|key\s+projects|academic\s+projects|personal\s+projects|notable\s+projects|selected\s+projects|technical\s+projects)$/i,
+        /^(?:projects|key\s+projects)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'CERTIFICATIONS',
+      patterns: [
+        /^(?:certifications?|certificates?|achievements\s*&\s*certifications|achievements|awards\s*&\s*certifications|licenses\s*&\s*certifications|courses\s*&\s*certifications)$/i,
+        /^(?:certifications?|certificates?)[:\s\-–]/i,
+      ]
+    },
+    {
+      canonical: 'LANGUAGES',
+      patterns: [
+        /^(?:languages|languages\s+known|spoken\s+languages)$/i,
+        /^(?:languages|languages\s+known)[:\s\-–]/i,
+      ]
+    }
+  ];
+
+  const lines = text.split('\n');
+  const sectionMarkers: { canonical: string; lineIndex: number }[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i].trim();
+    if (!rawLine || rawLine.length > 55) continue;
+
+    const cleaned = rawLine
+      .replace(/^[\#\*\-\s]+/, '')
+      .replace(/[:\-–—\s]+$/, '')
+      .trim();
+
+    for (const def of sectionDefinitions) {
+      if (def.patterns.some(p => p.test(cleaned) || p.test(rawLine))) {
+        sectionMarkers.push({ canonical: def.canonical, lineIndex: i });
+        break;
       }
     }
   }
 
-  return { name: null };
+  for (let i = 0; i < sectionMarkers.length; i++) {
+    const current = sectionMarkers[i];
+    const nextLineIndex = i < sectionMarkers.length - 1 ? sectionMarkers[i + 1].lineIndex : lines.length;
+    const contentLines = lines.slice(current.lineIndex + 1, nextLineIndex);
+    sections[current.canonical] = contentLines.join('\n').trim();
+  }
+
+  return sections;
+}
+
+const MONTH_MAP: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+
+export function parseDateToYearMonth(str: string): { year: number; month: number } | null {
+  if (!str) return null;
+  const trimmed = str.trim().toLowerCase();
+  if (trimmed === 'present' || trimmed === 'current' || trimmed === 'now' || trimmed === 'till date' || trimmed === 'ongoing') {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  }
+  
+  const mMatch = trimmed.match(/([a-z]+)\.?\s*(\d{4})/i);
+  if (mMatch) {
+    const monthKey = mMatch[1].toLowerCase().replace(/[^a-z]/g, '');
+    const month = MONTH_MAP[monthKey] !== undefined ? MONTH_MAP[monthKey] : 0;
+    const year = parseInt(mMatch[2], 10);
+    return { year, month };
+  }
+
+  const slashMatch = trimmed.match(/(\d{1,2})\s*[\/-]\s*(\d{4})/);
+  if (slashMatch) {
+    const month = Math.max(0, Math.min(11, parseInt(slashMatch[1], 10) - 1));
+    const year = parseInt(slashMatch[2], 10);
+    return { year, month };
+  }
+
+  const yMatch = trimmed.match(/\b(19\d\d|20\d\d)\b/);
+  if (yMatch) {
+    return { year: parseInt(yMatch[1], 10), month: 0 };
+  }
+
+  return null;
+}
+
+export function calculateExperienceMonths(startDateStr: string | null | undefined, endDateStr: string | null | undefined): number {
+  if (!startDateStr) return 0;
+  const start = parseDateToYearMonth(startDateStr);
+  const end = parseDateToYearMonth(endDateStr || 'Present');
+  if (!start || !end) return 0;
+  
+  const months = (end.year - start.year) * 12 + (end.month - start.month) + 1;
+  return months > 0 ? months : 1;
+}
+
+export function formatNumericExperience(totalMonths: number): string {
+  if (totalMonths <= 0) return '0 yrs';
+  const years = parseFloat((totalMonths / 12).toFixed(1));
+  if (totalMonths < 12) {
+    return `${years} yrs (${totalMonths} ${totalMonths === 1 ? 'month' : 'months'})`;
+  }
+  const remainderMonths = totalMonths % 12;
+  if (remainderMonths === 0) {
+    return `${years} yrs`;
+  }
+  return `${years} yrs (${Math.floor(totalMonths / 12)}y ${remainderMonths}m)`;
+}
+
+/**
+ * Calculates Career Gap between consecutive job experiences
+ */
+export function calculateCareerGaps(experiences: CandidateExperience[]): CandidateGapAnalysis {
+  if (!experiences || experiences.length <= 1) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified (Continuous employment)'
+    };
+  }
+
+  // Parse start/end dates for each experience
+  const datedExps: { exp: CandidateExperience; start: { year: number; month: number }; end: { year: number; month: number } }[] = [];
+
+  for (const exp of experiences) {
+    if (exp.startDate) {
+      const s = parseDateToYearMonth(exp.startDate);
+      const e = parseDateToYearMonth(exp.endDate || 'Present');
+      if (s && e) {
+        datedExps.push({ exp, start: s, end: e });
+      }
+    }
+  }
+
+  if (datedExps.length <= 1) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified'
+    };
+  }
+
+  // Sort chronological (oldest to newest)
+  datedExps.sort((a, b) => {
+    const aVal = a.start.year * 12 + a.start.month;
+    const bVal = b.start.year * 12 + b.start.month;
+    return aVal - bVal;
+  });
+
+  const foundGaps: CandidateCareerGap[] = [];
+  let totalGapMonths = 0;
+
+  for (let i = 0; i < datedExps.length - 1; i++) {
+    const prev = datedExps[i];
+    const next = datedExps[i + 1];
+
+    const prevEndVal = prev.end.year * 12 + prev.end.month;
+    const nextStartVal = next.start.year * 12 + next.start.month;
+
+    const diffMonths = nextStartVal - prevEndVal;
+
+    // A gap is considered if there are > 2 months between employment periods
+    if (diffMonths >= 3) {
+      const gapYears = (diffMonths / 12).toFixed(1);
+      const gapLabel = diffMonths >= 12
+        ? `${gapYears} yrs (${diffMonths} mos) gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`
+        : `${diffMonths} mos gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`;
+
+      foundGaps.push({
+        fromCompany: prev.exp.company || undefined,
+        toCompany: next.exp.company || undefined,
+        startDate: prev.exp.endDate || `${prev.end.year}`,
+        endDate: next.exp.startDate || `${next.start.year}`,
+        gapMonths: diffMonths,
+        gapLabel
+      });
+      totalGapMonths += diffMonths;
+    }
+  }
+
+  if (foundGaps.length === 0) {
+    return {
+      hasGap: false,
+      totalGapMonths: 0,
+      gaps: [],
+      statusText: 'No gap identified'
+    };
+  }
+
+  return {
+    hasGap: true,
+    totalGapMonths,
+    gaps: foundGaps,
+    statusText: `${foundGaps.length} career gap${foundGaps.length > 1 ? 's' : ''} identified (${totalGapMonths} mos total)`
+  };
+}
+
+/**
+ * Extracts date range from a string (e.g., "Apr 2025 – Nov 2025", "Oct 2024 – Present", "2021 - 2023")
+ */
+function extractDateRange(text: string): { duration: string | null; startDate: string | null; endDate: string | null; cleanedText: string } {
+  const dateRangePattern = /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*(?:[–—\-]|to)\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}|Present|Current|Now|Ongoing)\b/i;
+  const match = text.match(dateRangePattern);
+
+  if (match) {
+    const duration = match[0].trim();
+    const startDate = match[1].trim();
+    const endDate = match[2].trim();
+    const cleanedText = text.replace(dateRangePattern, '').trim();
+    return { duration, startDate, endDate, cleanedText };
+  }
+
+  return { duration: null, startDate: null, endDate: null, cleanedText: text };
+}
+
+/**
+ * Robust Work Experience Parser
+ */
+function parseExperienceSection(expText: string, fullText: string): CandidateExperience[] {
+  const textToScan = expText || fullText;
+  if (!textToScan) return [];
+
+  const experiences: CandidateExperience[] = [];
+  const lines = textToScan.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let currentExp: CandidateExperience | null = null;
+  const bulletLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isBullet = /^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(line);
+
+    if (!isBullet) {
+      const dateInfo = extractDateRange(line);
+      const isRoleWord = /^(role|position|designation|job title|title|employment)\b/i.test(line.trim());
+      const hasJobSeparator = line.includes('|') || line.includes('—') || line.includes('–') || /\bat\b/i.test(line) || /developer|engineer|intern|lead|architect|manager|consultant|specialist|founder|co-founder|analyst|designer|administrator|director/i.test(line);
+
+      if (currentExp && !currentExp.startDate && (dateInfo.duration || dateInfo.startDate)) {
+        currentExp.startDate = dateInfo.startDate;
+        currentExp.endDate = dateInfo.endDate;
+        const durMonths = calculateExperienceMonths(dateInfo.startDate, dateInfo.endDate);
+        currentExp.duration = dateInfo.duration
+          ? `${dateInfo.duration}${durMonths > 0 ? ` • ${durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`}` : ''}`
+          : null;
+        const locCandidate = dateInfo.cleanedText.replace(/^(role|position|designation|location)[:\s\-–]*/i, '').replace(/^[|•\-–—]\s*/, '').trim();
+        if (locCandidate && !currentExp.location) {
+          currentExp.location = locCandidate;
+        }
+        continue;
+      }
+
+      if (dateInfo.duration || (hasJobSeparator && !isRoleWord)) {
+        if (currentExp) {
+          currentExp.description = bulletLines.join('\n');
+          currentExp.highlights = [...bulletLines];
+          experiences.push(currentExp);
+          bulletLines.length = 0;
+        }
+
+        let titleStr = '';
+        let companyStr = '';
+        const headerWithoutDate = dateInfo.cleanedText.replace(/^(role|position|designation)[:\s\-–]*/i, '').trim();
+
+        if (headerWithoutDate.includes('|')) {
+          const parts = headerWithoutDate.split('|').map(p => p.trim());
+          titleStr = parts[0];
+          companyStr = parts.slice(1).join(' ');
+        } else if (headerWithoutDate.includes('—') || headerWithoutDate.includes('–')) {
+          const parts = headerWithoutDate.split(/[—–]/).map(p => p.trim());
+          titleStr = parts[0];
+          companyStr = parts.slice(1).join(' ');
+        } else if (/\s+at\s+/i.test(headerWithoutDate)) {
+          const parts = headerWithoutDate.split(/\s+at\s+/i).map(p => p.trim());
+          titleStr = parts[0];
+          companyStr = parts[1] || '';
+        } else {
+          titleStr = headerWithoutDate;
+          companyStr = '';
+        }
+
+        titleStr = titleStr.replace(/\(\s*\)|\[\s*\]/g, '').replace(/[-–—,]\s*$/, '').trim();
+        companyStr = companyStr.replace(/\(\s*\)|\[\s*\]/g, '').replace(/[-–—,]\s*$/, '').trim();
+
+        const durMonths = calculateExperienceMonths(dateInfo.startDate, dateInfo.endDate);
+        const formattedDuration = dateInfo.duration 
+          ? `${dateInfo.duration}${durMonths > 0 ? ` • ${durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`}` : ''}`
+          : null;
+
+        currentExp = {
+          title: titleStr || 'Software Engineer',
+          company: companyStr || 'Company',
+          duration: formattedDuration,
+          startDate: dateInfo.startDate,
+          endDate: dateInfo.endDate,
+          sourceEvidence: line
+        };
+        continue;
+      }
+    }
+
+    bulletLines.push(line.replace(/^[•*\-–—▪▫➢✓✔]\s*/, '').trim());
+  }
+
+  if (currentExp) {
+    currentExp.description = bulletLines.join('\n');
+    currentExp.highlights = [...bulletLines];
+    experiences.push(currentExp);
+  }
+
+  return experiences;
+}
+
+/**
+ * Robust Education Section Parser & Fallback
+ */
+function parseEducationSection(eduText: string, fullText: string): CandidateEducation[] {
+  const educationList: CandidateEducation[] = [];
+  const textToScan = eduText || fullText;
+  if (!textToScan) return [];
+
+  const lines = textToScan.split('\n').map(l => l.trim()).filter(Boolean);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const dateInfo = extractDateRange(line);
+    let cleaned = dateInfo.cleanedText.replace(/^[•*\-–—▪▫➢✓✔]\s*/, '').trim();
+
+    // Check if line mentions degree keywords
+    const isEduLine = /bachelor|master|b\.?tech|b\.?e\.?|bca|mca|b\.?sc|m\.?sc|mba|diploma|degree|ph\.?d|high\s*school|secondary|university|college|institute|engineering/i.test(cleaned);
+
+    if (isEduLine || eduText) {
+      let degreeStr = '';
+      let institutionStr = '';
+      let cgpaStr = '';
+
+      const cgpaMatch = cleaned.match(/(?:CGPA|GPA|Percentage|Score|Marks?)[:\s]+([\d.]+(?:\s*\/\s*\d+)?%?)/i);
+      if (cgpaMatch) {
+        cgpaStr = cgpaMatch[0];
+        cleaned = cleaned.replace(cgpaMatch[0], '').replace(/[-–—|]\s*$/, '').trim();
+      }
+
+      if (cleaned.includes('|')) {
+        const parts = cleaned.split('|').map(p => p.trim());
+        degreeStr = parts[0].replace(/[-–—]\s*$/, '').trim();
+        institutionStr = parts.slice(1).join(' ').trim();
+      } else if (cleaned.includes('—') || cleaned.includes('–')) {
+        const parts = cleaned.split(/[—–]/).map(p => p.trim());
+        degreeStr = parts[0].trim();
+        institutionStr = parts.slice(1).join(' ').trim();
+      } else {
+        degreeStr = cleaned;
+      }
+
+      if (!institutionStr && i + 1 < lines.length && !lines[i + 1].startsWith('•')) {
+        const nextLine = lines[i + 1].trim();
+        if (/college|university|institute|school|academy/i.test(nextLine)) {
+          institutionStr = nextLine;
+          i++;
+        }
+      }
+
+      if (degreeStr && degreeStr.length >= 3 && !/experience|summary|skills|projects/i.test(degreeStr)) {
+        educationList.push({
+          degree: degreeStr,
+          institution: institutionStr || 'University / Institute',
+          year: dateInfo.duration,
+          details: cgpaStr || null,
+          sourceEvidence: line
+        });
+      }
+    }
+  }
+
+  return educationList;
+}
+
+/**
+ * Robust Projects Section Parser & Fallback
+ */
+function parseProjectsSection(projText: string, fullText: string): CandidateProject[] {
+  const projects: CandidateProject[] = [];
+  const textToScan = projText || '';
+  if (!textToScan) return [];
+
+  const lines = textToScan.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let currentProject: CandidateProject | null = null;
+  const descLines: string[] = [];
+
+  for (const line of lines) {
+    const isBullet = /^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(line);
+
+    if (!isBullet && (line.includes('|') || line.includes('–') || line.includes('—') || /^[A-Z][A-Za-z0-9\s_-]{2,45}$/.test(line))) {
+      if (currentProject) {
+        currentProject.description = descLines.join('\n');
+        projects.push(currentProject);
+        descLines.length = 0;
+      }
+
+      let name = line;
+      let techArray: string[] = [];
+
+      if (line.includes('|')) {
+        const parts = line.split('|').map(p => p.trim());
+        name = parts[0];
+        if (parts[1]) {
+          techArray = parts[1].split(/[,|•*]\s*/).map(t => t.trim()).filter(Boolean);
+        }
+      } else if (line.includes('–') || line.includes('—')) {
+        const parts = line.split(/[–—]/).map(p => p.trim());
+        name = parts[0];
+        if (parts[1]) {
+          techArray = parts[1].split(/[,|•*]\s*/).map(t => t.trim()).filter(Boolean);
+        }
+      }
+
+      currentProject = {
+        name: name.trim(),
+        technologies: techArray,
+        description: '',
+        sourceEvidence: line
+      };
+      continue;
+    }
+
+    descLines.push(line.replace(/^[•*\-–—▪▫➢✓✔]\s*/, '').trim());
+  }
+
+  if (currentProject) {
+    currentProject.description = descLines.join('\n');
+    projects.push(currentProject);
+  }
+
+  return projects;
+}
+
+/**
+ * Robust Skills Extractor from Technical Skills Section & Full Text
+ */
+function parseSkillsFromText(cleanText: string, skillsSectionText?: string): string[] {
+  const skillSet = new Set<string>();
+
+  if (skillsSectionText) {
+    const skillLines = skillsSectionText.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const line of skillLines) {
+      const cleaned = line.replace(/^[A-Za-z0-9\s&/]+:\s*/, '').replace(/^[•*\-–—▪▫➢✓✔]\s*/, '').trim();
+      const tokens = cleaned.split(/[,|•*·;]\s*/).map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 40);
+      for (const token of tokens) {
+        const pureSkill = token.replace(/\s*\([^)]*\)/g, '').trim();
+        if (pureSkill.length >= 1) {
+          skillSet.add(pureSkill);
+        }
+      }
+    }
+  }
+
+  const knownSkillCatalog = [
+    'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
+    'Tailwind', 'ShadCN UI', 'Redux', 'Redux Toolkit', 'Node.js', 'Express', 'Express.js', 'Python', 'FastAPI',
+    'Django', 'Flask', 'Java', 'Spring Boot', 'Spring', 'C', 'C++', 'C#', '.NET', 'SQL', 'PostgreSQL',
+    'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Azure', 'GCP', 'Google Cloud', 'Docker',
+    'Kubernetes', 'CI/CD', 'Git', 'GitHub', 'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices',
+    'Postman', 'Vercel', 'Render', 'Neon', 'Figma', 'UI/UX', 'Bootstrap', 'Jest', 'Cypress', 'Webpack', 'Vite', 'Kafka', 'Linux'
+  ];
+
+  for (const skill of knownSkillCatalog) {
+    const escaped = skill.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+    const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
+    if (regex.test(cleanText)) {
+      skillSet.add(skill);
+    }
+  }
+
+  return Array.from(skillSet);
+}
+
+/**
+ * Extracts candidate location accurately without consuming preceding text
+ */
+export function extractCandidateLocation(lines: string[], cleanText: string): string | null {
+  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+    const line = lines[i].trim();
+    const explicitMatch = line.match(/(?:location|address|city|residence|based in)[:\s\-–]+([^|•\n]{2,40})/i);
+    if (explicitMatch && explicitMatch[1]) {
+      const loc = explicitMatch[1].trim().replace(/^[:|\s\-–]+/, '').replace(/[,|\s]+$/, '');
+      if (loc.length >= 2 && !/developer|engineer|summary|skills|experience/i.test(loc)) {
+        return loc;
+      }
+    }
+  }
+
+  const cityPatterns = [
+    /\b(Navi\s+Mumbai(?:,\s*Maharashtra)?|Mumbai(?:,\s*Maharashtra)?|Pune(?:,\s*Maharashtra)?|Bengaluru|Bangalore|Hyderabad|Delhi|New\s+Delhi|Noida|Gurgaon|Gurugram|Chennai|Kolkata|Ahmedabad|Jaipur|Thane|Ghansoli|Kalyan|Maharashtra|India|USA|UK|Canada|San\s+Francisco|Austin|New\s+York|London|Singapore)\b/i
+  ];
+
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    const line = lines[i];
+    if (/summary|experience|education|skills|projects/i.test(line)) continue;
+    for (const pat of cityPatterns) {
+      const m = line.match(pat);
+      if (m && m[1]) {
+        const fullLocMatch = line.match(new RegExp(`${m[1]}(?:,\\s*[A-Za-z\\s]+)?`, 'i'));
+        return (fullLocMatch ? fullLocMatch[0] : m[1]).trim();
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -281,7 +844,6 @@ export function extractStructuredCandidateFromText(
 ): CandidateParsedProfile {
   const validationErrors: string[] = [];
 
-  // 1. Text Quality Validation
   const qualityCheck = validateCvTextQuality(rawText);
   if (!qualityCheck.isValid) {
     validationErrors.push(qualityCheck.reason || 'Invalid CV text quality');
@@ -295,6 +857,7 @@ export function extractStructuredCandidateFromText(
       totalExperience: null,
       relevantExperience: null,
       summary: null,
+      professionalSummary: null,
       skills: [],
       technologies: [],
       tools: [],
@@ -303,6 +866,12 @@ export function extractStructuredCandidateFromText(
       certifications: [],
       languages: [],
       experience: [],
+      gapAnalysis: {
+        hasGap: false,
+        totalGapMonths: 0,
+        gaps: [],
+        statusText: 'No gap identified'
+      },
       responsibilities: [],
       achievements: [],
       projects: [],
@@ -336,6 +905,9 @@ export function extractStructuredCandidateFromText(
   const cleanText = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = cleanText.split('\n').map(l => l.trim()).filter(Boolean);
   const sourceEvidence: Record<string, string | undefined> = {};
+
+  // 1. Extract discrete sections
+  const sections = extractSections(cleanText);
 
   // 2. Email Extraction
   let email: string | null = null;
@@ -382,58 +954,36 @@ export function extractStructuredCandidateFromText(
     sourceEvidence['name'] = nameResult.evidence;
   }
 
-  // 5. Total Experience Extraction (Evidence-based only)
-  let totalExperience: string | null = null;
-  const expMatch = cleanText.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:of\s*)?experience)?/i);
-  if (expMatch) {
-    totalExperience = `${expMatch[1]} years`;
-    sourceEvidence['totalExperience'] = expMatch[0];
-  } else {
-    const yearRangeMatch = cleanText.match(/\b(20\d{2}|19\d{2})\s*(?:[-–—]|to)\s*(20\d{2}|Present|Current)\b/i);
-    if (yearRangeMatch) {
-      const startYear = parseInt(yearRangeMatch[1], 10);
-      const endYear = yearRangeMatch[2].toLowerCase().includes('present') || yearRangeMatch[2].toLowerCase().includes('current')
-        ? new Date().getFullYear()
-        : parseInt(yearRangeMatch[2], 10);
-      if (!isNaN(startYear) && !isNaN(endYear) && endYear >= startYear && (endYear - startYear) <= 40) {
-        const years = endYear - startYear;
-        if (years > 0) {
-          totalExperience = `${years} years`;
-          sourceEvidence['totalExperience'] = yearRangeMatch[0];
-        }
-      }
-    }
-  }
+  // 5. Work Experience Extraction
+  const experienceText = sections['EXPERIENCE'] || '';
+  const experience = parseExperienceSection(experienceText, cleanText);
 
-  // 6. Current Title & Company Extraction
+  // 6. Career Gap Analysis
+  const gapAnalysis = calculateCareerGaps(experience);
+
+  // 7. Current Title & Company Extraction
   let currentTitle: string | null = null;
   let currentCompany: string | null = null;
 
-  const titleList = [
-    'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
-    'Senior Full Stack Engineer', 'Senior Full Stack Developer', 'Full Stack Engineer', 'Full Stack Developer',
-    'Senior Backend Engineer', 'Senior Backend Developer', 'Backend Engineer', 'Backend Developer',
-    'Senior Software Engineer', 'Software Engineer', 'Software Developer', 'React Developer',
-    'Java Developer', 'Python Developer', 'DevOps Engineer', 'Cloud Architect', 'UI/UX Designer',
-    'Product Designer', 'Data Scientist', 'Data Engineer', 'Machine Learning Engineer',
-    'QA Automation Engineer', 'SAP CO Consultant', 'SAP FI Consultant', 'SAP S/4HANA Consultant',
-    'Product Manager', 'Project Manager', 'Solutions Architect'
-  ];
-
-  const headerText = lines.slice(0, 8).join('\n');
-  for (const t of titleList) {
-    const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
-    if (reg.test(headerText)) {
-      currentTitle = t;
-      sourceEvidence['currentTitle'] = t;
-      break;
-    }
+  if (experience.length > 0) {
+    currentTitle = experience[0].title;
+    currentCompany = experience[0].company;
   }
 
-  if (!currentTitle) {
-    for (const t of titleList) {
+  if (!currentTitle || currentTitle === 'Software Engineer' || lines.length > 1) {
+    const titleCandidates = [
+      'Full Stack Developer', 'Full-Stack Developer', 'Full Stack Engineer', 'Full-Stack Engineer',
+      'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
+      'Senior Backend Engineer', 'Senior Backend Developer', 'Backend Engineer', 'Backend Developer',
+      'Senior Software Engineer', 'Software Engineer', 'Software Developer', 'Web Developer', 'Web Developer Intern',
+      'React Developer', 'Java Developer', 'Python Developer', 'DevOps Engineer', 'Cloud Architect',
+      'UI/UX Designer', 'Product Designer', 'Data Scientist', 'Data Engineer'
+    ];
+
+    const headerText = lines.slice(0, 8).join('\n');
+    for (const t of titleCandidates) {
       const reg = new RegExp(`\\b${t.replace('/', '\\/')}\\b`, 'i');
-      if (reg.test(cleanText)) {
+      if (reg.test(headerText)) {
         currentTitle = t;
         sourceEvidence['currentTitle'] = t;
         break;
@@ -441,127 +991,120 @@ export function extractStructuredCandidateFromText(
     }
   }
 
-  const companyPattern = /(?:at|company|worked at|organization|employer)\s*[:\-–]\s*([A-Za-z0-9\s&.,]{2,40})/i;
-  const companyMatch = cleanText.match(companyPattern);
-  if (companyMatch && companyMatch[1]) {
-    const candidateCompany = companyMatch[1].trim();
-    if (!['present', 'current', 'experience', 'skills', 'education'].includes(candidateCompany.toLowerCase())) {
-      currentCompany = candidateCompany;
-      sourceEvidence['currentCompany'] = companyMatch[0];
+  // Check if company is mentioned in summary (e.g. "Founder of SJ Tech Works")
+  if (!currentCompany || currentCompany === 'Company') {
+    const founderMatch = cleanText.match(/(?:founder\s+of|co-founder\s+of|working\s+at|employed\s+at)\s+([A-Za-z0-9\s&]{2,35})/i);
+    if (founderMatch && founderMatch[1]) {
+      currentCompany = founderMatch[1].trim().replace(/[,|.\n]+$/, '');
     }
   }
 
-  // 7. Location Extraction
-  let location: string | null = null;
-  const locationPattern = /(?:location|address|city|based in|residence)\s*[:\-–]\s*([A-Za-z\s,]+(?:India|USA|UK|CA|Pune|Bengaluru|Bangalore|Hyderabad|Mumbai|Delhi|Chennai|Noida|Gurgaon|Austin|San Francisco|New York|London|Singapore))/i;
-  const locMatch = cleanText.match(locationPattern);
-  if (locMatch && locMatch[1]) {
-    location = locMatch[1].trim();
-    sourceEvidence['location'] = locMatch[0];
+  if (currentCompany) {
+    sourceEvidence['currentCompany'] = currentCompany;
+  }
+
+  // 8. Total Experience Calculation
+  let totalExperience: string | null = null;
+  let totalExperienceMonths = 0;
+  let totalExperienceYears = 0;
+
+  const expMatch = cleanText.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:of\s*)?experience)?/i);
+  if (expMatch) {
+    const parsedYears = parseFloat(expMatch[1]);
+    if (!isNaN(parsedYears) && parsedYears > 0) {
+      totalExperienceYears = parsedYears;
+      totalExperienceMonths = Math.round(parsedYears * 12);
+      totalExperience = formatNumericExperience(totalExperienceMonths);
+      sourceEvidence['totalExperience'] = `${expMatch[0]} -> ${totalExperience}`;
+    }
+  }
+
+  if (!totalExperience && experience.length > 0) {
+    let sumMonths = 0;
+    for (const exp of experience) {
+      if (exp.startDate) {
+        const m = calculateExperienceMonths(exp.startDate, exp.endDate);
+        sumMonths += m;
+      }
+    }
+    if (sumMonths > 0) {
+      totalExperienceMonths = sumMonths;
+      totalExperienceYears = parseFloat((sumMonths / 12).toFixed(1));
+      totalExperience = formatNumericExperience(sumMonths);
+      sourceEvidence['totalExperience'] = `Calculated from history: ${sumMonths} months (~${totalExperienceYears} yrs)`;
+    }
+  }
+
+  if (!totalExperience) {
+    totalExperience = '0 yrs';
+  }
+
+  // 9. Location Extraction
+  const location = extractCandidateLocation(lines, cleanText);
+  if (location) {
+    sourceEvidence['location'] = location;
+  }
+
+  // 10. Skills Extraction
+  const skillsText = sections['SKILLS'] || '';
+  const skills = parseSkillsFromText(cleanText, skillsText);
+  if (skills.length > 0) {
+    sourceEvidence['skills'] = skills.join(', ');
+  }
+
+  // 11. Summary Extraction
+  let summary: string | null = null;
+  const summaryText = sections['SUMMARY'] || '';
+  if (summaryText) {
+    summary = summaryText.replace(/\n+/g, ' ').trim();
+    sourceEvidence['summary'] = summary;
   } else {
-    const cityList = ['Pune', 'Bengaluru', 'Bangalore', 'Hyderabad', 'Mumbai', 'Delhi', 'Chennai', 'Noida', 'Gurgaon', 'San Francisco', 'New York', 'Austin', 'London'];
-    for (const city of cityList) {
-      if (new RegExp(`\\b${city}\\b`, 'i').test(cleanText)) {
-        location = city;
-        sourceEvidence['location'] = city;
+    // If no explicit summary header, extract intro paragraph if it looks like a summary
+    for (const l of lines.slice(1, 6)) {
+      if (l.length > 50 && !l.includes('@') && !l.includes('|') && /developer|engineer|experienced|passionate|specialist/i.test(l)) {
+        summary = l;
         break;
       }
     }
   }
 
-  // 8. Skills Extraction
-  const knownSkillCatalog = [
-    'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
-    'Tailwind', 'Redux', 'Redux Toolkit', 'Node.js', 'Express', 'Express.js', 'Python', 'FastAPI', 'Django',
-    'Flask', 'Java', 'Spring Boot', 'Spring', 'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'AWS',
-    'Azure', 'GCP', 'Docker', 'Kubernetes', 'CI/CD', 'Git', 'GitHub', 'REST APIs', 'REST API', 'GraphQL',
-    'Microservices', 'Jest', 'Cypress', 'Webpack', 'Vite', 'SAP CO', 'SAP FI', 'S/4HANA', 'Controlling',
-    'CO-PA', 'CO-PC', 'Figma', 'UI/UX', 'Kafka', 'Elasticsearch', 'Linux', 'Bash', 'C++', 'C#', '.NET',
-    'Go', 'Golang', 'Rust', 'PHP', 'Laravel'
-  ];
+  // 12. Education Extraction
+  const educationText = sections['EDUCATION'] || '';
+  const education = parseEducationSection(educationText, cleanText);
 
-  const foundSkillsSet = new Set<string>();
-  for (const skill of knownSkillCatalog) {
-    const escaped = skill.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
-    const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
-    if (regex.test(cleanText)) {
-      foundSkillsSet.add(skill);
+  // 13. Projects Extraction
+  const projectsText = sections['PROJECTS'] || '';
+  const projects = parseProjectsSection(projectsText, cleanText);
+
+  // 14. Certifications Extraction
+  const certsText = sections['CERTIFICATIONS'] || '';
+  const certifications: string[] = [];
+  const certSource = certsText || cleanText;
+
+  if (certsText) {
+    const certLines = certsText.split('\n').map(l => l.replace(/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/, '').trim()).filter(Boolean);
+    for (const l of certLines) {
+      certifications.push(l.replace(/^Certifications?:\s*/i, '').trim());
     }
-  }
-  const skills = Array.from(foundSkillsSet);
-  if (skills.length > 0) {
-    sourceEvidence['skills'] = skills.join(', ');
-  }
-
-  // 9. Summary Extraction
-  let summary: string | null = null;
-  const summaryMatch = cleanText.match(/(?:summary|profile|about me|objective|professional summary)\s*[:\-–\n]+([\s\S]{30,600}?)(?=\n\s*(?:experience|work history|skills|education|projects|certifications|employment)|$)/i);
-  if (summaryMatch && summaryMatch[1]) {
-    const rawSummary = summaryMatch[1].replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (rawSummary.length >= 20) {
-      summary = rawSummary;
-      sourceEvidence['summary'] = rawSummary;
-    }
-  }
-
-  // 10. Education Extraction
-  const education: CandidateEducation[] = [];
-  const eduKeywords = [
-    { degree: 'Bachelor of Engineering (B.E.)', match: /\b(?:B\.?E\.?|Bachelor of Engineering)\b/i },
-    { degree: 'Bachelor of Technology (B.Tech)', match: /\b(?:B\.?Tech|Bachelor of Technology)\b/i },
-    { degree: 'Master of Technology (M.Tech)', match: /\b(?:M\.?Tech|Master of Technology)\b/i },
-    { degree: 'Master of Science (M.S.)', match: /\b(?:M\.?S\.?|Master of Science)\b/i },
-    { degree: 'Bachelor of Science (B.Sc)', match: /\b(?:B\.?Sc|Bachelor of Science)\b/i },
-    { degree: 'Bachelor of Computer Applications (BCA)', match: /\b(?:BCA|Bachelor of Computer Applications)\b/i },
-    { degree: 'Master of Computer Applications (MCA)', match: /\b(?:MCA|Master of Computer Applications)\b/i },
-    { degree: 'Master of Business Administration (MBA)', match: /\bMBA\b/i },
-  ];
-
-  for (const edu of eduKeywords) {
-    if (edu.match.test(cleanText)) {
-      education.push({
-        degree: edu.degree,
-        institution: null,
-        year: null,
-        sourceEvidence: edu.degree,
-      });
-    }
-  }
-
-  // 11. Experience Entries Extraction
-  const experience: CandidateExperience[] = [];
-  const experienceSectionMatch = cleanText.match(/(?:experience|work experience|employment history|work history)\s*[:\-–\n]+([\s\S]{50,3000}?)(?=\n\s*(?:education|skills|certifications|projects|languages|declaration)|$)/i);
-  if (experienceSectionMatch && experienceSectionMatch[1]) {
-    const expText = experienceSectionMatch[1];
-    const expLines = expText.split('\n').map(l => l.trim()).filter(Boolean);
-    
-    for (let i = 0; i < expLines.length; i++) {
-      const expLine = expLines[i];
-      const jobMatch = expLine.match(/^([A-Za-z0-9\s&.,\(\)\/]+?)\s*(?:—|–|-|at|@)\s*([A-Za-z0-9\s&.,]+?)(?:\s*\((\d{4}[^\)]*)\))?$/);
-      if (jobMatch) {
-        experience.push({
-          title: jobMatch[1].trim(),
-          company: jobMatch[2].trim(),
-          duration: jobMatch[3] ? jobMatch[3].trim() : null,
-          sourceEvidence: expLine,
-        });
+  } else {
+    // Scan whole text for certification lines
+    const certMatches = certSource.match(/^[•*\-–—▪▫➢✓✔]?\s*(?:Certified|Certificate|AWS\s+Certified|Meta\s+Certified|Oracle\s+Certified|Google\s+Certified|Microsoft\s+Certified)[^\n]+/gim);
+    if (certMatches) {
+      for (const cm of certMatches) {
+        const cleanedCert = cm.replace(/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/, '').trim();
+        if (cleanedCert.length > 5 && !certifications.includes(cleanedCert)) {
+          certifications.push(cleanedCert);
+        }
       }
     }
   }
 
-  // 12. Certifications Extraction
-  const certifications: string[] = [];
-  const certSectionMatch = cleanText.match(/(?:certifications?|licenses?|credentials?)\s*[:\-–\n]+([\s\S]{20,800}?)(?=\n\s*(?:education|skills|experience|projects|languages|declaration)|$)/i);
-  if (certSectionMatch && certSectionMatch[1]) {
-    const certLines = certSectionMatch[1].split('\n').map(l => l.replace(/^[●•*\-–—▪▫➢✓✔\d\.\)]\s*/, '').trim()).filter(l => l.length > 3 && l.length < 80);
-    certifications.push(...certLines);
-  }
-
-  // 13. Languages Extraction
+  // 15. Languages Extraction
+  const languagesText = sections['LANGUAGES'] || '';
   const languages: string[] = [];
-  const langList = ['English', 'Hindi', 'Marathi', 'Spanish', 'French', 'German', 'Gujarati', 'Tamil', 'Telugu', 'Kannada', 'Bengali', 'Mandarin', 'Japanese'];
+  const langList = ['English', 'Hindi', 'Marathi', 'Spanish', 'French', 'German', 'Gujarati', 'Tamil', 'Telugu', 'Kannada', 'Bengali'];
   for (const lang of langList) {
-    if (new RegExp(`\\b${lang}\\b`, 'i').test(cleanText)) {
+    if (new RegExp(`\\b${lang}\\b`, 'i').test(languagesText || cleanText)) {
       languages.push(lang);
     }
   }
@@ -574,19 +1117,23 @@ export function extractStructuredCandidateFromText(
     currentTitle,
     currentCompany,
     totalExperience,
+    totalExperienceMonths,
+    totalExperienceYears,
     relevantExperience: totalExperience,
     summary,
+    professionalSummary: summary,
     skills,
-    technologies: skills.filter(s => ['React', 'Next.js', 'Node.js', 'Python', 'FastAPI', 'Java', 'SQL', 'PostgreSQL', 'Docker', 'AWS'].includes(s)),
-    tools: skills.filter(s => ['Git', 'GitHub', 'Figma', 'Docker', 'Kubernetes', 'Jest', 'Cypress', 'Webpack', 'Vite'].includes(s)),
+    technologies: skills.filter(s => ['React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'Node.js', 'Express.js', 'Python', 'Java', 'MongoDB', 'PostgreSQL', 'Supabase', 'Docker', 'AWS'].includes(s)),
+    tools: skills.filter(s => ['Git', 'GitHub', 'Docker', 'Postman', 'Vercel', 'Render', 'Figma', 'Jest', 'Tailwind CSS'].includes(s)),
     industries: [],
     education,
     certifications,
     languages,
     experience,
+    gapAnalysis,
     responsibilities: [],
     achievements: [],
-    projects: [],
+    projects,
     sourceEvidence,
     rawText,
     parsingStatus: 'PARSED',
@@ -616,6 +1163,10 @@ export function extractStructuredCandidateFromText(
         currentCompany,
         totalExperience,
         skillsCount: skills.length,
+        experienceCount: experience.length,
+        educationCount: education.length,
+        projectsCount: projects.length,
+        gapAnalysis,
       },
       validationErrors: [],
     },
