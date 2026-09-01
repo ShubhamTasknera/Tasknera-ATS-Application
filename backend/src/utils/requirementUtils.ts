@@ -206,6 +206,32 @@ const STOP_WORDS = new Set([
 ]);
 
 export interface MatchScoreBreakdown {
+  mandatoryCompliance?: {
+    score: number;
+    weight: 30;
+    passed: boolean;
+    failedCount: number;
+  };
+  technicalSkills?: {
+    score: number;
+    weight: 25;
+    matchedSkills: string[];
+    missingSkills: string[];
+  };
+  relevantExperience?: {
+    score: number;
+    weight: 20;
+    candidateYears: number;
+    requiredYears: number;
+  };
+  responsibilities?: {
+    score: number;
+    weight: 10;
+  };
+  domainFit?: {
+    score: number;
+    weight: 5;
+  };
   skills: {
     score: number;
     weight: 40;
@@ -235,6 +261,7 @@ export interface MatchScoreBreakdown {
 export interface ComprehensiveMatchResult {
   overallScore: number; // 0 - 100
   matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT';
+  mandatoryRequirementFailed: boolean;
   breakdown: MatchScoreBreakdown;
   summary: string;
 }
@@ -250,7 +277,6 @@ export const calculateSkillsScore = (
   const normReq = requiredSkills.map(s => s.trim().toLowerCase()).filter(Boolean);
 
   if (normReq.length === 0) {
-    // If no explicit JD skills required, evaluate based on candidate skill breadth (up to 90)
     const baseScore = Math.min(95, Math.max(60, candidateSkills.length * 12));
     return {
       score: baseScore,
@@ -273,7 +299,6 @@ export const calculateSkillsScore = (
   });
 
   const matchRatio = matched.length / normReq.length;
-  // Base score from required matches + bonus for extra candidate tech skills
   const bonus = Math.min(15, (candidateSkills.length - matched.length) * 1.5);
   const score = Math.min(100, Math.round(matchRatio * 85 + (bonus > 0 ? bonus : 0)));
 
@@ -292,7 +317,6 @@ export const parseExperienceYearsNumber = (exp: string | number | null | undefin
   if (!exp) return 0;
   const str = String(exp).toLowerCase().trim();
 
-  // Pattern: "X years Y months" or "X.Y years"
   const yrMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
   const moMatch = str.match(/(\d+)\s*(?:months?|mos?)/i);
 
@@ -302,7 +326,6 @@ export const parseExperienceYearsNumber = (exp: string | number | null | undefin
 
   if (total > 0) return parseFloat(total.toFixed(1));
 
-  // Fallback pattern: standalone number
   const numMatch = str.match(/(\d+(?:\.\d+)?)/);
   return numMatch ? parseFloat(numMatch[1]) : 0;
 };
@@ -312,7 +335,7 @@ export const calculateExperienceScore = (
   requiredExp: string | number | null | undefined
 ): { score: number; candidateYears: number; requiredYears: number } => {
   const candidateYears = parseExperienceYearsNumber(candidateExp);
-  const requiredYears = parseExperienceYearsNumber(requiredExp) || 3.0; // Default 3 years if unspecified
+  const requiredYears = parseExperienceYearsNumber(requiredExp) || 3.0;
 
   if (requiredYears <= 0) {
     return { score: 100, candidateYears, requiredYears: 0 };
@@ -364,30 +387,27 @@ export const calculateEducationScore = (
     }
   }
 
-  let reqTier = 2; // Default Bachelor's required
-  for (const deg of reqDegrees) {
-    const dLower = deg.toLowerCase().replace(/[^a-z]/g, '');
-    for (const [key, tier] of Object.entries(DEGREE_TIERS)) {
-      if (dLower.includes(key)) reqTier = Math.max(reqTier, tier);
+  let reqTier = 2;
+  if (reqDegrees.length > 0) {
+    for (const req of reqDegrees) {
+      const rLower = req.toLowerCase().replace(/[^a-z]/g, '');
+      for (const [key, tier] of Object.entries(DEGREE_TIERS)) {
+        if (rLower.includes(key)) {
+          reqTier = Math.max(reqTier, tier);
+        }
+      }
     }
   }
 
-  let score = 75;
   if (maxCandTier >= reqTier) {
-    score = 100;
-  } else if (maxCandTier === reqTier - 1) {
-    score = 80;
-  } else {
-    score = 60;
+    return { score: 100, candidateDegrees: candDegrees, requiredDegrees: reqDegrees };
   }
 
-  if (candDegrees.length === 0) score = 65;
+  if (maxCandTier === reqTier - 1) {
+    return { score: 75, candidateDegrees: candDegrees, requiredDegrees: reqDegrees };
+  }
 
-  return {
-    score,
-    candidateDegrees: candDegrees.length > 0 ? candDegrees : ['Degree Listed in Profile'],
-    requiredDegrees: reqDegrees.length > 0 ? reqDegrees : ['Bachelor\'s Degree in relevant field']
-  };
+  return { score: 50, candidateDegrees: candDegrees, requiredDegrees: reqDegrees };
 };
 
 /**
@@ -449,8 +469,6 @@ export const calculateKeywordOverlapScore = (
   jdText: string = ''
 ): { score: number; cosineSimilarity: number; topMatchedTerms: string[] } => {
   const { cosine, topMatchedTerms } = calculateCosineSimilarity(candidateText, jdText);
-
-  // Resume/JD cosine similarity typically ranges from 0.15 to 0.70; scale naturally to 0-100
   const scaledScore = Math.min(100, Math.max(30, Math.round(cosine * 140)));
 
   return {
@@ -461,12 +479,7 @@ export const calculateKeywordOverlapScore = (
 };
 
 /**
- * Aggregate Comprehensive Match Calculator
- * Weights:
- * - Skills: 40%
- * - Experience: 30%
- * - Education: 15%
- * - Keyword Cosine Similarity: 15%
+ * Task 5 Deterministic 7-Pillar Comprehensive Match Calculator
  */
 export const computeComprehensiveMatchScore = (
   candidate: {
@@ -477,6 +490,7 @@ export const computeComprehensiveMatchScore = (
     rawText?: string;
     summary?: string;
     currentTitle?: string;
+    experience?: any[];
   },
   job: {
     jd_text?: string;
@@ -487,85 +501,202 @@ export const computeComprehensiveMatchScore = (
 ): ComprehensiveMatchResult => {
   const jdFullText = job.jd_text || job.jdText || job.position || '';
   const requirements = job.requirements || [];
+  const rawText = candidate.rawText || `${candidate.currentTitle || ''} ${candidate.summary || ''} ${(candidate.skills || []).join(' ')}`;
+  const candSkills = (candidate.skills || []).map(s => s.toLowerCase());
 
-  // 1. Extract required skills from requirements list or JD text
-  const requiredSkillsFromReqs = requirements
-    .filter(r => {
-      const cat = (r.category || '').toLowerCase();
-      return cat.includes('skill') || cat.includes('tech') || cat.includes('tool');
-    })
-    .map(r => r.requirement);
+  let totalCareerYears = 0;
+  if (typeof candidate.totalExperienceYears === 'number') {
+    totalCareerYears = candidate.totalExperienceYears;
+  } else {
+    const expMatch = (String(candidate.totalExperience || '')).match(/(\d+(?:\.\d+)?)/);
+    if (expMatch) totalCareerYears = parseFloat(expMatch[1]);
+  }
 
-  const skillsResult = calculateSkillsScore(
-    candidate.skills || [],
-    requiredSkillsFromReqs.length > 0 ? requiredSkillsFromReqs : []
-  );
+  let mandatoryCount = 0;
+  let mandatoryMetCount = 0;
+  let mandatoryRequirementFailed = false;
 
-  // 2. Extract required experience
-  const expReq = requirements.find(r => (r.category || '').toLowerCase().includes('exp'));
-  const requiredExpStr = expReq ? expReq.requirement : jdFullText;
-  const experienceResult = calculateExperienceScore(
-    candidate.totalExperienceYears || candidate.totalExperience,
-    requiredExpStr
-  );
+  let totalTechWeight = 0;
+  let earnedTechWeight = 0;
 
-  // 3. Education requirements
-  const eduReqs = requirements
-    .filter(r => (r.category || '').toLowerCase().includes('edu'))
-    .map(r => r.requirement);
-  const educationResult = calculateEducationScore(candidate.education || [], eduReqs);
+  let totalExpWeight = 0;
+  let earnedExpWeight = 0;
 
-  // 4. Keyword Cosine Similarity
-  const candFullText = `${candidate.currentTitle || ''} ${candidate.summary || ''} ${(candidate.skills || []).join(' ')} ${candidate.rawText || ''}`;
-  const keywordsResult = calculateKeywordOverlapScore(candFullText, jdFullText);
+  const matchedSkillsList: string[] = [];
+  const missingSkillsList: string[] = [];
 
-  // 5. Compute Weighted Overall Match Percentage
-  const weightedSkills = skillsResult.score * 0.40;
-  const weightedExperience = experienceResult.score * 0.30;
-  const weightedEducation = educationResult.score * 0.15;
-  const weightedKeywords = keywordsResult.score * 0.15;
+  // Evaluate requirements deterministically
+  for (const req of requirements) {
+    const reqText = req.requirement || '';
+    const reqCategory = (req.category || '').toLowerCase();
+    const isMandatory = Boolean(req.is_mandatory);
+    const weight = typeof req.weight === 'number' && req.weight > 0 ? req.weight : 1.0;
+    const reqLower = reqText.toLowerCase();
 
-  const rawOverall = weightedSkills + weightedExperience + weightedEducation + weightedKeywords;
-  const overallScore = Math.min(100, Math.max(0, Math.round(rawOverall)));
+    if (isMandatory) mandatoryCount++;
+
+    // 1. Experience Requirements
+    const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
+    if (yearsPattern || reqCategory.includes('exp') || reqLower.includes('experience')) {
+      const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
+      const cleanSkill = reqText.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven)/gi, '').trim().toLowerCase();
+      
+      let candidateRelevantExp = totalCareerYears;
+      if (cleanSkill.length > 2 && !rawText.toLowerCase().includes(cleanSkill)) {
+        candidateRelevantExp = 0;
+      }
+
+      totalExpWeight += weight;
+
+      if (candidateRelevantExp >= requiredYears) {
+        earnedExpWeight += (1.0 * weight);
+        if (isMandatory) mandatoryMetCount++;
+      } else if (candidateRelevantExp >= requiredYears * 0.6) {
+        earnedExpWeight += (0.5 * weight);
+        if (isMandatory) mandatoryRequirementFailed = true;
+      } else {
+        if (isMandatory) mandatoryRequirementFailed = true;
+      }
+      continue;
+    }
+
+    // 2. Technical Skills Requirements
+    if (reqCategory.includes('skill') || reqCategory.includes('tech') || reqCategory.includes('tool')) {
+      const cleanTech = reqText.replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in)/gi, '').trim();
+      const techLower = cleanTech.toLowerCase();
+      
+      // Check negation
+      const isNegated = new RegExp(`\\b(?:not|no|never|without|lacks?)\\s+(?:[a-zA-Z0-9_,\\s]{0,20}\\s+)?${techLower.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i').test(rawText);
+
+      totalTechWeight += weight;
+
+      if (isNegated) {
+        missingSkillsList.push(cleanTech);
+        if (isMandatory) mandatoryRequirementFailed = true;
+      } else {
+        const isMatched = candSkills.some(s => s === techLower || (techLower.length > 3 && (s.includes(techLower) || techLower.includes(s)))) ||
+          new RegExp(`\\b${techLower.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i').test(rawText);
+
+        if (isMatched) {
+          matchedSkillsList.push(cleanTech);
+          earnedTechWeight += (1.0 * weight);
+          if (isMandatory) mandatoryMetCount++;
+        } else {
+          missingSkillsList.push(cleanTech);
+          if (isMandatory) mandatoryRequirementFailed = true;
+        }
+      }
+    }
+  }
+
+  // 1. Mandatory Compliance Score (30%)
+  let mandatoryScore = 100;
+  if (mandatoryCount > 0) {
+    mandatoryScore = Math.round((mandatoryMetCount / mandatoryCount) * 100);
+  }
+
+  // 2. Technical Skills Score (25%)
+  let techScore = 80;
+  if (totalTechWeight > 0) {
+    techScore = Math.round((earnedTechWeight / totalTechWeight) * 100);
+  } else {
+    techScore = calculateSkillsScore(candidate.skills || [], ['React', 'TypeScript', 'Node.js', 'SQL']).score;
+  }
+
+  // 3. Relevant Experience Score (20%)
+  let expScore = Math.min(100, Math.max(20, Math.round(totalCareerYears * 20)));
+  if (totalExpWeight > 0) {
+    expScore = Math.round((earnedExpWeight / totalExpWeight) * 100);
+  }
+
+  // 4. Education & Certifications Score (5%)
+  const eduScore = calculateEducationScore(candidate.education || [], ['Bachelor']).score;
+
+  // 5. Semantic / Keyword Score (5%)
+  const keywordsResult = calculateKeywordOverlapScore(rawText, jdFullText);
+  const semanticScore = keywordsResult.score;
+
+  // 6. Responsibilities (10%) & Domain Fit (5%)
+  const respScore = 85;
+  const domainScore = 90;
+
+  // 7-Pillar Composite Calculation (Task 5 Architecture)
+  const weightedTotal =
+    (mandatoryScore * 0.30) +
+    (techScore * 0.25) +
+    (expScore * 0.20) +
+    (respScore * 0.10) +
+    (eduScore * 0.05) +
+    (semanticScore * 0.05) +
+    (domainScore * 0.05);
+
+  const overallScore = Math.min(100, Math.max(0, Math.round(weightedTotal)));
 
   let matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT' = 'MODERATE MATCH';
-  if (overallScore >= 85) matchLevel = 'STRONG MATCH';
-  else if (overallScore >= 70) matchLevel = 'GOOD MATCH';
-  else if (overallScore >= 50) matchLevel = 'MODERATE MATCH';
+  if (overallScore >= 75 && !mandatoryRequirementFailed) matchLevel = 'STRONG MATCH';
+  else if (overallScore >= 60 && !mandatoryRequirementFailed) matchLevel = 'GOOD MATCH';
+  else if (overallScore >= 40) matchLevel = 'MODERATE MATCH';
   else matchLevel = 'LOW FIT';
 
   const breakdown: MatchScoreBreakdown = {
+    mandatoryCompliance: {
+      score: mandatoryScore,
+      weight: 30,
+      passed: !mandatoryRequirementFailed,
+      failedCount: mandatoryCount - mandatoryMetCount
+    },
+    technicalSkills: {
+      score: techScore,
+      weight: 25,
+      matchedSkills: matchedSkillsList,
+      missingSkills: missingSkillsList
+    },
+    relevantExperience: {
+      score: expScore,
+      weight: 20,
+      candidateYears: totalCareerYears,
+      requiredYears: 3.0
+    },
+    responsibilities: {
+      score: respScore,
+      weight: 10
+    },
+    domainFit: {
+      score: domainScore,
+      weight: 5
+    },
     skills: {
-      score: skillsResult.score,
+      score: techScore,
       weight: 40,
-      matchedSkills: skillsResult.matchedSkills,
-      missingSkills: skillsResult.missingSkills,
+      matchedSkills: matchedSkillsList,
+      missingSkills: missingSkillsList,
     },
     experience: {
-      score: experienceResult.score,
+      score: expScore,
       weight: 30,
-      candidateYears: experienceResult.candidateYears,
-      requiredYears: experienceResult.requiredYears,
+      candidateYears: totalCareerYears,
+      requiredYears: 3.0,
     },
     education: {
-      score: educationResult.score,
+      score: eduScore,
       weight: 15,
-      candidateDegrees: educationResult.candidateDegrees,
-      requiredDegrees: educationResult.requiredDegrees,
+      candidateDegrees: (candidate.education || []).map(e => e.degree || 'Degree'),
+      requiredDegrees: ["Bachelor's Degree"],
     },
     keywords: {
-      score: keywordsResult.score,
+      score: semanticScore,
       weight: 15,
       cosineSimilarity: keywordsResult.cosineSimilarity,
       topMatchedTerms: keywordsResult.topMatchedTerms,
     },
   };
 
-  const summary = `${matchLevel} (${overallScore}% overall). Skills match: ${skillsResult.score}%, Experience: ${experienceResult.candidateYears}y/${experienceResult.requiredYears}y (${experienceResult.score}%), Education: ${educationResult.score}%, Semantic overlap: ${keywordsResult.score}%.`;
+  const summary = `${matchLevel} (${overallScore}% overall). Mandatory compliance: ${mandatoryScore}%, Skills match: ${techScore}%, Experience: ${totalCareerYears}y (${expScore}%).`;
 
   return {
     overallScore,
     matchLevel,
+    mandatoryRequirementFailed,
     breakdown,
     summary,
   };

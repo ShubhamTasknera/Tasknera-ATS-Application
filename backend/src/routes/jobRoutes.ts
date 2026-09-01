@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { createJob, getAllJobs, getJobById, updateJob, deleteJob, parseJobDescriptionController } from '../controllers/jobController';
-import { protect } from '../middleware/authMiddleware';
+import { protect, authorize } from '../middleware/authMiddleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit per file
 });
 
 const router = Router();
@@ -42,10 +42,14 @@ router.put('/:jobId/requirements/:requirementId', protect, updateRequirement);
 router.delete('/:jobId/requirements/:requirementId', protect, deleteRequirement);
 router.post('/:jobId/requirements/confirm', protect, confirmRequirements);
 
+import { getCandidateEvaluation, evaluateCandidateController } from '../controllers/evaluationController';
+
 // Candidate CV Upload, Extraction & Status Routes
 router.post('/:jobId/candidates/upload', upload.any(), uploadCandidateCVs);
 router.get('/:jobId/candidates', getCandidatesForJob);
 router.get('/:jobId/candidates/:candidateId', getCandidateById);
+router.get('/:jobId/candidates/:candidateId/evaluation', getCandidateEvaluation);
+router.post('/:jobId/candidates/:candidateId/evaluate', protect, evaluateCandidateController);
 router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);
 
 export default router;

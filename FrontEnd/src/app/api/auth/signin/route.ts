@@ -37,6 +37,7 @@ export async function POST(req: Request) {
         id: `usr_${Date.now()}`,
         name,
         email: cleanEmail,
+        role: 'MEMBER',
         createdAt: new Date().toISOString(),
       },
     });

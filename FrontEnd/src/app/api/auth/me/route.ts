@@ -40,6 +40,7 @@ export async function GET(req: Request) {
         id: 'usr_current',
         name: email.split('@')[0].replace(/[._-]/g, ' '),
         email,
+        role: 'MEMBER',
         createdAt: new Date().toISOString(),
       },
     });

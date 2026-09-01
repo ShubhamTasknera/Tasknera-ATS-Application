@@ -33,6 +33,7 @@ export interface CandidateExperience {
   location?: string;
   description?: string;
   highlights?: string[];
+  sourceEvidence?: string;
 }
 
 export interface CandidateProject {
@@ -80,7 +81,7 @@ export interface CandidateRecord {
   projects: CandidateProject[];
   languages: string[];
   rawText: string;
-  parsingStatus: 'PARSED' | 'FAILED' | 'PROCESSING' | 'UPLOADED' | 'UPLOADING';
+  parsingStatus: 'PARSED' | 'FAILED' | 'PROCESSING' | 'UPLOADED' | 'UPLOADING' | 'DUPLICATE';
   parsingMetadata: {
     fileName: string;
     fileType: string;
@@ -93,6 +94,8 @@ export interface CandidateRecord {
   errorMessage?: string;
   fileName: string;
   fileSize: number;
+  fileHash?: string;
+  isDuplicate?: boolean;
   uploadedAt: string;
 }
 
@@ -101,7 +104,7 @@ export interface UploadQueueItem {
   file: File;
   name: string;
   size: number;
-  status: 'UPLOADING' | 'UPLOADED' | 'PROCESSING' | 'PARSED' | 'FAILED';
+  status: 'UPLOADING' | 'UPLOADED' | 'PROCESSING' | 'PARSED' | 'FAILED' | 'DUPLICATE';
   progress: number;
   error?: string;
   candidateId?: string;
@@ -200,7 +203,7 @@ const getNumericExperienceDetails = (cand: { totalExperience?: string | null; to
 
   const badgeText = `${years} yrs`;
   const subText = `${months} ${months === 1 ? 'mo' : 'mos'}`;
-  const fullLabel = months > 0 
+  const fullLabel = months > 0
     ? (months < 12 ? `${years} Years (${months} ${months === 1 ? 'month' : 'months'})` : `${years} Years (${Math.floor(months / 12)}y ${months % 12}m)`)
     : (cand.totalExperience || '0 Years');
 
@@ -216,38 +219,127 @@ const getNumericExperienceDetails = (cand: { totalExperience?: string | null; to
 const parseDateToYMClient = (str: string) => {
   if (!str) return null;
   const s = str.trim().toLowerCase();
-  if (s === 'present' || s === 'current' || s === 'now' || s === 'till date' || s === 'ongoing') {
+  if (['present', 'current', 'now', 'till date', 'ongoing', 'active', 'continue', 'continuing'].includes(s)) {
     const now = new Date();
     return { y: now.getFullYear(), m: now.getMonth() };
   }
   const mMap: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-  const mMatch = s.match(/([a-z]{3})[a-z]*\.?\s+(\d{4})/i);
-  if (mMatch) return { y: parseInt(mMatch[2], 10), m: mMap[mMatch[1].toLowerCase()] ?? 0 };
+  
+  // Format: "Apr 2025", "April 2025", "Apr '25", "Apr 25"
+  const mMatch = s.match(/([a-z]{3})[a-z]*\.?\s*'?(\d{2,4})/i);
+  if (mMatch) {
+    let year = parseInt(mMatch[2], 10);
+    if (year < 100) year += 2000;
+    return { y: year, m: mMap[mMatch[1].toLowerCase()] ?? 0 };
+  }
+
+  // Format: "04/2021", "4/2021", "04-2021", "04.2021"
+  const slashMatch = s.match(/(\d{1,2})\s*[\/\.-]\s*(\d{2,4})/);
+  if (slashMatch) {
+    const month = Math.max(0, Math.min(11, parseInt(slashMatch[1], 10) - 1));
+    let year = parseInt(slashMatch[2], 10);
+    if (year < 100) year += 2000;
+    return { y: year, m: month };
+  }
+
+  // Format: "2021/04", "2021-04"
+  const yearFirstMatch = s.match(/(\d{4})\s*[\/\.-]\s*(\d{1,2})/);
+  if (yearFirstMatch) {
+    const year = parseInt(yearFirstMatch[1], 10);
+    const month = Math.max(0, Math.min(11, parseInt(yearFirstMatch[2], 10) - 1));
+    return { y: year, m: month };
+  }
+
+  // Format: "2021"
   const yMatch = s.match(/\b(19\d\d|20\d\d)\b/);
   if (yMatch) return { y: parseInt(yMatch[1], 10), m: 0 };
+
   return null;
 };
 
 const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => {
-  if (cand.gapAnalysis && cand.gapAnalysis.statusText) {
-    return cand.gapAnalysis;
-  }
-  const exps = cand.experience || [];
-  if (exps.length <= 1) {
-    return {
-      hasGap: false,
-      totalGapMonths: 0,
-      gaps: [],
-      statusText: 'No gap identified (Continuous employment)'
-    };
+  if (cand.gapAnalysis && cand.gapAnalysis.hasGap && cand.gapAnalysis.gaps && cand.gapAnalysis.gaps.length > 0) {
+    const hasMeaningfulGaps = cand.gapAnalysis.gaps.every(g => g.fromCompany !== 'Role' && g.toCompany !== 'Role');
+    if (hasMeaningfulGaps) {
+      return cand.gapAnalysis;
+    }
   }
 
-  const dated: { exp: CandidateExperience; start: { y: number; m: number }; end: { y: number; m: number } }[] = [];
+  const exps = cand.experience || [];
+  const dated: { exp?: CandidateExperience; title?: string; company?: string; start: { y: number; m: number }; end: { y: number; m: number }; rawStart: string; rawEnd: string }[] = [];
+
   for (const exp of exps) {
-    if (exp.startDate) {
-      const s = parseDateToYMClient(exp.startDate);
-      const e = parseDateToYMClient(exp.endDate || 'Present');
-      if (s && e) dated.push({ exp, start: s, end: e });
+    let startStr = exp.startDate;
+    let endStr = exp.endDate;
+
+    if (!startStr && exp.duration) {
+      const rangeMatch = exp.duration.match(/\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}))\s*(?:[–—\-\~]|to)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}|Present|Current|Now|Ongoing))\b/i);
+      if (rangeMatch) {
+        startStr = rangeMatch[1].trim();
+        endStr = rangeMatch[2].trim();
+      }
+    }
+
+    if (!startStr && exp.sourceEvidence) {
+      const rangeMatch = exp.sourceEvidence.match(/\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}))\s*(?:[–—\-\~]|to)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}|Present|Current|Now|Ongoing))\b/i);
+      if (rangeMatch) {
+        startStr = rangeMatch[1].trim();
+        endStr = rangeMatch[2].trim();
+      }
+    }
+
+    if (startStr) {
+      const s = parseDateToYMClient(startStr);
+      const e = parseDateToYMClient(endStr || 'Present');
+      if (s && e) {
+        dated.push({
+          exp,
+          title: exp.title,
+          company: exp.company,
+          start: s,
+          end: e,
+          rawStart: startStr,
+          rawEnd: endStr || 'Present'
+        });
+      }
+    }
+  }
+
+  // Fallback: Scan ONLY the EXPERIENCE section of rawText
+  if (dated.length < 2 && cand.rawText) {
+    const expMatch = cand.rawText.match(/(?:PROFESSIONAL\s+EXPERIENCE|WORK\s+EXPERIENCE|EMPLOYMENT\s+HISTORY|EXPERIENCE)[\s\S]*?(?=(?:TECHNICAL\s+SKILLS|SKILLS|PROJECTS|EDUCATION|ACADEMICS|CERTIFICATIONS|ACHIEVEMENTS|LANGUAGES|ADDITIONAL\s+INFORMATION)|$)/i);
+    const expSegment = expMatch ? expMatch[0] : '';
+    if (expSegment) {
+      const rangeRegex = /\b((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}))\s*(?:[–—\-\~]|to)\s*((?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*'?\d{2,4}|\d{1,2}[\/\.-]\d{2,4}|\d{4}|Present|Current|Now|Ongoing))\b/ig;
+      let match: RegExpExecArray | null;
+      const seenSpans = new Set<string>();
+
+      while ((match = rangeRegex.exec(expSegment)) !== null) {
+        const sStr = match[1].trim();
+        const eStr = match[2].trim();
+        const spanKey = `${sStr.toLowerCase()}_${eStr.toLowerCase()}`;
+        if (seenSpans.has(spanKey)) continue;
+        seenSpans.add(spanKey);
+
+        const s = parseDateToYMClient(sStr);
+        const e = parseDateToYMClient(eStr);
+        if (s && e && s.y >= 1990 && e.y >= 1990) {
+          const matchIndex = match.index;
+          const lineStart = expSegment.lastIndexOf('\n', matchIndex) + 1;
+          const lineEnd = expSegment.indexOf('\n', matchIndex + match[0].length);
+          const surroundingLine = expSegment.substring(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+          const cleanedTitle = surroundingLine.replace(match[0], '').replace(/[|•–—]/g, ' ').trim();
+
+          dated.push({
+            title: cleanedTitle || 'Employment Period',
+            company: 'Previous Position',
+            start: s,
+            end: e,
+            rawStart: sStr,
+            rawEnd: eStr
+          });
+        }
+      }
     }
   }
 
@@ -256,7 +348,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous work history (No gap identified)'
     };
   }
 
@@ -272,17 +364,19 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
     const nextStart = next.start.y * 12 + next.start.m;
     const diff = nextStart - prevEnd;
 
-    if (diff >= 3) {
+    if (diff >= 2) {
       const gapYears = (diff / 12).toFixed(1);
+      const prevComp = prev.company && prev.company !== 'Role' ? prev.company : (prev.title || 'Previous Position');
+      const nextComp = next.company && next.company !== 'Role' ? next.company : (next.title || 'Next Position');
       const gapLabel = diff >= 12
-        ? `${gapYears} yrs (${diff} mos) gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`
-        : `${diff} mos gap between ${prev.exp.company || 'Job'} and ${next.exp.company || 'Job'}`;
+        ? `${gapYears} yrs (${diff} mos) gap between ${prevComp} and ${nextComp}`
+        : `${diff} mos gap between ${prevComp} and ${nextComp}`;
 
       foundGaps.push({
-        fromCompany: prev.exp.company,
-        toCompany: next.exp.company,
-        startDate: prev.exp.endDate || `${prev.end.y}`,
-        endDate: next.exp.startDate || `${next.start.y}`,
+        fromCompany: prevComp,
+        toCompany: nextComp,
+        startDate: prev.rawEnd,
+        endDate: next.rawStart,
         gapMonths: diff,
         gapLabel
       });
@@ -295,7 +389,7 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
       hasGap: false,
       totalGapMonths: 0,
       gaps: [],
-      statusText: 'No gap identified'
+      statusText: 'Continuous work history (No gap identified)'
     };
   }
 
@@ -314,7 +408,11 @@ const getEffectiveSkills = (cand: CandidateRecord): string[] => {
     'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
     'Tailwind', 'Redux', 'Node.js', 'Express', 'Express.js', 'Python', 'Java', 'FastAPI', 'Django', 'Flask',
     'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Docker', 'Git', 'GitHub',
-    'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Figma'
+    'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Figma',
+    'Azure', 'GCP', 'Kubernetes', 'CI/CD', 'Jenkins', 'Terraform', 'Angular', 'Vue.js', 'Vue', 'SolidJS',
+    'Svelte', 'WebRTC', 'Socket.io', 'GraphQL', 'NestJS', 'Go', 'Golang', 'Rust', 'Ruby', 'PHP', 'Laravel',
+    'C#', 'C++', 'Unity', 'Unreal', 'TensorFlow', 'PyTorch', 'Pandas', 'NumPy', 'Scikit-Learn', 'D3.js',
+    'Three.js', 'OpenGL', 'WebAssembly', 'Electron', 'React Native', 'Flutter', 'Swift', 'Kotlin', 'Android', 'iOS'
   ];
   const matched = new Set<string>();
   for (const s of catalog) {
@@ -347,27 +445,31 @@ const statusBadge = (status: string) => {
       return {
         bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         dot: 'bg-emerald-500',
-        label: 'PARSED',
+        label: 'Parsed & Scored',
+      };
+    case 'DUPLICATE':
+      return {
+        bg: 'bg-amber-50 text-amber-800 border-amber-300',
+        dot: 'bg-amber-500',
+        label: 'Duplicate (Skipped)',
       };
     case 'PROCESSING':
-    case 'UPLOADING':
-    case 'UPLOADED':
       return {
-        bg: 'bg-amber-50 text-amber-700 border-amber-200',
-        dot: 'bg-amber-500 animate-pulse',
-        label: status,
+        bg: 'bg-blue-50 text-blue-700 border-blue-200',
+        dot: 'bg-blue-500 animate-pulse',
+        label: 'Processing CV',
       };
     case 'FAILED':
       return {
         bg: 'bg-rose-50 text-rose-700 border-rose-200',
         dot: 'bg-rose-500',
-        label: 'FAILED',
+        label: 'Parsing Failed',
       };
     default:
       return {
-        bg: 'bg-slate-100 text-slate-700 border-slate-200',
+        bg: 'bg-slate-50 text-slate-700 border-slate-200',
         dot: 'bg-slate-400',
-        label: status,
+        label: status || 'Uploaded',
       };
   }
 };
@@ -398,6 +500,7 @@ export default function JobCandidatesPage() {
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'match' | 'profile' | 'raw'>('match');
   const [copiedRawText, setCopiedRawText] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -443,8 +546,8 @@ export default function JobCandidatesPage() {
             };
           }
         }
-      } catch (e) {
-        console.warn('Could not load specific job record, using context fallback:', e);
+      } catch {
+        console.warn('Backend unavailable, using default job profile');
       }
       setJob(jobInfo);
 
@@ -468,12 +571,32 @@ export default function JobCandidatesPage() {
     fetchJobAndCandidates();
   }, [fetchJobAndCandidates]);
 
-  // ── Compute Match Scores & Rank Candidates (Highest to Lowest) ──────────────
+  // ── Compute Match Scores & Rank Candidates (Unique candidates only) ─────────
+  const uniqueCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    const list: CandidateRecord[] = [];
+    for (const c of candidates) {
+      const key = (c.email && c.email.trim().toLowerCase()) ||
+                  (c.fileHash && c.fileHash.trim()) ||
+                  (c.fileName && c.fileName.trim().toLowerCase()) ||
+                  (c.name && c.name.trim().toLowerCase()) ||
+                  c.id;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(c);
+      }
+    }
+    return list;
+  }, [candidates]);
+
   const candidatesWithMatch = useMemo(() => {
-    return candidates.map(c => {
+    return uniqueCandidates.map(c => {
+      const effectiveCandidateSkills = getEffectiveSkills(c);
+      const computedGapAnalysis = getCandidateCareerGaps(c);
+
       const matchResult = computeComprehensiveMatchScore(
         {
-          skills: c.skills || [],
+          skills: effectiveCandidateSkills,
           totalExperience: c.totalExperience || c.totalExperienceYears,
           totalExperienceYears: c.totalExperienceYears,
           education: c.education || [],
@@ -492,72 +615,72 @@ export default function JobCandidatesPage() {
       // Build requirement evaluation structure for RequirementTable
       const requirementEvals = (job?.requirements && job.requirements.length > 0)
         ? job.requirements.map(req => {
-            const reqLower = req.requirement.toLowerCase();
-            const candSkills = (c.skills || []).map(s => s.toLowerCase());
-            const hasSkill = candSkills.some(cs => reqLower.includes(cs) || cs.includes(reqLower));
-            const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET;
-            return {
+          const reqLower = req.requirement.toLowerCase();
+          const candSkills = (c.skills || []).map(s => s.toLowerCase());
+          const hasSkill = candSkills.some(cs => reqLower.includes(cs) || cs.includes(reqLower));
+          const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET;
+          return {
+            id: req.id,
+            requirement: {
               id: req.id,
-              requirement: {
-                id: req.id,
-                text: req.requirement,
-                category: req.category || 'Technical Skill',
-                isMandatory: Boolean(req.is_mandatory),
-                weight: req.weight || 1.0,
+              text: req.requirement,
+              category: req.category || 'Technical Skill',
+              isMandatory: Boolean(req.is_mandatory),
+              weight: req.weight || 1.0,
+            },
+            status,
+            confidence: ConfidenceLevel.HIGH,
+            pointsAwarded: hasSkill ? 10 : 5,
+            maxPoints: 10,
+            matchPercentage: hasSkill ? 100 : 50,
+            hasEvidence: Boolean(req.source_evidence || hasSkill),
+            evidence: [
+              {
+                id: `ev-${req.id}`,
+                type: 'Explicit',
+                source: 'Candidate Profile & CV Text',
+                text: hasSkill ? `Candidate profile lists skill / background matching "${req.requirement}".` : `Partial alignment for "${req.requirement}".`,
+                matchStrength: hasSkill ? 95 : 55,
               },
-              status,
-              confidence: ConfidenceLevel.HIGH,
-              pointsAwarded: hasSkill ? 10 : 5,
-              maxPoints: 10,
-              matchPercentage: hasSkill ? 100 : 50,
-              hasEvidence: Boolean(req.source_evidence || hasSkill),
-              evidence: [
-                {
-                  id: `ev-${req.id}`,
-                  type: 'Explicit',
-                  source: 'Candidate Profile & CV Text',
-                  text: hasSkill ? `Candidate profile lists skill / background matching "${req.requirement}".` : `Partial alignment for "${req.requirement}".`,
-                  matchStrength: hasSkill ? 95 : 55,
-                },
-              ],
-            };
-          })
+            ],
+          };
+        })
         : [
-            {
-              id: 'req-core-skills',
-              requirement: { id: 'req-1', text: 'Core Required Technical Stack', category: 'Technical Skill', isMandatory: true, weight: 1.5 },
-              status: matchResult.breakdown.skills.score >= 70 ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET,
-              confidence: ConfidenceLevel.HIGH,
-              pointsAwarded: Math.round(matchResult.breakdown.skills.score / 10),
-              maxPoints: 10,
-              matchPercentage: matchResult.breakdown.skills.score,
-              hasEvidence: true,
-              evidence: [{
-                id: 'ev-1',
-                type: 'Explicit',
-                source: 'Extracted Skills',
-                text: `Matched ${matchResult.breakdown.skills.matchedSkills.length} competencies (${matchResult.breakdown.skills.matchedSkills.slice(0, 5).join(', ')}).`,
-                matchStrength: matchResult.breakdown.skills.score,
-              }],
-            },
-            {
-              id: 'req-exp',
-              requirement: { id: 'req-2', text: 'Relevant Years of Professional Experience', category: 'Experience', isMandatory: true, weight: 1.2 },
-              status: matchResult.breakdown.experience.score >= 80 ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET,
-              confidence: ConfidenceLevel.HIGH,
-              pointsAwarded: Math.round(matchResult.breakdown.experience.score / 10),
-              maxPoints: 10,
-              matchPercentage: matchResult.breakdown.experience.score,
-              hasEvidence: true,
-              evidence: [{
-                id: 'ev-2',
-                type: 'Explicit',
-                source: 'Work History',
-                text: `Candidate has ${matchResult.breakdown.experience.candidateYears} years of experience vs ${matchResult.breakdown.experience.requiredYears} years required.`,
-                matchStrength: matchResult.breakdown.experience.score,
-              }],
-            },
-          ];
+          {
+            id: 'req-core-skills',
+            requirement: { id: 'req-1', text: 'Core Required Technical Stack', category: 'Technical Skill', isMandatory: true, weight: 1.5 },
+            status: matchResult.breakdown.skills.score >= 70 ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET,
+            confidence: ConfidenceLevel.HIGH,
+            pointsAwarded: Math.round(matchResult.breakdown.skills.score / 10),
+            maxPoints: 10,
+            matchPercentage: matchResult.breakdown.skills.score,
+            hasEvidence: true,
+            evidence: [{
+              id: 'ev-1',
+              type: 'Explicit',
+              source: 'Extracted Skills',
+              text: `Matched ${matchResult.breakdown.skills.matchedSkills.length} competencies (${matchResult.breakdown.skills.matchedSkills.slice(0, 5).join(', ')}).`,
+              matchStrength: matchResult.breakdown.skills.score,
+            }],
+          },
+          {
+            id: 'req-exp',
+            requirement: { id: 'req-2', text: 'Relevant Years of Professional Experience', category: 'Experience', isMandatory: true, weight: 1.2 },
+            status: matchResult.breakdown.experience.score >= 80 ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET,
+            confidence: ConfidenceLevel.HIGH,
+            pointsAwarded: Math.round(matchResult.breakdown.experience.score / 10),
+            maxPoints: 10,
+            matchPercentage: matchResult.breakdown.experience.score,
+            hasEvidence: true,
+            evidence: [{
+              id: 'ev-2',
+              type: 'Explicit',
+              source: 'Work History',
+              text: `Candidate has ${matchResult.breakdown.experience.candidateYears} years of experience vs ${matchResult.breakdown.experience.requiredYears} years required.`,
+              matchStrength: matchResult.breakdown.experience.score,
+            }],
+          },
+        ];
 
       return {
         ...c,
@@ -568,28 +691,54 @@ export default function JobCandidatesPage() {
         requirementEvals,
       };
     });
-  }, [candidates, job, jobId]);
+  }, [uniqueCandidates, job]);
 
-  // ── Handle File Selection ───────────────────────────────────────────────────
+  // ── Handle File Selection (Supports batch of 10+ PDFs/DOCX with duplicate prevention) ──
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
 
     const allowedExts = ['.pdf', '.docx', '.doc', '.txt'];
     const newItems: UploadQueueItem[] = [];
+    const duplicateFiles: string[] = [];
+    const seenBatchKeys = new Set<string>();
 
-    Array.from(fileList).forEach(file => {
+    Array.from(fileList).forEach((file, index) => {
       const ext = '.' + file.name.split('.').pop()?.toLowerCase();
       if (!allowedExts.includes(ext)) {
         alert(`File format "${file.name}" is not supported. Please upload PDF, DOCX, or TXT.`);
         return;
       }
-      if (file.size > 15 * 1024 * 1024) {
-        alert(`File "${file.name}" exceeds maximum allowed size of 15MB.`);
+      if (file.size > 25 * 1024 * 1024) {
+        alert(`File "${file.name}" exceeds maximum allowed size of 25MB.`);
+        return;
+      }
+
+      const normName = file.name.trim().toLowerCase();
+      const batchKey = `${normName}_${file.size}`;
+
+      // Check duplicates in the same selected batch
+      if (seenBatchKeys.has(batchKey)) {
+        duplicateFiles.push(file.name);
+        return;
+      }
+      seenBatchKeys.add(batchKey);
+
+      // Check if file is already in current candidates list for this job
+      const alreadyInCandidates = candidates.some(c =>
+        (c.fileName && c.fileName.trim().toLowerCase() === normName) ||
+        (c.name && normName.includes(c.name.trim().toLowerCase()) && c.name.trim().length > 3)
+      );
+
+      // Check if file is already in the upload queue
+      const alreadyInQueue = uploadQueue.some(q => q.name.trim().toLowerCase() === normName);
+
+      if (alreadyInCandidates || alreadyInQueue) {
+        duplicateFiles.push(file.name);
         return;
       }
 
       newItems.push({
-        id: `upload-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `upload-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
         file,
         name: file.name,
         size: file.size,
@@ -597,6 +746,15 @@ export default function JobCandidatesPage() {
         progress: 10,
       });
     });
+
+    // Reset file input so user can repeatedly select files
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    if (duplicateFiles.length > 0) {
+      alert(`The following CV(s) were already uploaded for this job and skipped to prevent duplicates:\n• ${duplicateFiles.join('\n• ')}`);
+    }
 
     if (newItems.length > 0) {
       setUploadQueue(prev => [...newItems, ...prev]);
@@ -638,12 +796,13 @@ export default function JobCandidatesPage() {
       setUploadQueue(prev =>
         prev.map(q => {
           const matchedCandidate = result.candidates?.find(
-            (c: CandidateRecord) => c.fileName === q.name
+            (c: CandidateRecord) => (c.fileName && c.fileName.toLowerCase() === q.name.toLowerCase())
           );
           if (matchedCandidate) {
+            const isDup = matchedCandidate.isDuplicate || matchedCandidate.parsingStatus === 'DUPLICATE';
             return {
               ...q,
-              status: matchedCandidate.parsingStatus,
+              status: isDup ? 'DUPLICATE' : matchedCandidate.parsingStatus,
               progress: 100,
               error: matchedCandidate.errorMessage,
               candidateId: matchedCandidate.id,
@@ -882,18 +1041,34 @@ export default function JobCandidatesPage() {
               </div>
 
               <h3 className="text-base font-bold text-[#1E293B] mb-1">Drag & Drop Multiple CVs Here</h3>
-              <p className="text-xs text-slate-500 mb-4">Supports PDF, DOCX, DOC, and TXT up to 15MB each</p>
-              <button
-                type="button"
-                className="px-5 py-2.5 bg-brand-orange text-white text-xs font-bold rounded-xl shadow-orange hover:bg-brand-orange-hover transition-all"
-              >
-                Browse Files
-              </button>
+              <p className="text-xs text-slate-500 mb-4">or click to browse from your computer</p>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-600">
+                <span>PDF</span>
+                <span>•</span>
+                <span>DOCX</span>
+                <span>•</span>
+                <span>TXT</span>
+                <span>(Max 15MB per file)</span>
+              </div>
             </div>
 
+            {/* Upload Queue Section */}
             {uploadQueue.length > 0 && (
-              <div className="mt-6 border-t border-slate-100 pt-4">
-                <h4 className="text-xs font-bold text-slate-700 mb-3">Upload Queue ({uploadQueue.length} files)</h4>
+              <div className="mt-6 border-t border-slate-100 pt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Upload Queue ({uploadQueue.length} items)
+                  </h4>
+                  {uploadQueue.some(q => q.status === 'PARSED' || q.status === 'DUPLICATE' || q.status === 'FAILED') && (
+                    <button
+                      onClick={() => setUploadQueue(prev => prev.filter(q => q.status !== 'PARSED' && q.status !== 'DUPLICATE'))}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+                    >
+                      Clear Completed
+                    </button>
+                  )}
+                </div>
+
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {uploadQueue.map(item => (
                     <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs">
@@ -901,11 +1076,12 @@ export default function JobCandidatesPage() {
                         <span className="font-bold text-slate-800 truncate">{item.name}</span>
                         <span className="text-[10px] text-slate-400">{formatBytes(item.size)}</span>
                       </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                         item.status === 'PARSED' ? 'bg-emerald-100 text-emerald-800' :
-                        item.status === 'FAILED' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                        item.status === 'DUPLICATE' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                        item.status === 'FAILED' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
                       }`}>
-                        {item.status}
+                        {item.status === 'DUPLICATE' ? 'ALREADY UPLOADED (SKIPPED)' : item.status}
                       </span>
                     </div>
                   ))}
@@ -1045,7 +1221,7 @@ export default function JobCandidatesPage() {
                               {c.matchScore}%
                             </span>
                             <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div
+                <div
                                 className={`h-full rounded-full transition-all duration-500 ${
                                   (c.matchScore ?? 0) >= 80 ? 'bg-emerald-500' : (c.matchScore ?? 0) >= 50 ? 'bg-amber-500' : 'bg-rose-500'
                                 }`}
@@ -1060,18 +1236,23 @@ export default function JobCandidatesPage() {
                           <MatchBadge score={c.matchScore} size="sm" showPercentage={false} />
                         </td>
 
-                        {/* Experience */}
+                        {/* Experience & Career Gap */}
                         <td className="px-4 py-4 text-xs font-bold text-slate-800">
                           {(() => {
                             const expInfo = getNumericExperienceDetails(c);
+                            const gapInfo = getCandidateCareerGaps(c);
                             return (
                               <div className="flex flex-col items-start gap-1">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-xs">
                                   {expInfo.badgeText}
                                 </span>
-                                {expInfo.months > 0 && (
+                                {gapInfo.hasGap ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-900 font-extrabold bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300">
+                                    ⚠️ {gapInfo.totalGapMonths}m Gap
+                                  </span>
+                                ) : (
                                   <span className="text-[10px] text-slate-400 font-medium">
-                                    {expInfo.subText} total
+                                    {expInfo.months > 0 ? `${expInfo.subText} total` : 'No gap'}
                                   </span>
                                 )}
                               </div>
@@ -1105,7 +1286,7 @@ export default function JobCandidatesPage() {
                             {c.parsingStatus === 'FAILED' && (
                               <button
                                 onClick={() => handleRetryCandidate(c.id)}
-                                className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition-colors cursor-pointer"
+                                className="px-2.5 py-1 text-xs font-bold text-brand-orange bg-brand-orange-pale hover:bg-orange-100 border border-brand-orange-border rounded-lg transition-colors cursor-pointer"
                               >
                                 Retry
                               </button>
@@ -1115,9 +1296,9 @@ export default function JobCandidatesPage() {
                                 setSelectedCandidate(c);
                                 setActiveModalTab('match');
                               }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
+                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-xs cursor-pointer"
                             >
-                              Breakdown →
+                              View Match Details →
                             </button>
                           </div>
                         </td>
@@ -1129,14 +1310,12 @@ export default function JobCandidatesPage() {
             </div>
           </div>
         ) : (
-          /* ── EMPTY STATE ── */
-          <div className="bg-white border border-slate-200/90 rounded-3xl text-center py-20 px-6 shadow-sm">
-            <div className="w-16 h-16 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4 shadow-xs">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+          /* Empty Search Filter State */
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-12 text-center shadow-sm">
+            <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-3xl flex items-center justify-center mx-auto mb-4 text-2xl">
+              📂
             </div>
-            <h3 className="text-lg font-bold text-[#1E293B] mb-1">
+            <h3 className="text-base font-bold text-[#1E293B] mb-1">
               {searchQuery ? 'No matching candidates found' : 'No CVs uploaded for this job yet.'}
             </h3>
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
@@ -1180,16 +1359,29 @@ export default function JobCandidatesPage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => setSelectedCandidate(null)}
-                    className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm cursor-pointer shadow-xs"
-                  >
-                    ✕
-                  </button>
-                </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${selectedCandidate.name} | ${selectedCandidate.email} | ${selectedCandidate.phone}`);
+                          setCopiedEmail(true);
+                          setTimeout(() => setCopiedEmail(false), 2000);
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        title="Copy contact details"
+                      >
+                        {copiedEmail ? '✓ Copied' : 'Copy Contact'}
+                      </button>
+                      <button
+                        onClick={() => setSelectedCandidate(null)}
+                        className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
 
                 {/* Candidate Overview Bar */}
-                <div className="grid grid-cols-3 gap-2 p-6 border-b border-slate-100 bg-white">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-6 border-b border-slate-100 bg-white">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-slate-400">Total Experience</span>
                     {(() => {
@@ -1204,6 +1396,23 @@ export default function JobCandidatesPage() {
                               ({expInfo.subText})
                             </span>
                           )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Career Gap Status</span>
+                    {(() => {
+                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
+                      return (
+                        <div className="mt-0.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${
+                            gapInfo.hasGap
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          }`}>
+                            {gapInfo.hasGap ? `⚠️ ${gapInfo.totalGapMonths} mos Gap` : '✓ No Career Gap'}
+                          </span>
                         </div>
                       );
                     })()}
@@ -1289,6 +1498,54 @@ export default function JobCandidatesPage() {
                         />
                       </div>
                     )}
+
+                    {/* Career Gap Analysis Banner */}
+                    {(() => {
+                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
+                      return (
+                        <div className={`border rounded-2xl p-5 transition-all ${
+                          gapInfo.hasGap
+                            ? 'bg-amber-50/70 border-amber-200 shadow-xs'
+                            : 'bg-emerald-50/50 border-emerald-200/80'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
+                                gapInfo.hasGap ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              }`}>
+                                {gapInfo.hasGap ? '⚠️' : '✓'}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">Employment & Career Gap Analysis</h4>
+                                <p className="text-xs text-slate-700 font-semibold mt-0.5">{gapInfo.statusText}</p>
+                              </div>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${
+                              gapInfo.hasGap
+                                ? 'bg-amber-100 text-amber-950 border-amber-300'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            }`}>
+                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos Total Gap` : 'Continuous Employment'}
+                            </span>
+                          </div>
+                          {gapInfo.hasGap && gapInfo.gaps.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-amber-200/60 space-y-2">
+                              {gapInfo.gaps.map((g, gi) => (
+                                <div key={gi} className="text-xs text-amber-950 bg-white border border-amber-200 px-3.5 py-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                  <span className="font-bold flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                    {g.gapLabel}
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+                                    {g.startDate} → {g.endDate}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Matched vs Missing Skills */}
                     {selectedCandidate.matchBreakdown && (
