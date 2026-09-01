@@ -8,35 +8,39 @@ interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   /** 'dark' = charcoal text (on light bg), 'light' = white text (on dark bg) */
   variant?: 'dark' | 'light';
+  showTagline?: boolean;
 }
 
-const Logo: React.FC<LogoProps> = ({ href = '/home', size = 'md', variant = 'dark' }) => {
-  const iconSize  = size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-11 h-11' : 'w-9 h-9';
-  const textSize  = size === 'sm' ? 'text-lg'  : size === 'lg' ? 'text-3xl'  : 'text-xl';
-  const tagSize   = size === 'sm' ? 'text-[8px]' : size === 'lg' ? 'text-xs' : 'text-[9px]';
-  const wordColor = variant === 'light' ? 'text-white' : 'text-brand-charcoal';
-  const tagColor  = variant === 'light' ? 'text-white/50' : 'text-brand-charcoal-3';
+const Logo: React.FC<LogoProps> = ({ href = '/home', size = 'md', variant = 'dark', showTagline = true }) => {
+  const iconSize  = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-12 h-12' : 'w-9 h-9';
+  const textSize  = size === 'sm' ? 'text-lg sm:text-xl'  : size === 'lg' ? 'text-3xl'  : 'text-2xl';
+  const tagSize   = size === 'sm' ? 'text-[8.5px]' : size === 'lg' ? 'text-xs' : 'text-[10px]';
+  const taskColor = variant === 'light' ? 'text-white' : 'text-[#1E293B]';
+  const tagColor  = variant === 'light' ? 'text-slate-300' : 'text-slate-600';
 
   const mark = (
-    <div className="flex items-center gap-2.5 select-none">
-      {/* Icon mark */}
-      <div className={`${iconSize} rounded-xl bg-brand-orange flex items-center justify-center flex-shrink-0 shadow-orange`}>
-        <svg viewBox="0 0 28 28" fill="none" className="w-[58%] h-[58%]">
-          {/* Abstract "T" checkmark form */}
-          <rect x="4" y="4" width="20" height="3.5" rx="1.75" fill="white" opacity="0.9" />
-          <rect x="11.25" y="4" width="5.5" height="20" rx="2" fill="white" opacity="0.9" />
-          <path d="M7 16.5l4.5 4.5 9.5-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
-        </svg>
+    <div className="flex items-center gap-3 select-none group">
+      {/* Official TaskNera Logo Icon */}
+      <div className={`${iconSize} flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/tasknera-logo-symbol.png"
+          alt="TaskNera"
+          className="w-full h-full object-contain"
+        />
       </div>
 
       {/* Wordmark */}
-      <div className="flex flex-col leading-none">
-        <span className={`font-bold tracking-tight ${textSize} ${wordColor}`}>
-          Task<span className="text-brand-orange">Nera</span>
-        </span>
-        <span className={`uppercase tracking-[0.18em] font-semibold ${tagSize} ${tagColor} mt-0.5`}>
-          ATS Platform
-        </span>
+      <div className="flex flex-col justify-center leading-none">
+        <div className={`font-extrabold tracking-tight ${textSize} leading-none`}>
+          <span className={taskColor}>Task</span>
+          <span className="text-[#FF6E38]">Nera</span>
+        </div>
+        {showTagline && (
+          <span className={`font-semibold tracking-[0.01em] ${tagSize} ${tagColor} mt-1 leading-none`}>
+            People. Processes. Performance.
+          </span>
+        )}
       </div>
     </div>
   );

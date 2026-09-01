@@ -821,7 +821,7 @@ export default function CreateJobPage() {
                             onClick={() => handleToggleMandatory(req.id)}
                             className="mt-0.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border bg-brand-orange-pale text-brand-orange border-brand-orange-border hover:bg-brand-orange/10 cursor-pointer flex-shrink-0"
                           >
-                            + Preferred
+                            Preferred
                           </button>
                           <div>
                             <span className="text-xs font-semibold text-slate-800 block leading-relaxed">{req.requirement}</span>
