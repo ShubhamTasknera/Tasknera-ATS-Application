@@ -1147,36 +1147,110 @@ export function extractStructuredCandidateFromText(
     sourceEvidence['currentCompany'] = currentCompany;
   }
 
-  // 8. Total Experience Calculation
+  // 8. Total Experience Calculation (Comprehensive Multi-Pass Extractor)
   let totalExperience: string | null = null;
   let totalExperienceMonths = 0;
   let totalExperienceYears = 0;
 
-  const expMatch = cleanText.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:of\s*)?experience)?/i);
-  if (expMatch) {
-    const parsedYears = parseFloat(expMatch[1]);
-    if (!isNaN(parsedYears) && parsedYears > 0) {
-      totalExperienceYears = parsedYears;
-      totalExperienceMonths = Math.round(parsedYears * 12);
+  // Pass A: Explicit Total Experience labeled lines (e.g. "Total Experience: 3 Years 6 Months", "Experience: 3+ years")
+  const explicitHeaderMatch = cleanText.match(/(?:total\s+experience|relevant\s+experience|work\s+experience|overall\s+experience|experience|career\s+history)[:\s]+(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?|y)?(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?|m)?)?/i);
+  if (explicitHeaderMatch) {
+    const yrs = parseFloat(explicitHeaderMatch[1]);
+    const mos = explicitHeaderMatch[2] ? parseInt(explicitHeaderMatch[2], 10) : 0;
+    if (!isNaN(yrs) && yrs > 0) {
+      totalExperienceMonths = Math.round(yrs * 12) + mos;
+      totalExperienceYears = parseFloat((totalExperienceMonths / 12).toFixed(1));
       totalExperience = formatNumericExperience(totalExperienceMonths);
-      sourceEvidence['totalExperience'] = `${expMatch[0]} -> ${totalExperience}`;
+      sourceEvidence['totalExperience'] = `${explicitHeaderMatch[0]} -> ${totalExperience}`;
     }
   }
 
-  if (!totalExperience && experience.length > 0) {
-    let sumMonths = 0;
-    for (const exp of experience) {
-      if (exp.startDate) {
-        const m = calculateExperienceMonths(exp.startDate, exp.endDate);
-        sumMonths += m;
+  // Pass B: Inline text mentions (e.g. "3+ years of experience", "over 3 years of hands-on experience", "3.5 yrs experience")
+  if (!totalExperience) {
+    const inlineExpMatch = cleanText.match(/(?:over|more\s+than|about|around|approx(?:\.|imately)?|with)?\s*(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)(?:\s*(?:and\s*)?(\d+)\s*(?:months?|mos?))?(?:\s*(?:of\s*)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*|total\s*|software\s*|work\s*)?(?:experience|exp|background|track\s*record))?/i);
+    if (inlineExpMatch) {
+      const parsedYears = parseFloat(inlineExpMatch[1]);
+      const addMonths = inlineExpMatch[2] ? parseInt(inlineExpMatch[2], 10) : 0;
+      if (!isNaN(parsedYears) && parsedYears > 0 && parsedYears <= 45) {
+        totalExperienceMonths = Math.round(parsedYears * 12) + addMonths;
+        totalExperienceYears = parseFloat((totalExperienceMonths / 12).toFixed(1));
+        totalExperience = formatNumericExperience(totalExperienceMonths);
+        sourceEvidence['totalExperience'] = `${inlineExpMatch[0]} -> ${totalExperience}`;
       }
     }
-    if (sumMonths > 0) {
-      totalExperienceMonths = sumMonths;
-      totalExperienceYears = parseFloat((sumMonths / 12).toFixed(1));
-      totalExperience = formatNumericExperience(sumMonths);
-      sourceEvidence['totalExperience'] = `Calculated from history: ${sumMonths} months (~${totalExperienceYears} yrs)`;
+  }
+
+  // Pass C: Word numeral mentions (e.g. "Three years of experience", "Four+ years")
+  if (!totalExperience) {
+    const wordNumbers: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+    };
+    const wordExpMatch = cleanText.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*(?:\(\d+\)\s*)?(?:\+?\s*years?|\+?\s*yrs?)(?:\s*(?:of\s*)?(?:hands-on\s*|industry\s*|professional\s*|relevant\s*)?experience)?/i);
+    if (wordExpMatch && wordNumbers[wordExpMatch[1].toLowerCase()]) {
+      const parsedYears = wordNumbers[wordExpMatch[1].toLowerCase()];
+      totalExperienceYears = parsedYears;
+      totalExperienceMonths = parsedYears * 12;
+      totalExperience = formatNumericExperience(totalExperienceMonths);
+      sourceEvidence['totalExperience'] = `${wordExpMatch[0]} -> ${totalExperience}`;
     }
+  }
+
+  // Pass D: Calculate from parsed work experience entries
+  if (experience.length > 0) {
+    let sumMonths = 0;
+    let earliestStartYear = 9999;
+    let latestEndYear = 0;
+
+    for (const exp of experience) {
+      // 1. Calculate from explicit start and end dates
+      if (exp.startDate) {
+        const m = calculateExperienceMonths(exp.startDate, exp.endDate);
+        if (m > 0) sumMonths += m;
+
+        const sY = parseDateToYearMonth(exp.startDate)?.year;
+        const eY = exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)
+          ? new Date().getFullYear()
+          : parseDateToYearMonth(exp.endDate || '')?.year;
+        if (sY && sY >= 1980 && sY <= new Date().getFullYear()) {
+          earliestStartYear = Math.min(earliestStartYear, sY);
+        }
+        if (eY && eY >= 1980) {
+          latestEndYear = Math.max(latestEndYear, eY);
+        }
+      }
+      // 2. Parse from duration string if start date is missing
+      else if (exp.duration) {
+        const dMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+        if (dMatch) sumMonths += Math.round(parseFloat(dMatch[1]) * 12);
+        else {
+          const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
+          if (moMatch) sumMonths += parseInt(moMatch[1], 10);
+        }
+      }
+    }
+
+    // Span calculation between earliest start and latest end year
+    let spanMonths = 0;
+    if (earliestStartYear < 9999 && latestEndYear >= earliestStartYear) {
+      spanMonths = (latestEndYear - earliestStartYear + 1) * 12;
+    }
+
+    const calculatedMonths = Math.max(sumMonths, spanMonths);
+    if (calculatedMonths > 0 && (!totalExperience || totalExperienceMonths < calculatedMonths)) {
+      totalExperienceMonths = calculatedMonths;
+      totalExperienceYears = parseFloat((calculatedMonths / 12).toFixed(1));
+      totalExperience = formatNumericExperience(calculatedMonths);
+      sourceEvidence['totalExperience'] = `Calculated from work history (${experience.length} roles): ${calculatedMonths} months (~${totalExperienceYears} yrs)`;
+    }
+  }
+
+  // Pass E: Fallback if candidate has work experience items but dates were unformatted
+  if (!totalExperience && experience.length > 0) {
+    const estimatedMonths = experience.length * 24; // estimate ~2 yrs per documented position
+    totalExperienceMonths = estimatedMonths;
+    totalExperienceYears = parseFloat((estimatedMonths / 12).toFixed(1));
+    totalExperience = formatNumericExperience(estimatedMonths);
+    sourceEvidence['totalExperience'] = `Estimated from ${experience.length} position(s): ~${totalExperienceYears} yrs`;
   }
 
   if (!totalExperience) {

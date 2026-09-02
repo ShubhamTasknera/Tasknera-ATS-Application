@@ -702,45 +702,45 @@ export const extractHiringCriteria = (topSection: JobSection | undefined): Parse
         requirement: 'Local to NCR',
         category: 'Hiring Criteria',
         type: 'HIRING_CRITERIA',
-        weight: 1.0,
-        isMandatory: true,
-        mandatory: true,
-        evidenceRequired: true,
+        weight: 0.5,
+        isMandatory: false,
+        mandatory: false,
+        evidenceRequired: false,
         recruiterConfirmed: false,
         sourceEvidence: 'Local to NCR',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
-        needsVerification: false
+        needsVerification: true
       });
     } else if (/previous mnc experience/i.test(lower) || /mnc experience/i.test(lower)) {
       criteria.push({
         requirement: 'Previous MNC experience',
         category: 'Hiring Criteria',
         type: 'HIRING_CRITERIA',
-        weight: 1.0,
-        isMandatory: true,
-        mandatory: true,
-        evidenceRequired: true,
+        weight: 0.5,
+        isMandatory: false,
+        mandatory: false,
+        evidenceRequired: false,
         recruiterConfirmed: false,
         sourceEvidence: 'Previous MNC experience',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
-        needsVerification: false
+        needsVerification: true
       });
     } else if (/immediate joiner/i.test(lower) || /serving notice/i.test(lower)) {
       criteria.push({
         requirement: 'Immediate Joiner / Serving Notice',
         category: 'Hiring Criteria',
         type: 'HIRING_CRITERIA',
-        weight: 1.0,
-        isMandatory: true,
-        mandatory: true,
-        evidenceRequired: true,
+        weight: 0.5,
+        isMandatory: false,
+        mandatory: false,
+        evidenceRequired: false,
         recruiterConfirmed: false,
         sourceEvidence: 'Immediate Joiner / Serving Notice',
         sourceSection: 'Top Hiring Criteria',
         confidence: 'HIGH',
-        needsVerification: false
+        needsVerification: true
       });
     }
   }

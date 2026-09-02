@@ -708,3 +708,146 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
     res.status(500).json({ error: 'Failed to retrieve candidate evaluation history' });
   }
 };
+
+/**
+ * Get all authorized jobs in the organization available for matching against this candidate
+ * GET /api/candidates/:candidateId/available-jobs
+ */
+export const getAvailableJobsForCandidateController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const candidateId = String(req.params.candidateId || req.params.id || '');
+    if (!candidateId) {
+      res.status(400).json({ error: 'Candidate ID is required' });
+      return;
+    }
+
+    const candidate = await findCandidateRecord(candidateId);
+    if (!candidate) {
+      res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
+
+    // Fetch all active jobs in organization
+    const dbJobs = await prisma.job.findMany({
+      where: { status: { not: 'archived' } },
+      include: {
+        requirements: true,
+        applications: isCandUuid ? {
+          where: { candidate_id: candidateId }
+        } : false
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    const jobs = dbJobs.map(j => {
+      const app = (j.applications as any)?.[0];
+      const cacheKey = `${candidateId}___${j.id}`;
+      const cached = EVALUATION_CACHE.get(cacheKey);
+      const isEvaluated = Boolean(cached || (app && app.match_score !== null));
+      const score = app?.match_score !== null && app?.match_score !== undefined
+        ? Math.round(app.match_score)
+        : (cached?.overallScore || null);
+
+      return {
+        id: j.id,
+        position: j.position,
+        jobTitle: j.position,
+        client: j.client,
+        company: j.client,
+        location: j.location || 'Remote',
+        workMode: j.work_mode || 'Full-time',
+        status: j.status,
+        salary: j.salary,
+        requirementsCount: j.requirements ? j.requirements.length : 0,
+        requirementsConfirmed: j.requirements ? (j.requirements.some(r => r.recruiter_confirmed) || j.requirements.length >= 2) : false,
+        isAlreadyMatched: Boolean(app),
+        isAlreadyEvaluated: isEvaluated,
+        matchScore: score,
+        stage: app?.stage || (isEvaluated ? (score && score >= 80 ? 'SHORTLISTED' : 'REVIEW') : 'SOURCED'),
+        createdAt: j.created_at
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      candidateId,
+      candidateName: candidate.name,
+      total: jobs.length,
+      jobs
+    });
+  } catch (error: any) {
+    console.error('Error getting available jobs for candidate:', error);
+    res.status(500).json({ error: 'Failed to retrieve available jobs for candidate' });
+  }
+};
+
+/**
+ * Connect Candidate to Job (create/reuse CandidateJob)
+ * POST /api/candidates/:candidateId/jobs
+ */
+export const attachCandidateToJobController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const candidateId = String(req.params.candidateId || req.params.id || '');
+    const jobId = String(req.body.jobId || req.body.job_id || '');
+
+    if (!candidateId || !jobId) {
+      res.status(400).json({ error: 'candidateId and jobId are required' });
+      return;
+    }
+
+    const candidate = await findCandidateRecord(candidateId);
+    if (!candidate) {
+      res.status(404).json({ error: `Candidate with ID "${candidateId}" not found.` });
+      return;
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId);
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
+
+    let candidateJobId = `cj-${candidateId}-${jobId}`;
+
+    if (isUuid && isCandUuid) {
+      const app = await prisma.candidateApplication.upsert({
+        where: {
+          job_id_candidate_id: {
+            job_id: jobId,
+            candidate_id: candidateId
+          }
+        },
+        update: {
+          updated_at: new Date()
+        },
+        create: {
+          job_id: jobId,
+          candidate_id: candidateId,
+          stage: 'SOURCED',
+          status: 'active'
+        }
+      });
+      candidateJobId = app.id;
+    }
+
+    res.status(200).json({
+      success: true,
+      candidateId,
+      jobId,
+      candidateJobId,
+      status: 'READY'
+    });
+  } catch (error: any) {
+    console.error('Error attaching candidate to job:', error);
+    res.status(500).json({ error: 'Failed to attach candidate to job' });
+  }
+};
+
+/**
+ * Start/Execute Evaluation for a Candidate against a specific Job
+ * POST /api/candidates/:candidateId/jobs/:jobId/evaluate
+ */
+export const evaluateCandidateJobController = async (req: AuthRequest, res: Response): Promise<void> => {
+  req.body.jobId = req.params.jobId || req.body.jobId;
+  return matchCandidateWithJobController(req, res);
+};
+

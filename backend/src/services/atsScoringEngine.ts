@@ -382,19 +382,33 @@ export function calculateATSScore(
 
     if (isMandatory) mandatoryCount++;
 
-    // 1. Relevant Experience Requirement (e.g. "5+ years SAP CO", "3+ years React", "5+ years relevant experience")
+    // 1. Relevant Experience Requirement (e.g. "5+ years SAP CO", "3+ years React", "3+ years frontend development")
     const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
     if (yearsPattern || reqCategory.toLowerCase().includes('experience') || reqLower.includes('experience')) {
       const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
       
-      // Extract target skill/domain from requirement text
-      const cleanSkill = reqText
-        .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven)/gi, '')
-        .trim();
+      // Extract target keywords/domain from requirement text
+      const expKeywords = reqLower
+        .replace(/(\d+\+?\s*years?|\d+\+?\s*yrs?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to|deep|strong|solid|working|knowledge)/gi, ' ')
+        .split(/[\s,;/]+/)
+        .map(w => w.trim().toLowerCase())
+        .filter(w => w.length > 2);
 
-      const candidateRelevantExp = cleanSkill.length > 2
-        ? calculateSpecificTenure(candidate, cleanSkill)
-        : totalCareerYears;
+      let domainMatch = expKeywords.length === 0;
+      if (!domainMatch) {
+        domainMatch = expKeywords.some(kw =>
+          rawText.toLowerCase().includes(kw) ||
+          candSkills.some(s => s.includes(kw) || kw.includes(s)) ||
+          candExps.some(ex => (ex.title && ex.title.toLowerCase().includes(kw)) || (ex.description && ex.description.toLowerCase().includes(kw)))
+        );
+      }
+
+      // Candidate relevant experience in this domain
+      const cleanSkill = expKeywords.join(' ') || 'relevant domain';
+      const specificTenure = calculateSpecificTenure(candidate, cleanSkill);
+      const candidateRelevantExp = domainMatch
+        ? Math.max(totalCareerYears, specificTenure)
+        : (totalCareerYears > 0 ? totalCareerYears * 0.7 : 0);
 
       const gap = Math.max(0, Math.round((requiredYears - candidateRelevantExp) * 10) / 10);
       let status: RequirementEvaluationStatus = 'NOT_MET';
@@ -410,25 +424,25 @@ export function calculateATSScore(
         confidence = 'EXPLICIT';
       } else if (candidateRelevantExp >= requiredYears) {
         status = 'FULLY_MET';
-        evidence = `${candidateRelevantExp} years relevant experience documented for "${cleanSkill || 'role'}" (meets required ${requiredYears}+ yrs).`;
+        evidence = `${candidateRelevantExp} years documented experience in "${cleanSkill}" (meets required ${requiredYears}+ yrs).`;
         confidence = 'EXPLICIT';
-        strengths.push(`${candidateRelevantExp} years of ${cleanSkill || 'relevant'} experience`);
-      } else if (candidateRelevantExp >= requiredYears * 0.6) {
+        strengths.push(`${candidateRelevantExp} years of ${cleanSkill} experience`);
+      } else if (candidateRelevantExp >= requiredYears * 0.6 || totalCareerYears >= requiredYears) {
         status = 'PARTIALLY_MET';
         evidence = `${candidateRelevantExp} years documented experience vs ${requiredYears}+ years required (${gap}y gap).`;
         confidence = 'STRONG_SEMANTIC';
-        gaps.push(`${cleanSkill || 'Role'} experience partially met (${candidateRelevantExp}y / ${requiredYears}y)`);
+        gaps.push(`${cleanSkill} experience partially met (${candidateRelevantExp}y / ${requiredYears}y)`);
       } else {
         status = 'NOT_MET';
         evidence = `${candidateRelevantExp} years documented in CV vs required ${requiredYears}+ years (${gap}y deficit).`;
         confidence = 'EXPLICIT';
-        gaps.push(`Insufficient experience in ${cleanSkill || 'role'} (${candidateRelevantExp}y vs ${requiredYears}y required)`);
+        gaps.push(`Insufficient experience in ${cleanSkill} (${candidateRelevantExp}y vs ${requiredYears}y required)`);
       }
 
       if (isMandatory && status === 'NOT_MET') {
         hasCriticalMandatoryFailure = true;
       }
-      if (status === 'FULLY_MET' && isMandatory) mandatoryPassedCount++;
+      if ((status === 'FULLY_MET' || status === 'PARTIALLY_MET') && isMandatory) mandatoryPassedCount++;
 
       const statusScore = ATS_SCORING_CONFIG.statusMultipliers[status];
 

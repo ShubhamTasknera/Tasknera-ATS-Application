@@ -539,22 +539,32 @@ export const computeComprehensiveMatchScore = (
     const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
     if (yearsPattern || reqCategory.includes('exp') || reqLower.includes('experience')) {
       const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
-      const cleanSkill = reqText.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven)/gi, '').trim().toLowerCase();
       
-      let candidateRelevantExp = totalCareerYears;
-      if (cleanSkill.length > 2 && !rawText.toLowerCase().includes(cleanSkill)) {
-        candidateRelevantExp = 0;
+      const expKeywords = reqLower
+        .replace(/(\d+\+?\s*years?|\d+\+?\s*yrs?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
+        .split(/[\s,;/]+/)
+        .map(w => w.trim().toLowerCase())
+        .filter(w => w.length > 2);
+
+      let domainMatch = true;
+      if (expKeywords.length > 0) {
+        domainMatch = expKeywords.some(kw =>
+          rawText.toLowerCase().includes(kw) ||
+          candSkills.some(s => s.includes(kw) || kw.includes(s))
+        );
       }
 
+      const candidateRelevantExp = domainMatch ? totalCareerYears : (totalCareerYears > 0 ? totalCareerYears * 0.7 : 0);
       totalExpWeight += weight;
 
       if (candidateRelevantExp >= requiredYears) {
         earnedExpWeight += (1.0 * weight);
         if (isMandatory) mandatoryMetCount++;
-      } else if (candidateRelevantExp >= requiredYears * 0.6) {
-        earnedExpWeight += (0.5 * weight);
-        if (isMandatory) mandatoryRequirementFailed = true;
+      } else if (candidateRelevantExp >= requiredYears * 0.6 || totalCareerYears >= requiredYears) {
+        earnedExpWeight += (0.8 * weight);
+        if (isMandatory) mandatoryMetCount++;
       } else {
+        earnedExpWeight += (0.4 * weight);
         if (isMandatory) mandatoryRequirementFailed = true;
       }
       continue;

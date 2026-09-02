@@ -8,7 +8,10 @@ import {
 } from '../controllers/candidateController';
 import {
   matchCandidateWithJobController,
-  getCandidateEvaluationHistoryController
+  getCandidateEvaluationHistoryController,
+  getAvailableJobsForCandidateController,
+  attachCandidateToJobController,
+  evaluateCandidateJobController
 } from '../controllers/evaluationController';
 
 const upload = multer({
@@ -23,6 +26,15 @@ router.get('/', getAllCandidates);
 
 // Bulk upload CVs directly to candidate pool
 router.post('/upload', upload.any(), uploadCandidateCVs);
+
+// Available jobs in organization for matching against a candidate
+router.get('/:candidateId/available-jobs', getAvailableJobsForCandidateController);
+
+// Attach candidate to a job (create/reuse CandidateJob)
+router.post('/:candidateId/jobs', attachCandidateToJobController);
+
+// Evaluate candidate against a specific job
+router.post('/:candidateId/jobs/:jobId/evaluate', evaluateCandidateJobController);
 
 // Match candidate from pool with a specific Job Description (Entry Point 2)
 router.post('/:candidateId/match-with-job', matchCandidateWithJobController);

@@ -64,8 +64,8 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
   let location = c.location;
   let summary = c.summary;
 
-  // If skills or structured fields are missing from DB relational tables, parse from raw_text on the fly
-  if ((skills.length === 0 || experience.length === 0 || !title) && c.raw_text && c.raw_text.trim().length > 10) {
+  // If skills, experience or totalExperience are missing/0 yrs from DB, parse from raw_text on the fly
+  if ((skills.length === 0 || experience.length === 0 || !title || !totalExp || totalExp === '0 yrs' || totalExp === '0 Years') && c.raw_text && c.raw_text.trim().length > 10) {
     try {
       const parsed = extractStructuredCandidateFromText(c.raw_text, c.resume_file_url || 'cv.pdf', {
         fileType: 'application/pdf',
@@ -114,7 +114,9 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
         }).catch(() => null);
       }
 
-      if (!totalExp && parsed.totalExperience) totalExp = parsed.totalExperience;
+      if ((!totalExp || totalExp === '0 yrs' || totalExp === '0 Years') && parsed.totalExperience && parsed.totalExperience !== '0 yrs') {
+        totalExp = parsed.totalExperience;
+      }
       if (!title && parsed.currentTitle) title = parsed.currentTitle;
       if (!company && parsed.currentCompany) company = parsed.currentCompany;
       if (!location && parsed.location) location = parsed.location;
