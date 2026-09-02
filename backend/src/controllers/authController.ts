@@ -170,3 +170,58 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   }
 };
 
+// @desc    Authenticate with Google OAuth / SSO
+// @route   POST /api/auth/google
+export const googleSignin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, name, avatarUrl } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: 'Google email is required' });
+      return;
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Find or create user
+    let user = await prisma.user.findUnique({
+      where: { email: cleanEmail }
+    });
+
+    if (!user) {
+      const userCount = await prisma.user.count();
+      const assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
+      const randomPassword = await bcrypt.hash(`google_oauth_${Date.now()}_${Math.random()}`, 10);
+
+      user = await prisma.user.create({
+        data: {
+          name: name ? name.trim() : cleanEmail.split('@')[0],
+          email: cleanEmail,
+          password: randomPassword,
+          role: assignedRole,
+        }
+      });
+    }
+
+    const userRole = (user.role as UserRole) || 'MEMBER';
+    const token = generateToken(user.id, user.email, userRole);
+
+    res.status(200).json({
+      message: 'Google authentication successful',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: userRole,
+        teamId: user.teamId,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Google Auth Error:', error);
+    res.status(500).json({ error: 'Server error during Google authentication' });
+  }
+};
+
+

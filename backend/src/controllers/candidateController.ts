@@ -460,8 +460,9 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
  */
 export const uploadCandidateCVs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const isPoolUpload = req.baseUrl?.includes('/candidates') || req.originalUrl?.includes('/candidates/upload') || req.body?.jobId === 'pool' || !req.params.jobId;
-    let jobId = isPoolUpload ? 'pool' : String(req.params.jobId || req.body?.jobId || '');
+    const paramJobId = String(req.params.jobId || req.body?.jobId || '').trim();
+    const isPoolUpload = !paramJobId || paramJobId.toLowerCase() === 'pool' || paramJobId === 'all';
+    const jobId = isPoolUpload ? 'pool' : paramJobId;
     
     // Support files from multer array, any fields, or single file fallback
     let files: Express.Multer.File[] = [];
@@ -501,9 +502,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
     let defaultUserId: string | null = null;
     try {
       const authUser = (req as any).user;
-      if (authUser && authUser.id) {
-        defaultUserId = authUser.id;
-      } else {
+      defaultUserId = authUser?.userId || authUser?.id || null;
+      if (!defaultUserId) {
         const user = await prisma.user.findFirst();
         if (user) defaultUserId = user.id;
       }
@@ -694,6 +694,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 stage: 'PARSED',
                 status: 'active'
               }
+            }).catch(() => null);
+
+            await prisma.candidate.update({
+              where: { id: existingCandId },
+              data: { job_id: jobId }
             }).catch(() => null);
           }
         } catch (linkErr) {

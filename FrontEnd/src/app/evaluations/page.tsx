@@ -71,7 +71,7 @@ export default function EvaluationsPage() {
         const evalRes = await fetch(`${backendUrl}/evaluations`, { headers });
         if (evalRes.ok) {
           const evalData = await evalRes.json();
-          if (Array.isArray(evalData.evaluations) && evalData.evaluations.length > 0) {
+          if (Array.isArray(evalData.evaluations)) {
             setEvaluations(evalData.evaluations);
             return;
           }
@@ -81,14 +81,25 @@ export default function EvaluationsPage() {
       }
 
       // 2. Fallback: Iterate jobs and candidates to pull evaluations dynamically
-      const jobsRes = await fetch(`${backendUrl}/jobs`, { headers });
-      if (!jobsRes.ok) {
+      let jobsList: any[] = [];
+      try {
+        const jobsRes = await fetch(`${backendUrl}/jobs`, { headers });
+        if (jobsRes.ok) {
+          const jobsData = await jobsRes.json();
+          if (Array.isArray(jobsData.jobs)) {
+            jobsList = jobsData.jobs;
+          } else if (Array.isArray(jobsData.data)) {
+            jobsList = jobsData.data;
+          }
+        }
+      } catch (err) {
+        console.warn('Fallback jobs fetch error:', err);
+      }
+
+      if (jobsList.length === 0) {
         setEvaluations([]);
         return;
       }
-
-      const jobsData = await jobsRes.json();
-      const jobsList = Array.isArray(jobsData.jobs) ? jobsData.jobs : [];
 
       const allItems: EvaluationItem[] = [];
 
@@ -123,25 +134,23 @@ export default function EvaluationsPage() {
                       return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
                     };
 
-                    const resolvedCompany = (c.currentCompany && !isInvalidComp(c.currentCompany))
-                      ? c.currentCompany
-                      : (evalObj.candidateCompany && !isInvalidComp(evalObj.candidateCompany))
-                      ? evalObj.candidateCompany
-                      : (j.client && !isInvalidComp(j.client))
+                    const resolvedCompany = (j.client && !isInvalidComp(j.client))
                       ? j.client
-                      : 'Enterprise Organization';
+                      : (evalObj.jobCompany && !isInvalidComp(evalObj.jobCompany))
+                      ? evalObj.jobCompany
+                      : (evalObj.company && !isInvalidComp(evalObj.company))
+                      ? evalObj.company
+                      : 'Client Organization';
 
-                    const resolvedRole = (c.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(c.currentTitle.trim().toLowerCase()))
-                      ? c.currentTitle
-                      : (evalObj.candidateRole && !['candidate profile', 'candidate', 'professional role'].includes(evalObj.candidateRole.trim().toLowerCase()))
-                      ? evalObj.candidateRole
-                      : (j.position || 'Software Professional');
+                    const resolvedJob = (j.position && !['candidate profile', 'candidate', 'professional role'].includes(j.position.trim().toLowerCase()))
+                      ? j.position
+                      : (evalObj.jobTitle || evalObj.job || 'Target Position');
 
                     allItems.push({
                       id: c.id,
                       candidate: evalObj.candidateName || c.name || 'Candidate',
-                      role: resolvedRole,
-                      job: evalObj.jobTitle || j.position || resolvedRole,
+                      role: resolvedJob,
+                      job: resolvedJob,
                       jobId: j.id,
                       company: resolvedCompany,
                       date: evalObj.evaluatedAt ? new Date(evalObj.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
@@ -170,21 +179,19 @@ export default function EvaluationsPage() {
                 return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
               };
 
-              const resolvedCompany = (c.currentCompany && !isInvalidComp(c.currentCompany))
-                ? c.currentCompany
-                : (j.client && !isInvalidComp(j.client))
+              const resolvedCompany = (j.client && !isInvalidComp(j.client))
                 ? j.client
-                : 'Enterprise Organization';
+                : 'Client Organization';
 
-              const resolvedRole = (c.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(c.currentTitle.trim().toLowerCase()))
-                ? c.currentTitle
-                : (j.position || 'Software Professional');
+              const resolvedJob = (j.position && !['candidate profile', 'candidate', 'professional role'].includes(j.position.trim().toLowerCase()))
+                ? j.position
+                : 'Target Position';
 
               allItems.push({
                 id: c.id,
                 candidate: c.name || c.fileName || 'Candidate',
-                role: resolvedRole,
-                job: j.position || resolvedRole,
+                role: resolvedJob,
+                job: resolvedJob,
                 jobId: j.id,
                 company: resolvedCompany,
                 date: createdDate,

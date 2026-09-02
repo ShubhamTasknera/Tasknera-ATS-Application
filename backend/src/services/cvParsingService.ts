@@ -291,8 +291,8 @@ function extractSections(text: string): Record<string, string> {
     {
       canonical: 'EXPERIENCE',
       patterns: [
-        /^(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history|experience|internships?|career\s+history|relevant\s+experience)$/i,
-        /^(?:work\s+experience|professional\s+experience|experience)[:\s\-–]/i,
+        /^(?:work\s+experience|professional\s+experience|employment\s+history|work\s+history|experience|internships?|internship\s+experience|internship\s+history|work\s*&\s*internship\s*experience|career\s+history|relevant\s+experience)$/i,
+        /^(?:work\s+experience|professional\s+experience|experience|internship\s+experience|internships?)[:\s\-–]/i,
       ]
     },
     {
@@ -625,6 +625,7 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
 
   interface RawJobHeader {
     lineIndex: number;
+    consumedNextLine?: boolean;
     title: string;
     company: string;
     location?: string;
@@ -703,6 +704,28 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
         }
       }
 
+      // Check following line (i + 1) if title/company was on the date line
+      let consumedNextLine = false;
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        if (nextLine && !/^[•*\-–—▪▫➢✓✔\d\.\)]\s*/.test(nextLine) && !extractDateRange(nextLine).startDate) {
+          const isNextTitle = /developer|engineer|intern|lead|architect|manager|consultant|specialist|founder|analyst|designer|director|programmer|tester|administrator|scientist/i.test(nextLine);
+          const isCleanCompany = /LLP|Inc|Ltd|Limited|Technologies|Media|Digital|Solutions|Systems|Labs|Corp|Services|Software|Pvt|Company/i.test(cleanedLine) || !/developer|engineer|intern|consultant|manager|analyst/i.test(cleanedLine);
+
+          if (!company || company === 'Company') {
+            if (isNextTitle && isCleanCompany) {
+              company = cleanedLine;
+              title = nextLine;
+              consumedNextLine = true;
+            } else if (!isNextTitle && !isCleanCompany) {
+              title = cleanedLine;
+              company = nextLine;
+              consumedNextLine = true;
+            }
+          }
+        }
+      }
+
       if (company && company.includes(',') && !location) {
         const cParts = company.split(',').map(p => p.trim());
         company = cParts[0];
@@ -716,6 +739,7 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
 
       jobHeaders.push({
         lineIndex: i,
+        consumedNextLine,
         title: title.trim() || 'Software Engineer',
         company: company.trim() || 'Company',
         location: location.trim() || undefined,
@@ -729,7 +753,7 @@ function parseExperienceSection(expText: string, fullText: string): CandidateExp
   const experiences: CandidateExperience[] = [];
   for (let j = 0; j < jobHeaders.length; j++) {
     const jh = jobHeaders[j];
-    const startBulletLine = jh.lineIndex + 1;
+    const startBulletLine = jh.lineIndex + (jh.consumedNextLine ? 2 : 1);
     const endBulletLine = j < jobHeaders.length - 1 ? jobHeaders[j + 1].lineIndex : lines.length;
 
     const bullets: string[] = [];
@@ -1136,14 +1160,15 @@ export function extractStructuredCandidateFromText(
     currentCompany = null;
   }
 
-  if (!currentTitle || currentTitle === 'Software Engineer' || lines.length > 1) {
+  if (!currentTitle || currentTitle.trim().length === 0) {
     const titleCandidates = [
+      'Web Development Intern', 'Software Development Intern', 'Software Engineer Intern', 'Engineering Intern',
       'Full Stack Developer', 'Full-Stack Developer', 'Full Stack Engineer', 'Full-Stack Engineer',
       'Senior Frontend Engineer', 'Senior Frontend Developer', 'Frontend Engineer', 'Frontend Developer',
       'Senior Backend Engineer', 'Senior Backend Developer', 'Backend Engineer', 'Backend Developer',
       'Senior Software Engineer', 'Software Engineer', 'Software Developer', 'Web Developer', 'Web Developer Intern',
       'React Developer', 'Java Developer', 'Python Developer', 'DevOps Engineer', 'Cloud Architect',
-      'UI/UX Designer', 'Product Designer', 'Data Scientist', 'Data Engineer'
+      'UI/UX Designer', 'Product Designer', 'Data Scientist', 'Data Engineer', 'Intern'
     ];
 
     const headerText = lines.slice(0, 8).join('\n');

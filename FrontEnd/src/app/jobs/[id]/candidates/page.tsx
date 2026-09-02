@@ -434,10 +434,17 @@ const getEffectiveSkills = (cand: CandidateRecord, jobReqs?: any[]): string[] =>
       const phrase = (r.requirement || r.text || '').trim();
       if (phrase.length > 2) {
         const clean = phrase.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ').trim();
-        const tokens = clean.split(/[\s,;/]+/).filter((t: string) => t.length > 2);
+        const tokens = clean.split(/[\s,;/()\[\]{}*+?^$|\\]+/).filter((t: string) => t.length > 2);
         for (const tok of tokens) {
-          if (tok.length >= 3 && new RegExp(`(?:^|[^a-zA-Z0-9_])${tok}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
-            matched.add(tok);
+          if (tok.length >= 3) {
+            try {
+              const escTok = tok.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+              if (new RegExp(`(?:^|[^a-zA-Z0-9_])${escTok}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+                matched.add(tok);
+              }
+            } catch (err) {
+              // Ignore any malformed pattern
+            }
           }
         }
       }

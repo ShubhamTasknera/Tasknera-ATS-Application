@@ -3,53 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 // Resilient memory store for jobs
-let jobs: any[] = [
-  {
-    id: 'job-1',
-    client: 'Hexaware Technologies',
-    position: 'Salesforce Manufacturing Cloud Developer',
-    title: 'Salesforce Manufacturing Cloud Developer',
-    department: 'Cloud Solutions',
-    location: 'Remote / Bangalore',
-    work_mode: 'Hybrid',
-    type: 'Full-time',
-    status: 'active',
-    salary: '$120,000 – $150,000 / year',
-    description: 'We are seeking an experienced Salesforce Manufacturing Cloud Developer...',
-    requirements: [
-      { id: 'r1', requirement: '5+ years Salesforce development experience', category: 'Technical Skill', is_mandatory: true, weight: 2.0 },
-      { id: 'r2', requirement: 'Manufacturing Cloud configuration and customization', category: 'Technical Skill', is_mandatory: true, weight: 2.0 },
-      { id: 'r3', requirement: 'Apex, LWC, Visualforce proficiency', category: 'Technical Skill', is_mandatory: true, weight: 1.5 },
-      { id: 'r4', requirement: 'Salesforce Certified Administrator / Developer', category: 'Certification', is_mandatory: false, weight: 1.0 },
-    ],
-    candidates: 12,
-    newCandidates: 3,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    postedDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'job-2',
-    client: 'BlueOrbit Technologies',
-    position: 'Senior SAP CO Consultant',
-    title: 'Senior SAP CO Consultant',
-    department: 'Enterprise ERP',
-    location: 'New York, NY',
-    work_mode: 'Onsite',
-    type: 'Full-time',
-    status: 'active',
-    salary: '$140,000 – $170,000 / year',
-    description: 'Lead SAP CO implementation and configuration...',
-    requirements: [
-      { id: 'r5', requirement: '7+ years SAP CO experience', category: 'Technical Skill', is_mandatory: true, weight: 2.0 },
-      { id: 'r6', requirement: 'Product Costing (CO-PC) and Profitability Analysis (CO-PA)', category: 'Technical Skill', is_mandatory: true, weight: 1.5 },
-      { id: 'r7', requirement: 'S/4HANA Finance migration experience', category: 'Technical Skill', is_mandatory: false, weight: 1.0 },
-    ],
-    candidates: 8,
-    newCandidates: 1,
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    postedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+let jobs: any[] = [];
 
 // GET - Get all jobs
 export async function GET(request: NextRequest) {

@@ -10,6 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   signin: (email: string, password: string) => Promise<UserRole>;
   signup: (name: string, email: string, password: string) => Promise<UserRole>;
+  googleSignin: (email?: string, name?: string) => Promise<void>;
   setRole: (role: UserRole) => void;
   logout: () => void;
 }
@@ -123,6 +124,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     }
   };
 
+  const googleSignin = async (email?: string, name?: string): Promise<void> => {
+    const defaultEmail = email || 'recruiter@tasknera.com';
+    const defaultName = name || 'Google User';
+
+    const data = await fetchApi<AuthResponse>('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ email: defaultEmail, name: defaultName }),
+    });
+
+    localStorage.setItem('tasknera_token', data.token);
+    setToken(data.token);
+    setUser(data.user);
+  };
+
   const logout = (): void => {
     localStorage.removeItem('tasknera_token');
     localStorage.removeItem('tasknera_role');
@@ -144,6 +159,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         isLoading,
         signin,
         signup,
+        googleSignin,
         setRole,
         logout,
       }}

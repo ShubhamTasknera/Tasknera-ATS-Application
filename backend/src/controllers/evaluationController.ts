@@ -87,10 +87,10 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
   if (!jobData) {
     jobData = {
       id: jobId,
-      position: fallbackPosition || (jobId === 'jd-1' ? 'Frontend Developer' : 'Software Professional'),
-      title: fallbackPosition || (jobId === 'jd-1' ? 'Frontend Developer' : 'Software Professional'),
-      client: fallbackClient || (jobId === 'jd-1' ? 'TechNova Solutions' : 'Enterprise Client'),
-      company: fallbackClient || (jobId === 'jd-1' ? 'TechNova Solutions' : 'Enterprise Client'),
+      position: fallbackPosition || 'Software Engineer',
+      title: fallbackPosition || 'Software Engineer',
+      client: fallbackClient || 'Client Organization',
+      company: fallbackClient || 'Client Organization',
     };
   }
 
@@ -336,15 +336,15 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
 
       const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
 
-      const comp = (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
-        ? candidate.currentCompany
-        : (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
+      const comp = (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
         ? jobContext.jobData.client
-        : 'Enterprise Organization';
+        : (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
+        ? candidate.currentCompany
+        : 'Client Organization';
 
-      const role = (candidate.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(candidate.currentTitle.trim().toLowerCase()))
-        ? candidate.currentTitle
-        : (jobContext.jobData.position || 'Software Professional');
+      const role = (jobContext.jobData.position && !['candidate profile', 'candidate', 'professional role'].includes(jobContext.jobData.position.trim().toLowerCase()))
+        ? jobContext.jobData.position
+        : (candidate.currentTitle || 'Software Engineer');
 
       evaluationItems.push({
         id: candidate.id,
@@ -365,59 +365,21 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
       });
     }
 
-    // Process from session EVALUATION_CACHE
-    for (const [pairKey, cachedEval] of EVALUATION_CACHE.entries()) {
-      if (seenPairs.has(pairKey)) continue;
-      seenPairs.add(pairKey);
-
-      const [candId, jId] = pairKey.split('___');
-      const candidate = candidateMap.get(candId);
-      if (!candidate) continue;
-
-      let jobContext = jobsMap.get(jId);
-      if (!jobContext) {
-        const { jobData, requirements } = await getJobAndRequirements(jId, candidate.currentTitle || undefined, candidate.currentCompany || undefined);
-        jobContext = { jobData, requirements };
-        jobsMap.set(jId, jobContext);
-      }
-
-      const score = Math.round(cachedEval.overallScore ?? cachedEval.overallMatch ?? 0);
-
-      const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
-
-      const comp = (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
-        ? candidate.currentCompany
-        : (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
-        ? jobContext.jobData.client
-        : 'Enterprise Organization';
-
-      const role = (candidate.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(candidate.currentTitle.trim().toLowerCase()))
-        ? candidate.currentTitle
-        : (jobContext.jobData.position || 'Software Professional');
-
-      evaluationItems.push({
-        id: candidate.id,
-        candidate: candidate.name || candidate.fileName || 'Candidate',
-        role,
-        job: jobContext.jobData.position || jobContext.jobData.title || role,
-        jobId: jobContext.jobData.id || jId,
-        company: comp,
-        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        score,
-        ats: Math.round(cachedEval.atsScore ?? score),
-        overallScore: score,
-        matchLevel: cachedEval.matchLevel || (score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
-        mandatory: `${cachedEval.mandatoryCompliance.met}/${cachedEval.mandatoryCompliance.total}`,
-        mandatoryFailed: cachedEval.mandatoryRequirementFailed,
-        decision: cachedEval.recommendation,
-        by: 'Deterministic ATS Engine (v2.0)'
-      });
-    }
-
-    // For any candidate in candidate pool not yet evaluated against an explicit job, evaluate against default job
+    // 2. Also process candidate records associated directly with jobs (c.job_id or CANDIDATE_STORE)
     for (const item of allRecords) {
       const { candidate, jobId } = item;
-      const targetJobId = jobId || candidate.jobId || 'jd-1';
+      let targetJobId = jobId || candidate.jobId;
+
+      // If candidate has no explicit job, link to most recent job if available
+      if (!targetJobId || targetJobId.toLowerCase() === 'pool' || targetJobId === 'jd-1') {
+        const firstJobId = Array.from(jobsMap.keys())[0];
+        if (firstJobId) {
+          targetJobId = firstJobId;
+        } else {
+          continue;
+        }
+      }
+
       const pairKey = `${candidate.id}___${targetJobId}`;
       if (seenPairs.has(pairKey)) continue;
       seenPairs.add(pairKey);
@@ -439,13 +401,25 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
         ? new Date(candidate.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         : 'Recent';
 
+      const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
+
+      const comp = (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
+        ? jobContext.jobData.client
+        : (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
+        ? candidate.currentCompany
+        : 'Client Organization';
+
+      const role = (jobContext.jobData.position && !['candidate profile', 'candidate', 'professional role'].includes(jobContext.jobData.position.trim().toLowerCase()))
+        ? jobContext.jobData.position
+        : (candidate.currentTitle || 'Software Engineer');
+
       evaluationItems.push({
         id: candidate.id,
         candidate: candidate.name || candidate.fileName || 'Candidate',
-        role: candidate.currentTitle || jobContext.jobData.position || 'Professional Role',
-        job: jobContext.jobData.position || jobContext.jobData.title || 'Job Position',
+        role,
+        job: jobContext.jobData.position || jobContext.jobData.title || role,
         jobId: jobContext.jobData.id || targetJobId,
-        company: jobContext.jobData.client || candidate.currentCompany || 'Organization',
+        company: comp,
         date: createdDate,
         score,
         ats: Math.round(evalPayload.atsScore ?? score),

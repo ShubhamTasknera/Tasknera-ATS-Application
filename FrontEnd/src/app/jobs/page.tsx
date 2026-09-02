@@ -70,44 +70,17 @@ export default function JobsPage() {
         console.warn('API fetch warning:', e);
       }
 
-      // Merge local created jobs and API jobs cleanly
-      const combined: any[] = [...localCreatedJobs];
+      // Merge live API jobs with any un-synced local jobs cleanly
+      const combinedMap = new Map<string, any>();
       for (const item of fetchedRaw) {
-        if (!combined.some(c => String(c.id) === String(item.id))) {
-          combined.push(item);
+        combinedMap.set(String(item.id), item);
+      }
+      for (const local of localCreatedJobs) {
+        if (!combinedMap.has(String(local.id))) {
+          combinedMap.set(String(local.id), local);
         }
       }
-
-      if (combined.length === 0) {
-        combined.push(
-          {
-            id: 'job-sample-1',
-            position: 'Salesforce Manufacturing Cloud Developer',
-            title: 'Salesforce Manufacturing Cloud Developer',
-            client: 'Hexaware Technologies',
-            location: 'Remote / Bangalore',
-            work_mode: 'Hybrid',
-            salary: '$120,000 – $150,000 / year',
-            status: 'Active',
-            candidatesCount: 12,
-            topScore: 94,
-            created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: 'job-sample-2',
-            position: 'Senior SAP CO Consultant',
-            title: 'Senior SAP CO Consultant',
-            client: 'BlueOrbit Technologies',
-            location: 'New York, NY',
-            work_mode: 'Onsite',
-            salary: '$140,000 – $170,000 / year',
-            status: 'Active',
-            candidatesCount: 8,
-            topScore: 88,
-            created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-          }
-        );
-      }
+      const combined = Array.from(combinedMap.values());
 
       const mappedJobs: JobItem[] = combined.map((j: any) => {
         const rawStatus = (j.status || 'Active').toLowerCase();
@@ -168,17 +141,28 @@ export default function JobsPage() {
           const existing = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
           const updated = existing.filter((x: any) => String(x.id) !== String(id));
           localStorage.setItem('tasknera_created_jobs', JSON.stringify(updated));
+
+          const allSaved = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+          const updatedAll = allSaved.filter((x: any) => String(x.id) !== String(id));
+          localStorage.setItem('tasknera_all_jobs', JSON.stringify(updatedAll));
         } catch (e) {}
       }
 
-      setAllJobs(prev => prev.filter(j => j.id !== id));
+      setAllJobs(prev => prev.filter(j => String(j.id) !== String(id)));
+
+      await fetch(`${backendUrl}/jobs/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      }).catch(() => null);
 
       await fetch(`${backendUrl}/jobs?id=${id}`, {
         method: 'DELETE',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
-      });
+      }).catch(() => null);
     } catch (err) {
       console.error('Delete error:', err);
     } finally {

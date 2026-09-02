@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/authMiddleware';
 import { extractTextFromBuffer, parseJobDescription } from '../services/jdParsingService';
 import { extractDocumentTextViaPython } from '../services/pythonDocumentClient';
 import { parseJdWithAi } from '../services/jdAiService';
+import { CANDIDATE_STORE } from './candidateController';
 
 // Standard 36-character UUID format regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -308,12 +309,15 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
         .map((a: any) => a.match_score)
         .filter((s: any) => typeof s === 'number' && !isNaN(s));
       const topScore = matchScores.length > 0 ? Math.round(Math.max(...matchScores)) : null;
-      const candidatesCount = job._count?.candidates || job._count?.applications || 0;
+      const memCount = CANDIDATE_STORE.get(job.id)?.length || 0;
+      const dbCount = Math.max(job._count?.candidates || 0, job._count?.applications || 0);
+      const candidatesCount = Math.max(dbCount, memCount);
 
       const { applications, _count, ...rest } = job;
       return {
         ...rest,
         candidatesCount,
+        candidates: candidatesCount,
         topScore
       };
     });
