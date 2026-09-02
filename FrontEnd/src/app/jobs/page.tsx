@@ -5,6 +5,15 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
+interface JobWorker {
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
+  action?: string;
+  isCreator?: boolean;
+}
+
 interface JobItem {
   id: string;
   title: string;
@@ -16,6 +25,8 @@ interface JobItem {
   topScore: number | null;
   status: string;
   created: string;
+  workedBy: JobWorker[];
+  assignedRecruiter?: string;
 }
 
 const modeColors: Record<string, string> = {
@@ -29,6 +40,133 @@ const statusColors: Record<string, string> = {
   Draft:  'bg-amber-50 text-amber-700 border-amber-200',
   Closed: 'bg-slate-100 text-slate-600 border-slate-200',
 };
+
+const AVATAR_PALETTES = [
+  'bg-gradient-to-br from-indigo-500 to-purple-600 text-white',
+  'bg-gradient-to-br from-emerald-500 to-teal-600 text-white',
+  'bg-gradient-to-br from-amber-500 to-orange-600 text-white',
+  'bg-gradient-to-br from-blue-500 to-cyan-600 text-white',
+  'bg-gradient-to-br from-rose-500 to-pink-600 text-white',
+  'bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white',
+];
+
+function getAvatarStyle(name: string = '') {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % AVATAR_PALETTES.length;
+  return AVATAR_PALETTES[index];
+}
+
+function getInitials(name: string = '') {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return (name.slice(0, 2) || 'TA').toUpperCase();
+}
+
+function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWorker[]; isCompact?: boolean }) {
+  if (!workers || workers.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-slate-400">
+        <span className="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-400">?</span>
+        <span className="text-xs italic font-medium">Unassigned</span>
+      </div>
+    );
+  }
+
+  if (workers.length === 1) {
+    const w = workers[0];
+    return (
+      <div className="flex items-center gap-2 group/single relative">
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}>
+          {getInitials(w.name)}
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-slate-800 truncate max-w-[130px] flex items-center gap-1">
+            <span>{w.name}</span>
+            {w.isCreator && (
+              <span className="text-[8px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold shrink-0">Owner</span>
+            )}
+          </div>
+          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[130px]">
+            {w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter')}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative group/team inline-block">
+      <div className="flex items-center gap-2 cursor-pointer py-1 px-1.5 rounded-xl hover:bg-slate-100/90 transition-all">
+        {/* Overlapping avatar cluster */}
+        <div className="flex -space-x-2 overflow-hidden items-center py-0.5">
+          {workers.slice(0, 3).map((w, idx) => (
+            <div
+              key={w.id || idx}
+              title={`${w.name} (${w.action || w.role || 'Member'})`}
+              className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}
+            >
+              {getInitials(w.name)}
+            </div>
+          ))}
+          {workers.length > 3 && (
+            <div className="w-6 h-6 rounded-full ring-2 ring-white bg-slate-800 text-white flex items-center justify-center text-[9px] font-bold shadow-xs shrink-0">
+              +{workers.length - 3}
+            </div>
+          )}
+        </div>
+
+        <div className="text-left">
+          <div className="text-xs font-bold text-slate-800 leading-tight">
+            {workers[0].name.split(' ')[0]} <span className="text-slate-400 font-semibold">& {workers.length - 1} more</span>
+          </div>
+          <div className="text-[10px] font-semibold text-brand-orange">
+            {workers.length} Assigned
+          </div>
+        </div>
+      </div>
+
+      {/* Floating interactive Popover on hover */}
+      <div className="absolute left-0 bottom-full mb-2 hidden group-hover/team:block z-50 w-72 bg-slate-900 text-white rounded-2xl p-3.5 shadow-2xl border border-slate-700/90 animate-in fade-in zoom-in-95 duration-150 pointer-events-none">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+          <div className="flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Working On This Requisition</span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-full font-bold">{workers.length} Members</span>
+        </div>
+
+        <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+          {workers.map((w, idx) => (
+            <div key={w.id || idx} className="flex items-center gap-2.5">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}>
+                {getInitials(w.name)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span className="truncate">{w.name}</span>
+                  {w.isCreator && (
+                    <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-semibold shrink-0">Owner</span>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-400 truncate flex items-center gap-1">
+                  <span>{w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter')}</span>
+                  {w.email && <span className="text-slate-500">• {w.email}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function JobsPage() {
   const [allJobs, setAllJobs] = useState<JobItem[]>([]);
@@ -96,6 +234,34 @@ export default function JobsPage() {
         const rawMode = (j.work_mode || j.workMode || 'Remote').trim();
         const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
 
+        // Compute workers from DB or assigned recruiter
+        const workedBy: JobWorker[] = Array.isArray(j.workedBy) && j.workedBy.length > 0
+          ? j.workedBy
+          : (j.user
+              ? [{
+                  id: j.user.id || 'usr-creator',
+                  name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : 'Administrator'),
+                  email: j.user.email,
+                  role: j.user.role || 'ADMIN',
+                  action: 'Created Requisition',
+                  isCreator: true
+                }]
+              : (j.assignedRecruiter
+                  ? j.assignedRecruiter.split(',').map((nameStr: string, idx: number) => {
+                      const trimmed = nameStr.trim();
+                      return {
+                        id: `rec-${idx}`,
+                        name: trimmed,
+                        email: `${trimmed.toLowerCase().replace(/\s+/g, '.')}@tasknera.com`,
+                        role: idx === 0 ? 'Lead Recruiter' : 'Recruiter',
+                        action: idx === 0 ? 'Requisition Lead' : 'Candidate Screener',
+                        isCreator: idx === 0
+                      };
+                    })
+                  : [{ id: 'usr-admin', name: 'Administrator', email: 'admin@tasknera.com', role: 'ADMIN', action: 'Requisition Owner', isCreator: true }]
+                )
+            );
+
         return {
           id: String(j.id),
           title: j.position || j.title || 'Untitled Position',
@@ -106,7 +272,9 @@ export default function JobsPage() {
           candidates: typeof j.candidatesCount === 'number' ? j.candidatesCount : (Array.isArray(j.candidates) ? j.candidates.length : (typeof j.candidates === 'number' ? j.candidates : 0)),
           topScore: typeof j.topScore === 'number' ? j.topScore : (normalizedStatus === 'Active' ? 92 : null),
           status: normalizedStatus,
-          created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent'
+          created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
+          workedBy,
+          assignedRecruiter: j.assignedRecruiter || (workedBy.map(w => w.name).join(', '))
         };
       });
 
@@ -148,23 +316,21 @@ export default function JobsPage() {
         } catch (e) {}
       }
 
-      setAllJobs(prev => prev.filter(j => String(j.id) !== String(id)));
+      // Call API
+      try {
+        await fetch(`${backendUrl}/jobs/${id}`, {
+          method: 'DELETE',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        });
+      } catch (e) {
+        console.warn('Backend delete error (using local removal fallback):', e);
+      }
 
-      await fetch(`${backendUrl}/jobs/${id}`, {
-        method: 'DELETE',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      }).catch(() => null);
-
-      await fetch(`${backendUrl}/jobs?id=${id}`, {
-        method: 'DELETE',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      }).catch(() => null);
+      setAllJobs(prev => prev.filter(j => j.id !== id));
     } catch (err) {
-      console.error('Delete error:', err);
+      console.error('Delete failed:', err);
     } finally {
       setDeletingId(null);
     }
@@ -172,36 +338,40 @@ export default function JobsPage() {
 
   const filtered = allJobs.filter(j => {
     const q = search.toLowerCase();
-    const matchQ = j.title.toLowerCase().includes(q) || j.client.toLowerCase().includes(q) || j.location.toLowerCase().includes(q);
-    const matchF = filter === 'All' || j.status === filter;
-    return matchQ && matchF;
+    const matchesSearch =
+      j.title.toLowerCase().includes(q) ||
+      j.client.toLowerCase().includes(q) ||
+      j.location.toLowerCase().includes(q) ||
+      (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(q)));
+    const matchesFilter = filter === 'All' || j.status === filter;
+    return matchesSearch && matchesFilter;
   });
 
   const counts = {
-    All:    allJobs.length,
+    All: allJobs.length,
     Active: allJobs.filter(j => j.status === 'Active').length,
-    Draft:  allJobs.filter(j => j.status === 'Draft').length,
+    Draft: allJobs.filter(j => j.status === 'Draft').length,
     Closed: allJobs.filter(j => j.status === 'Closed').length,
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col selection:bg-orange-500 selection:text-white antialiased">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans">
       <Header />
-      <main className="max-w-screen-xl mx-auto px-6 pt-24 pb-16 flex-1 w-full">
 
-        {/* Header */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16">
+        {/* Top Header Banner */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-50 border border-orange-200 rounded-full text-xs font-bold text-brand-orange mb-2">
-              <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-orange-pale text-brand-orange text-xs font-bold uppercase tracking-wider mb-2 border border-brand-orange/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse" />
               Requisitions Directory
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Active Job Requisitions</h1>
-            <p className="text-xs text-slate-500 mt-1">Manage job rubrics, deterministic requirement weights, and candidate evaluation pipelines</p>
+            <p className="text-sm text-slate-500 mt-1">Manage positions, monitor assigned TA teams, review deterministic rubrics, and run automated candidate matching</p>
           </div>
           <Link
             href="/jobs/create"
-            className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow-md hover:-translate-y-0.5 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-bold shadow-orange transition-all duration-200 active:scale-95"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -210,75 +380,73 @@ export default function JobsPage() {
           </Link>
         </div>
 
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        {/* Stats Summary Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           {[
             { label: 'Total Requisitions', value: counts.All, color: 'text-slate-900', badge: 'bg-slate-100 text-slate-700 border-slate-200', icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
-            { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-            { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-700', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-            { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-600', badge: 'bg-slate-100 text-slate-600 border-slate-200', icon: 'M5 13l4 4L19 7' },
-          ].map((s, i) => (
-            <div key={i} className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs transition-all hover:shadow-sm hover:border-slate-300">
+            { label: 'Active Pipeline', value: counts.Active, color: 'text-emerald-600', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Draft Rubrics', value: counts.Draft, color: 'text-amber-600', badge: 'bg-amber-50 text-amber-700 border-amber-200', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+            { label: 'Closed / Filled', value: counts.Closed, color: 'text-slate-500', badge: 'bg-slate-50 text-slate-600 border-slate-200', icon: 'M5 13l4 4L19 7' },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{s.label}</span>
-                <span className={`w-7 h-7 rounded-xl border ${s.badge} flex items-center justify-center flex-shrink-0 shadow-2xs`}>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{stat.label}</span>
+                <div className={`w-7 h-7 rounded-xl flex items-center justify-center border ${stat.badge}`}>
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={s.icon} />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} />
                   </svg>
-                </span>
+                </div>
               </div>
-              <div className={`text-2xl font-black ${s.color} tracking-tight`}>{s.value}</div>
+              <div className={`text-3xl font-extrabold ${stat.color}`}>{stat.value}</div>
             </div>
           ))}
         </div>
 
-        {/* Filter Bar */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="relative flex-1 w-full md:max-w-md">
-            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Filter Controls Bar */}
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-4 shadow-sm mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full sm:w-96">
+            <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
+              placeholder="Search by position title, client, location, or recruiter..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by position title, client, or location..."
-              className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-colors"
+              className="w-full pl-10 pr-4 py-2 bg-[#F8FAFC] border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange transition-all"
             />
           </div>
 
-          <div className="flex items-center justify-between w-full md:w-auto gap-3">
-            {/* Status Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto">
-              {(['All', 'Active', 'Draft', 'Closed'] as const).map(f => (
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-xl border border-slate-200">
+              {(['All', 'Active', 'Draft', 'Closed'] as const).map(tab => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    filter === f
-                      ? 'bg-brand-orange text-white shadow-orange'
-                      : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200/70'
+                  key={tab}
+                  onClick={() => setFilter(tab)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    filter === tab
+                      ? 'bg-brand-orange text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                   }`}
                 >
-                  {f} <span className="ml-1 opacity-70">({counts[f]})</span>
+                  {tab} ({counts[tab]})
                 </button>
               ))}
             </div>
 
-            {/* View Mode Switcher */}
-            <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1">
+            <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-xl border border-slate-200">
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'table' ? 'bg-white text-brand-orange shadow-xs' : 'text-slate-500'}`}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-white shadow-xs text-brand-orange' : 'text-slate-400 hover:text-slate-700'}`}
                 title="Table View"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white text-brand-orange shadow-xs' : 'text-slate-500'}`}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-xs text-brand-orange' : 'text-slate-400 hover:text-slate-700'}`}
                 title="Grid View"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,9 +459,9 @@ export default function JobsPage() {
 
         {/* Content Display */}
         {isLoading ? (
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-12 text-center shadow-sm">
-            <div className="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs font-semibold text-slate-500">Loading requisitions...</p>
+          <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
+            <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="mt-4 text-sm text-slate-500 font-medium">Fetching your requisitions...</p>
           </div>
         ) : viewMode === 'table' ? (
           <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
@@ -302,6 +470,7 @@ export default function JobsPage() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="px-6 py-4">Position Title</th>
+                    <th className="px-4 py-4">Assigned Team</th>
                     <th className="px-4 py-4 hidden lg:table-cell">Comp Range</th>
                     <th className="px-4 py-4 text-center">Work Mode</th>
                     <th className="px-4 py-4 text-center">Applicants</th>
@@ -312,12 +481,15 @@ export default function JobsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
                   {filtered.map(j => (
-                    <tr key={j.id} className="hover:bg-slate-50/80 transition-colors group">
+                    <tr key={j.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <Link href={`/jobs/${j.id}/requirements`} className="text-sm font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors">
                           {j.title}
                         </Link>
                         <div className="text-xs text-slate-500 mt-0.5">{j.client} • {j.location}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <WorkedByMembers workers={j.workedBy} />
                       </td>
                       <td className="px-4 py-4 hidden lg:table-cell">
                         <span className="text-xs font-semibold text-slate-700">{j.salary}</span>
@@ -349,27 +521,10 @@ export default function JobsPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/jobs/${j.id}/requirements`}
-                            className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 hover:border-brand-orange hover:text-brand-orange rounded-xl transition-all"
-                          >
-                            Rubric
-                          </Link>
-                          <Link
-                            href={`/jobs/${j.id}/candidates`}
-                            className="px-3 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
-                          >
-                            Evaluate CVs
-                          </Link>
-                          <button
-                            onClick={() => handleDeleteJob(j.id, j.title)}
-                            disabled={deletingId === j.id}
-                            title="Delete Job"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
+                          <Link href={`/jobs/${j.id}/requirements`} className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Rubric</Link>
+                          <Link href={`/jobs/${j.id}/candidates`} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all">Evaluate</Link>
+                          <button onClick={() => handleDeleteJob(j.id, j.title)} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </div>
                       </td>
@@ -382,27 +537,13 @@ export default function JobsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map(j => (
-              <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all card-hover-lift flex flex-col justify-between relative group">
+              <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col relative group">
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status] || statusColors.Draft}`}>
                       {j.status}
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${modeColors[j.mode] || modeColors.Remote}`}>
-                        {j.mode}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteJob(j.id, j.title)}
-                        disabled={deletingId === j.id}
-                        title="Delete Job"
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
+                    <button onClick={() => handleDeleteJob(j.id, j.title)} className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                   </div>
 
                   <Link href={`/jobs/${j.id}/requirements`} className="text-base font-bold text-[#1E293B] hover:text-brand-orange transition-colors">
@@ -410,7 +551,7 @@ export default function JobsPage() {
                   </Link>
                   <p className="text-xs text-slate-500 mt-1 mb-4">{j.client} • {j.location}</p>
 
-                  <div className="bg-[#F8FAFC] rounded-2xl p-3.5 border border-slate-200 flex items-center justify-between text-xs mb-5">
+                  <div className="bg-[#F8FAFC] rounded-2xl p-3.5 border border-slate-200 flex items-center justify-between text-xs mb-3">
                     <div>
                       <div className="text-[10px] uppercase font-bold text-slate-500">Applicants</div>
                       <div className="text-sm font-extrabold text-[#1E293B]">{j.candidates}</div>
@@ -422,21 +563,17 @@ export default function JobsPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Assigned Team Section */}
+                  <div className="bg-slate-50/70 rounded-2xl p-2.5 border border-slate-100 flex items-center justify-between mb-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned TA</span>
+                    <WorkedByMembers workers={j.workedBy} isCompact />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-4 border-t border-slate-100">
-                  <Link
-                    href={`/jobs/${j.id}/requirements`}
-                    className="flex-1 text-center py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200/70 border border-slate-200 rounded-xl transition-all"
-                  >
-                    View Rubric
-                  </Link>
-                  <Link
-                    href={`/jobs/${j.id}/candidates`}
-                    className="flex-1 text-center py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange"
-                  >
-                    Evaluate
-                  </Link>
+                <div className="flex items-center gap-2 pt-4 border-t border-slate-100 mt-auto">
+                  <Link href={`/jobs/${j.id}/requirements`} className="flex-1 text-center py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Rubric</Link>
+                  <Link href={`/jobs/${j.id}/candidates`} className="flex-1 text-center py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-orange">Evaluate</Link>
                 </div>
               </div>
             ))}

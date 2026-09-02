@@ -32,6 +32,21 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction): vo
   }
 };
 
+export const optionalProtect = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
+      const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole };
+      req.user = decoded;
+    } catch (error) {
+      // Ignore token decode errors in optional mode
+    }
+  }
+  next();
+};
+
 /**
  * Role-Based Access Control (RBAC) authorization middleware
  * @param allowedRoles Array of roles permitted to access the route

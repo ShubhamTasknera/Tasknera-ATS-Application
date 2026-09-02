@@ -33,7 +33,11 @@ async function findUserJob(jobIdParam: string | string[] | undefined, userId: st
     return { error: `Job with ID "${jobId}" not found.`, status: 404, jobId };
   }
 
-  // All authenticated members and admins have access to view, edit, and confirm requirements
+  // Enforce RBAC: Non-admin recruiters only have access to requirements of JDs they created
+  if (userRole && userRole !== 'ADMIN' && job.created_by !== userId) {
+    return { error: 'Forbidden: You only have access to requirements for your own job requisitions.', status: 403, jobId };
+  }
+
   return { job, jobId };
 }
 

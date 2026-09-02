@@ -278,6 +278,13 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       ];
     }
 
+    // Role-Based Access Control:
+    // If authenticated user is NOT an ADMIN, only return JDs created by this user.
+    // Administrators (ADMIN) can view all JDs across the organization.
+    if (req.user && req.user.role !== 'ADMIN') {
+      whereClause.created_by = req.user.userId;
+    }
+
     let jobs: any[] = [];
     try {
       jobs = await prisma.job.findMany({
@@ -287,6 +294,28 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
         },
         include: {
           requirements: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          },
+          candidates: {
+            select: {
+              id: true,
+              created_by: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true
+                }
+              }
+            }
+          },
           _count: {
             select: {
               candidates: true,
@@ -313,12 +342,60 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       const dbCount = Math.max(job._count?.candidates || 0, job._count?.applications || 0);
       const candidatesCount = Math.max(dbCount, memCount);
 
-      const { applications, _count, ...rest } = job;
+      // Collect all unique team members working on this JD from database
+      const workedByMap = new Map<string, {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        action: string;
+        isCreator: boolean;
+      }>();
+
+      // 1. Requisition Owner / Creator
+      if (job.user) {
+        const creatorName = job.user.name || (job.user.email ? job.user.email.split('@')[0] : 'Administrator');
+        workedByMap.set(job.user.id, {
+          id: job.user.id,
+          name: creatorName,
+          email: job.user.email,
+          role: job.user.role || 'ADMIN',
+          action: 'Created Requisition',
+          isCreator: true
+        });
+      }
+
+      // 2. Candidate Processors / Recruiters from database
+      if (Array.isArray(job.candidates)) {
+        for (const cand of job.candidates) {
+          if (cand.user && !workedByMap.has(cand.user.id)) {
+            const candRecruiterName = cand.user.name || (cand.user.email ? cand.user.email.split('@')[0] : 'Recruiter');
+            workedByMap.set(cand.user.id, {
+              id: cand.user.id,
+              name: candRecruiterName,
+              email: cand.user.email,
+              role: cand.user.role || 'MEMBER',
+              action: 'Processed Candidates',
+              isCreator: cand.user.id === job.created_by
+            });
+          }
+        }
+      }
+
+      const workedBy = Array.from(workedByMap.values());
+      const assignedRecruiter = workedBy.length > 0
+        ? workedBy.map(u => u.name).join(', ')
+        : (job.user?.name || 'Administrator');
+
+      const { applications, candidates, _count, ...rest } = job;
       return {
         ...rest,
         candidatesCount,
         candidates: candidatesCount,
-        topScore
+        topScore,
+        workedBy,
+        assignedRecruiter,
+        creator: job.user || null
       };
     });
 
@@ -337,8 +414,11 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
 // @access  Private / Authenticated Recruiter
 export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const whereClause: any = {};
-    if (req.user && req.user.userId) {
+    const whereClause: any = {
+      status: { not: 'archived' }
+    };
+    // Non-admin members only see their own created jobs for matching
+    if (req.user && req.user.role !== 'ADMIN') {
       whereClause.created_by = req.user.userId;
     }
 
@@ -431,6 +511,28 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
         where: { id: jobId },
         include: {
           requirements: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true
+            }
+          },
+          candidates: {
+            select: {
+              id: true,
+              created_by: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true
+                }
+              }
+            }
+          },
           _count: {
             select: {
               candidates: true,
@@ -441,7 +543,49 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       });
 
       if (job) {
-        res.status(200).json({ job });
+        // Enforce RBAC: Non-admin recruiters can only access their own jobs
+        if (req.user && req.user.role !== 'ADMIN' && job.created_by !== req.user.userId) {
+          res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
+          return;
+        }
+
+        const workedByMap = new Map<string, any>();
+        if (job.user) {
+          workedByMap.set(job.user.id, {
+            id: job.user.id,
+            name: job.user.name || (job.user.email ? job.user.email.split('@')[0] : 'Administrator'),
+            email: job.user.email,
+            role: job.user.role || 'ADMIN',
+            action: 'Created Requisition',
+            isCreator: true
+          });
+        }
+        if (Array.isArray(job.candidates)) {
+          for (const cand of job.candidates) {
+            if (cand.user && !workedByMap.has(cand.user.id)) {
+              workedByMap.set(cand.user.id, {
+                id: cand.user.id,
+                name: cand.user.name || (cand.user.email ? cand.user.email.split('@')[0] : 'Recruiter'),
+                email: cand.user.email,
+                role: cand.user.role || 'MEMBER',
+                action: 'Processed Candidates',
+                isCreator: cand.user.id === job.created_by
+              });
+            }
+          }
+        }
+        const workedBy = Array.from(workedByMap.values());
+        const assignedRecruiter = workedBy.length > 0
+          ? workedBy.map(u => u.name).join(', ')
+          : (job.user?.name || 'Administrator');
+
+        res.status(200).json({
+          job: {
+            ...job,
+            workedBy,
+            assignedRecruiter
+          }
+        });
         return;
       }
     }
@@ -550,6 +694,12 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
+    // Enforce RBAC: Non-admin members can only update their own created JDs
+    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
+      res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
+      return;
+    }
+
     const { client, position, location, work_mode, salary, jd_text, jd_file_url, status } = req.body;
 
     // Optional Status Validation if provided
@@ -607,6 +757,12 @@ export const deleteJob = async (req: AuthRequest, res: Response): Promise<void> 
 
     if (!existingJob) {
       res.status(404).json({ error: `Job with ID "${jobId}" not found` });
+      return;
+    }
+
+    // Enforce RBAC: Non-admin members can only delete their own created JDs
+    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
+      res.status(403).json({ error: 'Forbidden: You can only delete requisitions created by you.' });
       return;
     }
 

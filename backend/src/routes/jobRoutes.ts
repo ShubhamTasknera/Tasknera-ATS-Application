@@ -9,7 +9,7 @@ import {
   parseJobDescriptionController,
   getAvailableJobsForEvaluation
 } from '../controllers/jobController';
-import { protect, authorize } from '../middleware/authMiddleware';
+import { protect, optionalProtect, authorize } from '../middleware/authMiddleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -40,15 +40,15 @@ import {
 // Available Jobs for Candidate Evaluation & Matching (Entry Point 2)
 router.get('/available-for-evaluation', getAvailableJobsForEvaluation);
 
-// Protect database routes with JWT authentication middleware
+// Database routes
 router.post('/', protect, createJob);
-router.get('/', protect, getAllJobs);
-router.get('/:id', protect, getJobById);
+router.get('/', optionalProtect, getAllJobs);
+router.get('/:id', optionalProtect, getJobById);
 router.put('/:id', protect, updateJob);
 router.delete('/:id', protect, deleteJob);
 
 // Requirement CRUD & Confirmation API Routes
-router.get('/:jobId/requirements', protect, getRequirements);
+router.get('/:jobId/requirements', optionalProtect, getRequirements);
 router.post('/:jobId/requirements', protect, createRequirement);
 router.put('/:jobId/requirements/:requirementId', protect, updateRequirement);
 router.delete('/:jobId/requirements/:requirementId', protect, deleteRequirement);

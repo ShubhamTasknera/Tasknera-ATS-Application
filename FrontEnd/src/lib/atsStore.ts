@@ -51,6 +51,15 @@ export interface CandidateItem {
   uploadedAt: string;
 }
 
+export interface JobWorker {
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
+  action?: string;
+  isCreator?: boolean;
+}
+
 export interface JobItem {
   id: string;
   title: string;
@@ -62,6 +71,7 @@ export interface JobItem {
   topScore: number;
   status: 'Active' | 'Draft' | 'Closed';
   assignedRecruiter: string;
+  workedBy?: JobWorker[];
   pod: string;
   createdAtDaysAgo: number;
   mandatoryRequirementsCount: number;
@@ -126,7 +136,11 @@ const INITIAL_JOBS: JobItem[] = [
     candidates: 42,
     topScore: 94,
     status: 'Active',
-    assignedRecruiter: 'Sarah Mitchell',
+    assignedRecruiter: 'Sarah Mitchell, Administrator',
+    workedBy: [
+      { id: 'usr-1', name: 'Sarah Mitchell', email: 'sarah.m@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Lead Recruiter', isCreator: false },
+      { id: 'usr-admin', name: 'Administrator', email: 'admin@tasknera.com', role: 'ADMIN', action: 'Requisition Owner', isCreator: true }
+    ],
     pod: 'SAP & Enterprise Practice',
     createdAtDaysAgo: 12,
     mandatoryRequirementsCount: 4,
@@ -151,6 +165,9 @@ const INITIAL_JOBS: JobItem[] = [
     topScore: 88,
     status: 'Active',
     assignedRecruiter: 'Sarah Mitchell',
+    workedBy: [
+      { id: 'usr-1', name: 'Sarah Mitchell', email: 'sarah.m@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Lead Recruiter', isCreator: true }
+    ],
     pod: 'SAP & Enterprise Practice',
     createdAtDaysAgo: 32, // Aging job > 25 days
     mandatoryRequirementsCount: 5,
@@ -167,7 +184,11 @@ const INITIAL_JOBS: JobItem[] = [
     candidates: 65,
     topScore: 91,
     status: 'Active',
-    assignedRecruiter: 'Priya Sharma',
+    assignedRecruiter: 'Priya Sharma, David Park',
+    workedBy: [
+      { id: 'usr-2', name: 'Priya Sharma', email: 'priya.s@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Lead Recruiter', isCreator: true },
+      { id: 'usr-3', name: 'David Park', email: 'david.p@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Technical Screener', isCreator: false }
+    ],
     pod: 'Cloud & Engineering Pod',
     createdAtDaysAgo: 8,
     mandatoryRequirementsCount: 4,
@@ -184,7 +205,12 @@ const INITIAL_JOBS: JobItem[] = [
     candidates: 34,
     topScore: 83,
     status: 'Active',
-    assignedRecruiter: 'David Park',
+    assignedRecruiter: 'David Park, Sarah Mitchell, Priya Sharma',
+    workedBy: [
+      { id: 'usr-3', name: 'David Park', email: 'david.p@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Lead Recruiter', isCreator: true },
+      { id: 'usr-1', name: 'Sarah Mitchell', email: 'sarah.m@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Sourced 12 CVs', isCreator: false },
+      { id: 'usr-2', name: 'Priya Sharma', email: 'priya.s@tasknera.com', role: 'RECRUITER_MEMBER', action: 'Interview Panel', isCreator: false }
+    ],
     pod: 'Cloud & Engineering Pod',
     createdAtDaysAgo: 29, // Aging job > 25 days
     mandatoryRequirementsCount: 5,

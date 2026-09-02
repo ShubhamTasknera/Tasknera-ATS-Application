@@ -727,9 +727,14 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
 
     const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
 
-    // Fetch all active jobs in organization
+    const jobWhere: any = { status: { not: 'archived' } };
+    if (req.user && req.user.role !== 'ADMIN') {
+      jobWhere.created_by = req.user.userId;
+    }
+
+    // Fetch active jobs (filtered by creator for members, all for admin)
     const dbJobs = await prisma.job.findMany({
-      where: { status: { not: 'archived' } },
+      where: jobWhere,
       include: {
         requirements: true,
         applications: isCandUuid ? {

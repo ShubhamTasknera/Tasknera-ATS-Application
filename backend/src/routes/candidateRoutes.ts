@@ -14,6 +14,8 @@ import {
   evaluateCandidateJobController
 } from '../controllers/evaluationController';
 
+import { optionalProtect } from '../middleware/authMiddleware';
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit per file
@@ -21,14 +23,14 @@ const upload = multer({
 
 const router = Router();
 
-// Retrieve all candidates in central candidate pool
+// Retrieve all candidates in central candidate pool (common to all members & admin)
 router.get('/', getAllCandidates);
 
 // Bulk upload CVs directly to candidate pool
 router.post('/upload', upload.any(), uploadCandidateCVs);
 
-// Available jobs in organization for matching against a candidate
-router.get('/:candidateId/available-jobs', getAvailableJobsForCandidateController);
+// Available jobs in organization for matching against a candidate (filtered by permissions)
+router.get('/:candidateId/available-jobs', optionalProtect, getAvailableJobsForCandidateController);
 
 // Attach candidate to a job (create/reuse CandidateJob)
 router.post('/:candidateId/jobs', attachCandidateToJobController);

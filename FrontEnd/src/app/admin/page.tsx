@@ -845,8 +845,72 @@ export default function AdminPage() {
                         <div className="text-slate-500 text-[11px] mt-0.5">{job.client} • {job.location} ({job.mode})</div>
                       </td>
 
-                      <td className="px-4 py-4 font-bold text-slate-800">
-                        {job.assignedRecruiter}
+                      <td className="px-4 py-4">
+                        {job.workedBy && job.workedBy.length > 1 ? (
+                          <div className="relative group/team inline-block">
+                            <div className="flex items-center gap-2 cursor-pointer py-1 px-1.5 rounded-xl hover:bg-slate-100/90 transition-all">
+                              <div className="flex -space-x-2 overflow-hidden items-center">
+                                {job.workedBy.slice(0, 3).map((w, idx) => {
+                                  const initials = w.name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'TA';
+                                  const colors = ['bg-indigo-600', 'bg-emerald-600', 'bg-amber-600', 'bg-blue-600', 'bg-rose-600'];
+                                  return (
+                                    <div
+                                      key={w.id || idx}
+                                      title={`${w.name} (${w.action || w.role || 'Member'})`}
+                                      className={`w-6 h-6 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-black text-white shadow-xs shrink-0 ${colors[idx % colors.length]}`}
+                                    >
+                                      {initials}
+                                    </div>
+                                  );
+                                })}
+                                {job.workedBy.length > 3 && (
+                                  <div className="w-6 h-6 rounded-full ring-2 ring-white bg-slate-800 text-white flex items-center justify-center text-[9px] font-bold shadow-xs shrink-0">
+                                    +{job.workedBy.length - 3}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-left">
+                                <div className="text-xs font-bold text-slate-800 leading-tight">
+                                  {job.workedBy[0].name.split(' ')[0]} <span className="text-slate-400 font-semibold">& {job.workedBy.length - 1} more</span>
+                                </div>
+                                <div className="text-[10px] font-semibold text-brand-orange">
+                                  {job.workedBy.length} Assigned
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Dropdown Popover on Hover */}
+                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover/team:block z-50 w-64 bg-slate-900 text-white rounded-2xl p-3 shadow-2xl border border-slate-700 pointer-events-none">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-800 pb-1 flex justify-between">
+                                <span>Assigned TA Team</span>
+                                <span className="text-brand-orange font-bold">{job.workedBy.length} Members</span>
+                              </div>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {job.workedBy.map((w, idx) => (
+                                  <div key={w.id || idx} className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-slate-700 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                      {w.name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-bold text-white truncate flex items-center gap-1">
+                                        <span>{w.name}</span>
+                                        {w.isCreator && <span className="text-[8px] px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded">Owner</span>}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 truncate">{w.action || w.role}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[9px] font-black shrink-0 shadow-xs">
+                              {(job.assignedRecruiter || 'TA').slice(0, 2).toUpperCase()}
+                            </div>
+                            <span className="font-bold text-slate-800 text-xs truncate max-w-[130px]">{job.assignedRecruiter}</span>
+                          </div>
+                        )}
                       </td>
 
                       <td className="px-4 py-4 text-slate-600 font-medium">
