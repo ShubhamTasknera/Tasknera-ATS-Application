@@ -352,8 +352,21 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
         isCreator: boolean;
       }>();
 
+      const isExcludedWorker = (name?: string | null, email?: string | null) => {
+        const n = (name || '').toLowerCase().trim();
+        const e = (email || '').toLowerCase().trim();
+        return (
+          n === 'tasknera user' ||
+          n === 'tasknera' ||
+          n === 'unassigned' ||
+          e.startsWith('frontend_user') ||
+          e.includes('frontend_user') ||
+          e.includes('tasknera_user')
+        );
+      };
+
       // 1. Requisition Owner / Creator
-      if (job.user) {
+      if (job.user && !isExcludedWorker(job.user.name, job.user.email)) {
         const creatorName = job.user.name || (job.user.email ? job.user.email.split('@')[0] : 'Administrator');
         workedByMap.set(job.user.id, {
           id: job.user.id,
@@ -368,7 +381,7 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       // 2. Candidate Processors / Recruiters from database
       if (Array.isArray(job.candidates)) {
         for (const cand of job.candidates) {
-          if (cand.user && !workedByMap.has(cand.user.id)) {
+          if (cand.user && !workedByMap.has(cand.user.id) && !isExcludedWorker(cand.user.name, cand.user.email)) {
             const candRecruiterName = cand.user.name || (cand.user.email ? cand.user.email.split('@')[0] : 'Recruiter');
             workedByMap.set(cand.user.id, {
               id: cand.user.id,
@@ -549,8 +562,21 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
           return;
         }
 
+        const isExcludedWorker = (name?: string | null, email?: string | null) => {
+          const n = (name || '').toLowerCase().trim();
+          const e = (email || '').toLowerCase().trim();
+          return (
+            n === 'tasknera user' ||
+            n === 'tasknera' ||
+            n === 'unassigned' ||
+            e.startsWith('frontend_user') ||
+            e.includes('frontend_user') ||
+            e.includes('tasknera_user')
+          );
+        };
+
         const workedByMap = new Map<string, any>();
-        if (job.user) {
+        if (job.user && !isExcludedWorker(job.user.name, job.user.email)) {
           workedByMap.set(job.user.id, {
             id: job.user.id,
             name: job.user.name || (job.user.email ? job.user.email.split('@')[0] : 'Administrator'),
@@ -562,7 +588,7 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
         }
         if (Array.isArray(job.candidates)) {
           for (const cand of job.candidates) {
-            if (cand.user && !workedByMap.has(cand.user.id)) {
+            if (cand.user && !workedByMap.has(cand.user.id) && !isExcludedWorker(cand.user.name, cand.user.email)) {
               workedByMap.set(cand.user.id, {
                 id: cand.user.id,
                 name: cand.user.name || (cand.user.email ? cand.user.email.split('@')[0] : 'Recruiter'),

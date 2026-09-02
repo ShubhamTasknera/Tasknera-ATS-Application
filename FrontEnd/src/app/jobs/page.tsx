@@ -67,8 +67,23 @@ function getInitials(name: string = '') {
   return (name.slice(0, 2) || 'TA').toUpperCase();
 }
 
+const isExcludedWorker = (w?: JobWorker | null) => {
+  if (!w) return true;
+  const name = (w.name || '').toLowerCase().trim();
+  const email = (w.email || '').toLowerCase().trim();
+  return (
+    name === 'tasknera user' ||
+    name === 'tasknera' ||
+    name === 'unassigned' ||
+    email.startsWith('frontend_user') ||
+    email.includes('frontend_user') ||
+    email.includes('tasknera_user')
+  );
+};
+
 function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWorker[]; isCompact?: boolean }) {
-  if (!workers || workers.length === 0) {
+  const activeWorkers = (workers || []).filter(w => !isExcludedWorker(w));
+  if (!activeWorkers || activeWorkers.length === 0) {
     return (
       <div className="flex items-center gap-1.5 text-slate-400">
         <span className="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-400">?</span>
@@ -77,8 +92,8 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
     );
   }
 
-  if (workers.length === 1) {
-    const w = workers[0];
+  if (activeWorkers.length === 1) {
+    const w = activeWorkers[0];
     return (
       <div className="flex items-center gap-2 group/single relative">
         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}>
@@ -104,7 +119,7 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
       <div className="flex items-center gap-2 cursor-pointer py-1 px-1.5 rounded-xl hover:bg-slate-100/90 transition-all">
         {/* Overlapping avatar cluster */}
         <div className="flex -space-x-2 overflow-hidden items-center py-0.5">
-          {workers.slice(0, 3).map((w, idx) => (
+          {activeWorkers.slice(0, 3).map((w, idx) => (
             <div
               key={w.id || idx}
               title={`${w.name} (${w.action || w.role || 'Member'})`}
@@ -113,19 +128,19 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
               {getInitials(w.name)}
             </div>
           ))}
-          {workers.length > 3 && (
+          {activeWorkers.length > 3 && (
             <div className="w-6 h-6 rounded-full ring-2 ring-white bg-slate-800 text-white flex items-center justify-center text-[9px] font-bold shadow-xs shrink-0">
-              +{workers.length - 3}
+              +{activeWorkers.length - 3}
             </div>
           )}
         </div>
 
         <div className="text-left">
           <div className="text-xs font-bold text-slate-800 leading-tight">
-            {workers[0].name.split(' ')[0]} <span className="text-slate-400 font-semibold">& {workers.length - 1} more</span>
+            {activeWorkers[0].name.split(' ')[0]} <span className="text-slate-400 font-semibold">& {activeWorkers.length - 1} more</span>
           </div>
           <div className="text-[10px] font-semibold text-brand-orange">
-            {workers.length} Assigned
+            {activeWorkers.length} Assigned
           </div>
         </div>
       </div>
@@ -139,11 +154,11 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
             </svg>
             <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Working On This Requisition</span>
           </div>
-          <span className="text-[10px] px-2 py-0.5 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-full font-bold">{workers.length} Members</span>
+          <span className="text-[10px] px-2 py-0.5 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-full font-bold">{activeWorkers.length} Members</span>
         </div>
 
         <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-          {workers.map((w, idx) => (
+          {activeWorkers.map((w, idx) => (
             <div key={w.id || idx} className="flex items-center gap-2.5">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}>
                 {getInitials(w.name)}
@@ -235,7 +250,7 @@ export default function JobsPage() {
         const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
 
         // Compute workers from DB or assigned recruiter
-        const workedBy: JobWorker[] = Array.isArray(j.workedBy) && j.workedBy.length > 0
+        const rawWorkedBy: JobWorker[] = Array.isArray(j.workedBy) && j.workedBy.length > 0
           ? j.workedBy
           : (j.user
               ? [{
@@ -262,6 +277,20 @@ export default function JobsPage() {
                 )
             );
 
+        const workedBy: JobWorker[] = rawWorkedBy.filter(w => !isExcludedWorker(w));
+        if (workedBy.length === 0 && j.user && !isExcludedWorker(j.user as any)) {
+          workedBy.push({
+            id: j.user.id || 'usr-creator',
+            name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : 'Administrator'),
+            email: j.user.email,
+            role: j.user.role || 'ADMIN',
+            action: 'Created Requisition',
+            isCreator: true
+          });
+        }
+
+        const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || 'Administrator');
+
         return {
           id: String(j.id),
           title: j.position || j.title || 'Untitled Position',
@@ -274,7 +303,7 @@ export default function JobsPage() {
           status: normalizedStatus,
           created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
           workedBy,
-          assignedRecruiter: j.assignedRecruiter || (workedBy.map(w => w.name).join(', '))
+          assignedRecruiter: validAssignedRecruiter
         };
       });
 
