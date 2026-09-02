@@ -61,7 +61,7 @@ export default function CandidatesPage() {
     async function loadCandidatesFromBackend() {
       try {
         setIsLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
         const res = await fetch(`${backendUrl}/jobs/jd-1/candidates`);
         if (res.ok) {
           const data = await res.json();

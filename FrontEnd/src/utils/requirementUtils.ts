@@ -586,52 +586,77 @@ export const computeComprehensiveMatchScore = (
     const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
     if (yearsPattern || reqCategory.includes('exp') || reqLower.includes('experience')) {
       const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
-      const cleanSkill = reqText.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven)/gi, '').trim().toLowerCase();
       
-      let candidateRelevantExp = totalCareerYears;
-      if (cleanSkill.length > 2 && !rawText.toLowerCase().includes(cleanSkill)) {
-        candidateRelevantExp = 0;
+      // Check if candidate matches domain or general experience
+      const expKeywords = reqLower
+        .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
+        .split(/[\s,;/]+/)
+        .map(w => w.trim().toLowerCase())
+        .filter(w => w.length > 2);
+
+      let domainMatch = true;
+      if (expKeywords.length > 0) {
+        domainMatch = expKeywords.some(kw =>
+          rawText.toLowerCase().includes(kw) ||
+          candSkills.some(s => s.includes(kw))
+        );
       }
 
+      const candidateRelevantExp = domainMatch ? totalCareerYears : (totalCareerYears > 0 ? totalCareerYears * 0.7 : 0);
       totalExpWeight += weight;
 
       if (candidateRelevantExp >= requiredYears) {
         earnedExpWeight += (1.0 * weight);
         if (isMandatory) mandatoryMetCount++;
-      } else if (candidateRelevantExp >= requiredYears * 0.6) {
-        earnedExpWeight += (0.5 * weight);
-        if (isMandatory) mandatoryRequirementFailed = true;
+      } else if (candidateRelevantExp >= requiredYears * 0.6 || totalCareerYears >= requiredYears) {
+        earnedExpWeight += (0.8 * weight);
+        if (isMandatory) mandatoryMetCount++;
       } else {
+        earnedExpWeight += (0.4 * weight);
         if (isMandatory) mandatoryRequirementFailed = true;
       }
       continue;
     }
 
-    // 2. Technical Skills Requirements
-    if (reqCategory.includes('skill') || reqCategory.includes('tech') || reqCategory.includes('tool')) {
-      const cleanTech = reqText.replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in)/gi, '').trim();
-      const techLower = cleanTech.toLowerCase();
-      
-      // Check negation
-      const isNegated = new RegExp(`\\b(?:not|no|never|without|lacks?)\\s+(?:[a-zA-Z0-9_,\\s]{0,20}\\s+)?${techLower.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i').test(rawText);
+    // 2. Technical Skills & Tools Requirements
+    if (
+      reqCategory.includes('skill') ||
+      reqCategory.includes('tech') ||
+      reqCategory.includes('tool') ||
+      reqCategory.includes('certif') ||
+      reqCategory.includes('function')
+    ) {
+      const cleanTech = reqText.replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in|and|of|for|to)/gi, ' ').trim();
+      const techTokens = cleanTech
+        .split(/[,/&+\n]+/)
+        .map(t => t.trim().toLowerCase())
+        .filter(t => t.length > 1);
 
       totalTechWeight += weight;
 
-      if (isNegated) {
-        missingSkillsList.push(cleanTech);
-        if (isMandatory) mandatoryRequirementFailed = true;
-      } else {
-        const isMatched = candSkills.some(s => s === techLower || (techLower.length > 3 && (s.includes(techLower) || techLower.includes(s)))) ||
-          new RegExp(`\\b${techLower.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i').test(rawText);
+      // Check if candidate matches any key token in this requirement or if candidate skills appear in req
+      const isMatched = candSkills.some(s => {
+        if (!s || s.length < 3) return false;
+        return (
+          reqLower.includes(s) ||
+          techTokens.some(tok => tok.includes(s) || s.includes(tok)) ||
+          (rawText.toLowerCase().includes(s) && reqLower.includes(s))
+        );
+      }) || techTokens.some(tok => {
+        if (!tok || tok.length < 3) return false;
+        return (
+          candSkills.some(s => s === tok || s.includes(tok) || tok.includes(s)) ||
+          rawText.toLowerCase().includes(tok)
+        );
+      }) || (techTokens.length === 0 && rawText.length > 50);
 
-        if (isMatched) {
-          matchedSkillsList.push(cleanTech);
-          earnedTechWeight += (1.0 * weight);
-          if (isMandatory) mandatoryMetCount++;
-        } else {
-          missingSkillsList.push(cleanTech);
-          if (isMandatory) mandatoryRequirementFailed = true;
-        }
+      if (isMatched) {
+        matchedSkillsList.push(reqText);
+        earnedTechWeight += (1.0 * weight);
+        if (isMandatory) mandatoryMetCount++;
+      } else {
+        missingSkillsList.push(reqText);
+        if (isMandatory) mandatoryRequirementFailed = true;
       }
     }
   }

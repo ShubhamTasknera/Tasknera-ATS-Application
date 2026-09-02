@@ -43,7 +43,7 @@ export default function JobDetailPage() {
     async function fetchJob() {
       try {
         setLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
         const authToken = token || localStorage.getItem('tasknera_token');
 
         const res = await fetch(`${backendUrl}/jobs/${jobId}`, {

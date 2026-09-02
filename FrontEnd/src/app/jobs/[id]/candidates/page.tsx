@@ -401,8 +401,8 @@ const getCandidateCareerGaps = (cand: CandidateRecord): CandidateGapAnalysis => 
   };
 };
 
-const getEffectiveSkills = (cand: CandidateRecord): string[] => {
-  if (cand.skills && cand.skills.length > 0) return cand.skills;
+const getEffectiveSkills = (cand: CandidateRecord, jobReqs?: any[]): string[] => {
+  const existing = Array.isArray(cand.skills) ? cand.skills : [];
   const text = `${cand.summary || ''} ${cand.professionalSummary || ''} ${cand.rawText || ''}`;
   const catalog = [
     'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
@@ -410,17 +410,40 @@ const getEffectiveSkills = (cand: CandidateRecord): string[] => {
     'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Docker', 'Git', 'GitHub',
     'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Figma',
     'Azure', 'GCP', 'Kubernetes', 'CI/CD', 'Jenkins', 'Terraform', 'Angular', 'Vue.js', 'Vue', 'SolidJS',
-    'Svelte', 'WebRTC', 'Socket.io', 'GraphQL', 'NestJS', 'Go', 'Golang', 'Rust', 'Ruby', 'PHP', 'Laravel',
+    'Svelte', 'WebRTC', 'Socket.io', 'NestJS', 'Go', 'Golang', 'Rust', 'Ruby', 'PHP', 'Laravel',
     'C#', 'C++', 'Unity', 'Unreal', 'TensorFlow', 'PyTorch', 'Pandas', 'NumPy', 'Scikit-Learn', 'D3.js',
-    'Three.js', 'OpenGL', 'WebAssembly', 'Electron', 'React Native', 'Flutter', 'Swift', 'Kotlin', 'Android', 'iOS'
+    'Three.js', 'OpenGL', 'WebAssembly', 'Electron', 'React Native', 'Flutter', 'Swift', 'Kotlin', 'Android', 'iOS',
+    'Salesforce', 'Apex', 'LWC', 'Lightning Web Components', 'Flow Automation', 'Flows', 'Process Builder',
+    'Manufacturing Cloud', 'Sales Cloud', 'Service Cloud', 'Marketing Cloud', 'Experience Cloud', 'Health Cloud',
+    'Financial Services Cloud', 'Visualforce', 'SOQL', 'SOSL', 'Aura Components', 'OmniStudio', 'Vlocity', 'CPQ',
+    'Platform Developer', 'Platform Developer I', 'Platform Developer II', 'Salesforce Certified Administrator',
+    'Salesforce Admin', 'Agile', 'Scrum', 'Sprint Execution', 'Jira', 'Confluence', 'Snowflake', 'Databricks',
+    'SAP', 'Workday', 'PowerBI', 'Tableau'
   ];
-  const matched = new Set<string>();
+  const matched = new Set<string>(existing);
   for (const s of catalog) {
     const esc = s.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
     if (new RegExp(`(?:^|[^a-zA-Z0-9_])${esc}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
       matched.add(s);
     }
   }
+
+  // Also extract keywords mentioned in job requirements if present in CV text
+  if (jobReqs && jobReqs.length > 0) {
+    for (const r of jobReqs) {
+      const phrase = (r.requirement || r.text || '').trim();
+      if (phrase.length > 2) {
+        const clean = phrase.replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ').trim();
+        const tokens = clean.split(/[\s,;/]+/).filter((t: string) => t.length > 2);
+        for (const tok of tokens) {
+          if (tok.length >= 3 && new RegExp(`(?:^|[^a-zA-Z0-9_])${tok}(?:[^a-zA-Z0-9_]|$)`, 'i').test(text)) {
+            matched.add(tok);
+          }
+        }
+      }
+    }
+  }
+
   return Array.from(matched);
 };
 
@@ -499,6 +522,8 @@ export default function JobCandidatesPage() {
   const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'match' | 'profile' | 'raw'>('match');
+  const [showCandidateMeta, setShowCandidateMeta] = useState(false);
+  const [showComplianceDropdown, setShowComplianceDropdown] = useState(false);
   const [copiedRawText, setCopiedRawText] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -507,7 +532,21 @@ export default function JobCandidatesPage() {
     setIsMounted(true);
   }, []);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  // Lock background window scroll when candidate modal drawer is open
+  useEffect(() => {
+    if (selectedCandidate) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [selectedCandidate]);
+
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 
 
@@ -571,6 +610,18 @@ export default function JobCandidatesPage() {
     fetchJobAndCandidates();
   }, [fetchJobAndCandidates]);
 
+  // Lock background scroll when modal drawer is open
+  useEffect(() => {
+    if (selectedCandidate) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedCandidate]);
+
   // ── Compute Match Scores & Rank Candidates (Unique candidates only) ─────────
   const uniqueCandidates = useMemo(() => {
     const seen = new Set<string>();
@@ -591,7 +642,7 @@ export default function JobCandidatesPage() {
 
   const candidatesWithMatch = useMemo(() => {
     return uniqueCandidates.map(c => {
-      const effectiveCandidateSkills = getEffectiveSkills(c);
+      const effectiveCandidateSkills = getEffectiveSkills(c, job?.requirements);
       const computedGapAnalysis = getCandidateCareerGaps(c);
 
       const matchResult = computeComprehensiveMatchScore(
@@ -616,8 +667,17 @@ export default function JobCandidatesPage() {
       const requirementEvals = (job?.requirements && job.requirements.length > 0)
         ? job.requirements.map(req => {
           const reqLower = req.requirement.toLowerCase();
-          const candSkills = (c.skills || []).map(s => s.toLowerCase());
-          const hasSkill = candSkills.some(cs => reqLower.includes(cs) || cs.includes(reqLower));
+          const cleanTokens = reqLower
+            .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
+            .split(/[\s,;/]+/)
+            .map((w: string) => w.trim())
+            .filter((w: string) => w.length > 2);
+
+          const hasSkill = effectiveCandidateSkills.some(cs => {
+            const csLow = cs.toLowerCase();
+            return reqLower.includes(csLow) || csLow.includes(reqLower) || cleanTokens.some((tok: string) => csLow.includes(tok));
+          }) || (c.rawText && cleanTokens.some((tok: string) => c.rawText.toLowerCase().includes(tok)));
+
           const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET;
           return {
             id: req.id,
@@ -915,62 +975,90 @@ export default function JobCandidatesPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col selection:bg-orange-500 selection:text-white antialiased">
       <Header />
 
       <main className="max-w-7xl mx-auto px-6 pt-24 pb-20 flex-1 w-full">
 
-        {/* ── BREADCRUMB & JOB CONTEXT HEADER ── */}
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-6">
-          <Link href="/jobs" className="hover:text-brand-orange transition-colors">Jobs</Link>
+        {/* ── BREADCRUMB & NAVIGATION ── */}
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-400 mb-6">
+          <Link href="/jobs" className="hover:text-slate-900 transition-colors">Jobs Directory</Link>
           <span>/</span>
-          <Link href={`/jobs/${jobId}`} className="hover:text-brand-orange transition-colors">
+          <Link href={`/jobs/${jobId}`} className="hover:text-slate-900 transition-colors truncate max-w-[200px]">
             {job?.position || 'Job Position'}
           </Link>
           <span>/</span>
-          <span className="text-slate-800">Candidates & Match Rankings</span>
+          <span className="text-slate-800 font-semibold">Candidate Pipeline & Sourcing</span>
         </div>
 
-        {/* ── JOB PROFILE BANNER ── */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-6 mb-8 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        {/* ── EXECUTIVE HERO BANNER ── */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-zinc-900 border border-slate-800 p-7 sm:p-8 shadow-xl text-white mb-8">
+          {/* Ambient subtle glow lights */}
+          <div className="absolute -right-20 -top-20 w-80 h-80 bg-orange-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange">
-                  <span className="w-2 h-2 rounded-full bg-brand-orange" />
-                  Active Job Context
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/15 border border-emerald-500/30 rounded-full text-xs font-bold text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Active Sourcing Pipeline
                 </span>
-                <span className="inline-flex px-3 py-1 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
-                  {job?.requirementsCount || 8} Confirmed Requirements
+                <span className="inline-flex items-center gap-1 px-3 py-1 bg-white/10 border border-white/15 rounded-full text-xs font-medium text-slate-300">
+                  <span>✦</span> Automated ATS Engine
+                </span>
+                <span className="inline-flex px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-medium text-slate-300">
+                  {job?.requirementsCount || 8} Confirmed Criteria
                 </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">
+
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
                 {job?.position || 'Frontend Developer'}
               </h1>
-              <p className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-2 flex-wrap">
-                <span className="text-slate-800 font-bold">{job?.client || 'TechNova Solutions'}</span>
+
+              <div className="flex items-center gap-3.5 text-xs text-slate-400 mt-2 flex-wrap font-medium">
+                <span className="flex items-center gap-1.5 text-slate-200 font-semibold">
+                  <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  {job?.client || 'Enterprise Client'}
+                </span>
                 <span>•</span>
-                <span>{job?.location || 'Pune, Maharashtra'}</span>
+                <span className="flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  {job?.location || 'Remote / Hybrid'}
+                </span>
                 <span>•</span>
-                <span>{job?.work_mode || 'Hybrid'}</span>
-              </p>
+                <span className="px-2 py-0.5 rounded bg-white/10 text-slate-300 font-semibold text-[11px]">
+                  {job?.work_mode || 'Full-time'}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <Link
                 href={`/jobs/${jobId}/requirements`}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-colors"
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl border border-white/20 transition-all cursor-pointer backdrop-blur-sm"
               >
-                Review Requirements
+                Configure Rubric Criteria
               </Link>
               <button
                 onClick={() => setShowUploadZone(prev => !prev)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5 cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:-translate-y-0.5 cursor-pointer"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                </svg>
-                {showUploadZone ? 'Hide Quick Drop' : '+ Quick Drop'}
+                {showUploadZone ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                  </svg>
+                )}
+                <span>{showUploadZone ? 'Close Dropzone' : 'Bulk Upload CVs'}</span>
               </button>
             </div>
           </div>
@@ -979,36 +1067,80 @@ export default function JobCandidatesPage() {
         {/* ── STATS SUMMARY CARDS WITH MATCH METRICS ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { label: 'CVs Uploaded', value: candidates.length, color: 'text-[#1E293B]', bg: 'bg-brand-orange-pale text-brand-orange', border: 'border-slate-200', icon: '∑' },
-            { label: 'Strong Matches (≥80%)', value: strongMatchCount, color: 'text-emerald-600', bg: 'bg-emerald-50 text-emerald-600', border: 'border-emerald-200', icon: '✓' },
-            { label: 'Average Match Score', value: `${avgMatch}%`, color: 'text-brand-orange', bg: 'bg-brand-orange-pale text-brand-orange', border: 'border-orange-200', icon: '★' },
-            { label: 'Parsed Successfully', value: parsedCount, color: 'text-slate-800', bg: 'bg-slate-100 text-slate-700', border: 'border-slate-200', icon: '📄' },
+            {
+              label: 'Total Applicants',
+              value: candidates.length,
+              color: 'text-slate-900',
+              bg: 'bg-slate-100 text-slate-700',
+              border: 'border-slate-200/90',
+              icon: (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Top Matches (≥80%)',
+              value: strongMatchCount,
+              color: 'text-emerald-700',
+              bg: 'bg-emerald-50 text-emerald-700',
+              border: 'border-emerald-200/80',
+              icon: (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Avg Match Score',
+              value: `${avgMatch}%`,
+              color: 'text-amber-800',
+              bg: 'bg-amber-50 text-amber-700',
+              border: 'border-amber-200/80',
+              icon: (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Parsed & Evaluated',
+              value: parsedCount,
+              color: 'text-slate-900',
+              bg: 'bg-slate-100 text-slate-700',
+              border: 'border-slate-200/90',
+              icon: (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              ),
+            },
           ].map((st, i) => (
-            <div key={i} className={`bg-white border ${st.border} rounded-2xl p-5 shadow-sm card-hover-lift`}>
+            <div key={i} className={`bg-white border ${st.border} rounded-xl p-5 shadow-2xs transition-all hover:shadow-xs hover:-translate-y-0.5`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{st.label}</span>
-                <span className={`w-7 h-7 rounded-xl ${st.bg} flex items-center justify-center font-extrabold text-xs`}>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{st.label}</span>
+                <span className={`w-7 h-7 rounded-lg ${st.bg} flex items-center justify-center font-bold text-xs`}>
                   {st.icon}
                 </span>
               </div>
-              <div className={`text-2xl font-extrabold ${st.color}`}>{st.value}</div>
+              <div className={`text-2xl font-mono font-bold tracking-tight ${st.color}`}>{st.value}</div>
             </div>
           ))}
         </div>
 
         {/* ── BULK CV UPLOAD DROPZONE ── */}
         {showUploadZone && (
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 mb-8 shadow-sm transition-all animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 mb-8 shadow-sm transition-all animate-fadeIn">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-base font-bold text-[#1E293B]">Bulk Candidate CV Upload</h2>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800">Bulk Candidate CV Upload</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Upload multiple resumes for <strong className="text-slate-800">{job?.position}</strong>. Resumes will be extracted and scored across 4 dimensions automatically.
+                  Upload multiple resumes for <strong className="text-slate-800">{job?.position}</strong>. Resumes will be extracted and scored across all criteria automatically.
                 </p>
               </div>
               <button
                 onClick={() => setShowUploadZone(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs cursor-pointer"
+                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs cursor-pointer"
               >
                 ✕
               </button>
@@ -1019,10 +1151,10 @@ export default function JobCandidatesPage() {
               onDragLeave={onDragLeave}
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
+              className={`border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
                 isDragging
-                  ? 'border-brand-orange bg-brand-orange-pale/40 scale-[0.99]'
-                  : 'border-slate-300 hover:border-brand-orange/60 bg-[#F8FAFC]'
+                  ? 'border-brand-orange bg-orange-50/50 scale-[0.99]'
+                  : 'border-slate-300 hover:border-brand-orange bg-slate-50/60'
               }`}
             >
               <input
@@ -1034,15 +1166,15 @@ export default function JobCandidatesPage() {
                 onChange={e => handleFilesSelected(e.target.files)}
               />
 
-              <div className="w-14 h-14 bg-brand-orange-pale text-brand-orange rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xs">
-                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              <div className="w-12 h-12 bg-orange-100 text-brand-orange rounded-xl flex items-center justify-center mx-auto mb-3 shadow-xs">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
               </div>
 
-              <h3 className="text-base font-bold text-[#1E293B] mb-1">Drag & Drop Multiple CVs Here</h3>
-              <p className="text-xs text-slate-500 mb-4">or click to browse from your computer</p>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-600">
+              <h3 className="text-sm font-bold text-slate-900 mb-1">Drag & Drop Candidate Resumes Here</h3>
+              <p className="text-xs text-slate-500 mb-3">or click to browse files from your computer</p>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600">
                 <span>PDF</span>
                 <span>•</span>
                 <span>DOCX</span>
@@ -1076,10 +1208,10 @@ export default function JobCandidatesPage() {
                         <span className="font-bold text-slate-800 truncate">{item.name}</span>
                         <span className="text-[10px] text-slate-400">{formatBytes(item.size)}</span>
                       </div>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        item.status === 'PARSED' ? 'bg-emerald-100 text-emerald-800' :
-                        item.status === 'DUPLICATE' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                        item.status === 'FAILED' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
+                      <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                        item.status === 'PARSED' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                        item.status === 'DUPLICATE' ? 'bg-amber-50 text-amber-800 border border-amber-300' :
+                        item.status === 'FAILED' ? 'bg-rose-50 text-rose-800 border border-rose-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
                       }`}>
                         {item.status === 'DUPLICATE' ? 'ALREADY UPLOADED (SKIPPED)' : item.status}
                       </span>
@@ -1092,7 +1224,7 @@ export default function JobCandidatesPage() {
         )}
 
         {/* ── QUICK FILTER & SORT TOOLBAR ── */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-6 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="relative flex-1 w-full md:max-w-md">
             <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1103,29 +1235,28 @@ export default function JobCandidatesPage() {
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search candidate name, role, skills, or email..."
               suppressHydrationWarning
-              className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 transition-colors"
+              className="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:bg-white transition-colors font-medium"
             />
           </div>
 
           <div className="flex items-center gap-3 w-full md:w-auto flex-wrap justify-between md:justify-end">
             {/* Status & Match Filters */}
-            <div className="flex items-center gap-1.5 overflow-x-auto">
+            <div className="flex items-center gap-1 overflow-x-auto">
               {[
-                { id: 'ALL', label: 'All' },
+                { id: 'ALL', label: 'All Candidates' },
                 { id: 'STRONG_MATCH', label: '≥80% Match' },
                 { id: 'GOOD_MATCH', label: '50-79%' },
                 { id: 'LOW_FIT', label: '<50%' },
                 { id: 'PARSED', label: 'Parsed' },
-                { id: 'FAILED', label: 'Failed' },
               ].map(f => (
                 <button
                   key={f.id}
                   onClick={() => setStatusFilter(f.id as any)}
                   suppressHydrationWarning
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     statusFilter === f.id
-                      ? 'bg-brand-orange text-white shadow-orange'
-                      : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200/70'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                   }`}
                 >
                   {f.label}
@@ -1134,13 +1265,13 @@ export default function JobCandidatesPage() {
             </div>
 
             {/* Sort Toolbar */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">Sort:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Sort:</span>
               <select
                 value={sortField}
                 onChange={e => setSortField(e.target.value as any)}
                 suppressHydrationWarning
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-brand-orange cursor-pointer"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-brand-orange cursor-pointer"
               >
                 <option value="score">Match Score (Ranked)</option>
                 <option value="date">Date Added</option>
@@ -1151,49 +1282,38 @@ export default function JobCandidatesPage() {
                 onClick={() => setSortDirection(prev => (prev === 'desc' ? 'asc' : 'desc'))}
                 title={sortDirection === 'desc' ? 'Descending' : 'Ascending'}
                 suppressHydrationWarning
-                className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold cursor-pointer"
+                className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold cursor-pointer"
               >
                 {sortDirection === 'desc' ? '↓' : '↑'}
               </button>
             </div>
           </div>
-
         </div>
 
         {/* ── CANDIDATES RANKED TABLE ── */}
         {filteredCandidates.length > 0 ? (
-          <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden mb-8">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden mb-8">
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-4">Rank & Candidate</th>
-                    <th className="px-4 py-4 text-center">Match Score</th>
-                    <th className="px-4 py-4 text-center">Match Badge</th>
-                    <th className="px-4 py-4">Experience</th>
-                    <th className="px-4 py-4 hidden lg:table-cell">Current Position & Company</th>
-                    <th className="px-4 py-4 text-center">Status</th>
-                    <th className="px-4 py-4 hidden sm:table-cell">Source CV</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                  <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="px-6 py-3.5">Candidate Profile</th>
+                    <th className="px-6 py-3.5">Match & Fit Evaluation</th>
+                    <th className="px-6 py-3.5">Experience & History</th>
+                    <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
+                    <th className="px-6 py-3.5 text-center">Status</th>
+                    <th className="px-6 py-3.5 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {filteredCandidates.map((c, idx) => {
+                  {filteredCandidates.map((c) => {
                     const badge = statusBadge(c.parsingStatus);
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/80 transition-colors group">
-                        {/* Candidate Name & Avatar */}
+                      <tr key={c.id} className="hover:bg-slate-50/70 transition-colors group">
+                        {/* Candidate Name & Avatar (No # badge) */}
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-extrabold ${
-                              idx === 0 ? 'bg-amber-100 text-amber-800' :
-                              idx === 1 ? 'bg-slate-200 text-slate-700' :
-                              idx === 2 ? 'bg-amber-50 text-amber-700' :
-                              'bg-slate-100 text-slate-500'
-                            }`}>
-                              #{idx + 1}
-                            </span>
-                            <div className={`w-10 h-10 rounded-xl font-extrabold text-sm flex items-center justify-center flex-shrink-0 ${avatarColor(c.name)} shadow-xs`}>
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-xl font-mono font-bold text-sm flex items-center justify-center flex-shrink-0 bg-slate-900 text-white shadow-2xs">
                               {(c.name || 'Candidate').charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -1202,57 +1322,61 @@ export default function JobCandidatesPage() {
                                   setSelectedCandidate(c);
                                   setActiveModalTab('match');
                                 }}
-                                className="font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors text-left cursor-pointer"
+                                className="font-extrabold text-slate-900 group-hover:text-brand-orange transition-colors text-left cursor-pointer text-sm tracking-tight"
                               >
                                 {c.name || c.fileName || 'Unnamed Candidate'}
                               </button>
-                              <div className="text-xs text-slate-500 truncate max-w-[180px]">{c.location || 'Location not specified'}</div>
+                              <div className="text-xs text-slate-500 truncate max-w-[200px] font-medium mt-0.5">
+                                {c.location || c.email || 'Verified Candidate'}
+                              </div>
                             </div>
                           </div>
                         </td>
 
-
-                        {/* Overall Match Score */}
-                        <td className="px-4 py-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className={`text-base font-extrabold ${
-                              (c.matchScore ?? 0) >= 80 ? 'text-emerald-600' : (c.matchScore ?? 0) >= 50 ? 'text-amber-600' : 'text-rose-600'
+                        {/* Unified Executive Match Score & ATS Rating */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-mono border shadow-2xs flex-shrink-0 ${
+                              (c.matchScore ?? 0) >= 75
+                                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900'
+                                : (c.matchScore ?? 0) >= 50
+                                ? 'bg-amber-50/90 border-amber-300 text-amber-900'
+                                : 'bg-rose-50/90 border-rose-300 text-rose-900'
                             }`}>
-                              {c.matchScore}%
-                            </span>
-                            <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                  (c.matchScore ?? 0) >= 80 ? 'bg-emerald-500' : (c.matchScore ?? 0) >= 50 ? 'bg-amber-500' : 'bg-rose-500'
-                                }`}
-                                style={{ width: `${c.matchScore}%` }}
-                              />
+                              <span className="text-sm font-black leading-none">{c.matchScore}%</span>
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">Match</span>
+                            </div>
+                            <div className="flex flex-col items-start gap-1">
+                              <MatchBadge score={c.matchScore} size="sm" showPercentage={false} />
+                              <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    (c.matchScore ?? 0) >= 75 ? 'bg-emerald-600' : (c.matchScore ?? 0) >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                                  }`}
+                                  style={{ width: `${c.matchScore}%` }}
+                                />
+                              </div>
                             </div>
                           </div>
-                        </td>
-
-                        {/* MatchBadge Component */}
-                        <td className="px-4 py-4 text-center">
-                          <MatchBadge score={c.matchScore} size="sm" showPercentage={false} />
                         </td>
 
                         {/* Experience & Career Gap */}
-                        <td className="px-4 py-4 text-xs font-bold text-slate-800">
+                        <td className="px-6 py-4 text-xs font-semibold text-slate-800">
                           {(() => {
                             const expInfo = getNumericExperienceDetails(c);
                             const gapInfo = getCandidateCareerGaps(c);
                             return (
                               <div className="flex flex-col items-start gap-1">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-xs">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold font-mono bg-slate-100 text-slate-900 border border-slate-200">
                                   {expInfo.badgeText}
                                 </span>
                                 {gapInfo.hasGap ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-900 font-extrabold bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300">
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-900 font-extrabold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                                     ⚠️ {gapInfo.totalGapMonths}m Gap
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] text-slate-400 font-medium">
-                                    {expInfo.months > 0 ? `${expInfo.subText} total` : 'No gap'}
+                                  <span className="text-[11px] text-slate-400 font-medium">
+                                    Continuous history
                                   </span>
                                 )}
                               </div>
@@ -1261,46 +1385,31 @@ export default function JobCandidatesPage() {
                         </td>
 
                         {/* Current Title & Company */}
-                        <td className="px-4 py-4 hidden lg:table-cell text-xs">
-                          <div className="font-semibold text-slate-800">{c.currentTitle || '—'}</div>
-                          <div className="text-slate-500">{c.currentCompany || '—'}</div>
+                        <td className="px-6 py-4 hidden lg:table-cell text-xs">
+                          <div className="font-bold text-slate-900">{c.currentTitle || '—'}</div>
+                          <div className="text-slate-500 text-[11px] font-medium mt-0.5">{c.currentCompany || '—'}</div>
                         </td>
 
                         {/* Parsing Status */}
-                        <td className="px-4 py-4 text-center">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-extrabold border ${badge.bg}`}>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border ${badge.bg}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
                             {badge.label}
                           </span>
                         </td>
 
-                        {/* Source CV */}
-                        <td className="px-4 py-4 hidden sm:table-cell text-xs text-slate-600">
-                          <div className="font-medium truncate max-w-[140px]">{c.fileName}</div>
-                          <div className="text-[10px] text-slate-400">{formatBytes(c.fileSize)}</div>
-                        </td>
-
                         {/* Actions */}
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {c.parsingStatus === 'FAILED' && (
-                              <button
-                                onClick={() => handleRetryCandidate(c.id)}
-                                className="px-2.5 py-1 text-xs font-bold text-brand-orange bg-brand-orange-pale hover:bg-orange-100 border border-brand-orange-border rounded-lg transition-colors cursor-pointer"
-                              >
-                                Retry
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                setSelectedCandidate(c);
-                                setActiveModalTab('match');
-                              }}
-                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-xl transition-all shadow-xs cursor-pointer"
-                            >
-                              View Match Details →
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedCandidate(c);
+                              setActiveModalTab('match');
+                            }}
+                            className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <span>Inspect Rubric</span>
+                            <span className="text-slate-400">→</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1310,12 +1419,11 @@ export default function JobCandidatesPage() {
             </div>
           </div>
         ) : (
-          /* Empty Search Filter State */
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-12 text-center shadow-sm">
-            <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-3xl flex items-center justify-center mx-auto mb-4 text-2xl">
-              📂
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-2xs mb-8">
+            <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center mx-auto mb-3 font-bold text-lg">
+              🔍
             </div>
-            <h3 className="text-base font-bold text-[#1E293B] mb-1">
+            <h3 className="text-sm font-bold text-slate-900 mb-1">
               {searchQuery ? 'No matching candidates found' : 'No CVs uploaded for this job yet.'}
             </h3>
             <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
@@ -1323,15 +1431,25 @@ export default function JobCandidatesPage() {
                 ? 'Try adjusting your search keywords or clear the active status filter.'
                 : 'Upload resumes (PDF, DOCX, TXT) to automatically extract candidate profiles and score them against this job.'}
             </p>
-            {!searchQuery && (
+            {searchQuery ? (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('ALL');
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            ) : (
               <button
                 onClick={() => setShowUploadZone(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                 </svg>
-                Upload CVs
+                Upload Candidate CVs
               </button>
             )}
           </div>
@@ -1339,206 +1457,242 @@ export default function JobCandidatesPage() {
 
         {/* ── CANDIDATE PROFILE & MATCH CRITERIA DETAILS MODAL ── */}
         {selectedCandidate && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex justify-end animate-fadeIn">
-            <div className="w-full max-w-3xl bg-white h-full overflow-y-auto shadow-2xl flex flex-col justify-between">
-              <div>
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedCandidate(null);
+            }}
+            className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex justify-end overflow-hidden overscroll-none"
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, height: '100vh', width: '100vw' }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-4xl xl:max-w-5xl bg-white flex flex-col shadow-2xl border-l border-slate-200 overflow-hidden relative overscroll-none select-text"
+              style={{ height: '100vh', maxHeight: '100vh' }}
+            >
+              {/* 1. PERMANENTLY FIXED TOP HEADER SECTION */}
+              <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-xs z-30 select-none">
                 {/* Modal Header */}
-                <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-[#F8FAFC]">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-14 h-14 rounded-2xl font-extrabold text-xl flex items-center justify-center ${avatarColor(selectedCandidate.name)} shadow-xs`}>
+                <div className="p-4 sm:p-5 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/80">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl font-mono font-bold text-base flex items-center justify-center bg-slate-900 text-white shadow-xs">
                       {(selectedCandidate.name || 'Candidate').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-xl font-extrabold text-[#1E293B]">{selectedCandidate.name || selectedCandidate.fileName || 'Candidate Profile'}</h2>
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">
+                          {selectedCandidate.name || selectedCandidate.fileName || 'Candidate Profile'}
+                        </h2>
                         <MatchBadge score={selectedCandidate.matchScore} size="sm" />
                       </div>
-                      <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                        {selectedCandidate.currentTitle || 'Candidate'} • {selectedCandidate.currentCompany || 'Experience'}
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">
+                        {selectedCandidate.currentTitle || 'Candidate'} • <span className="text-slate-700 font-semibold">{selectedCandidate.currentCompany || 'Experience History'}</span>
                       </p>
                     </div>
                   </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${selectedCandidate.name} | ${selectedCandidate.email} | ${selectedCandidate.phone}`);
-                          setCopiedEmail(true);
-                          setTimeout(() => setCopiedEmail(false), 2000);
-                        }}
-                        className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                        title="Copy contact details"
-                      >
-                        {copiedEmail ? '✓ Copied' : 'Copy Contact'}
-                      </button>
-                      <button
-                        onClick={() => setSelectedCandidate(null)}
-                        className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center text-sm cursor-pointer transition-colors"
-                      >
-                        ✕
-                      </button>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => setShowCandidateMeta(prev => !prev)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${
+                        showCandidateMeta
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{showCandidateMeta ? 'Hide Meta ▴' : 'Candidate Details ▾'}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${selectedCandidate.name} | ${selectedCandidate.email} | ${selectedCandidate.phone}`);
+                        setCopiedEmail(true);
+                        setTimeout(() => setCopiedEmail(false), 2000);
+                      }}
+                      className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                      title="Copy contact details"
+                    >
+                      <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                      </svg>
+                      {copiedEmail ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={() => setSelectedCandidate(null)}
+                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 flex items-center justify-center text-sm cursor-pointer transition-colors shadow-2xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Collapsible Candidate Key Metrics Dropdown Drawer */}
+                {showCandidateMeta && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 px-6 py-3.5 border-b border-slate-200/80 bg-slate-50/90 text-xs animate-fadeIn">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Total Experience</span>
+                      {(() => {
+                        const expInfo = getNumericExperienceDetails(selectedCandidate);
+                        return (
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-white text-slate-900 border border-slate-200">
+                              {expInfo.badgeText}
+                            </span>
+                            {expInfo.months > 0 && (
+                              <span className="text-[11px] font-semibold text-slate-500">
+                                ({expInfo.subText})
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Career Gap Status</span>
+                      {(() => {
+                        const gapInfo = getCandidateCareerGaps(selectedCandidate);
+                        return (
+                          <div className="mt-0.5">
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold border ${
+                              gapInfo.hasGap
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${gapInfo.hasGap ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos Gap` : 'Continuous'}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Email Address</span>
+                      <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate" title={selectedCandidate.email}>
+                        {selectedCandidate.email || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Location</span>
+                      <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate" title={selectedCandidate.location}>
+                        {selectedCandidate.location || '—'}
+                      </p>
                     </div>
                   </div>
+                )}
 
-                {/* Candidate Overview Bar */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-6 border-b border-slate-100 bg-white">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Total Experience</span>
-                    {(() => {
-                      const expInfo = getNumericExperienceDetails(selectedCandidate);
-                      return (
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100/80 text-amber-900 border border-amber-300">
-                            {expInfo.badgeText}
-                          </span>
-                          {expInfo.months > 0 && (
-                            <span className="text-xs font-bold text-slate-700">
-                              ({expInfo.subText})
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Career Gap Status</span>
-                    {(() => {
-                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
-                      return (
-                        <div className="mt-0.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${
-                            gapInfo.hasGap
-                              ? 'bg-amber-100 text-amber-900 border-amber-300'
-                              : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          }`}>
-                            {gapInfo.hasGap ? `⚠️ ${gapInfo.totalGapMonths} mos Gap` : '✓ No Career Gap'}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Email</span>
-                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{selectedCandidate.email || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Location</span>
-                    <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{selectedCandidate.location || '—'}</p>
+                {/* Segmented Pill Tab Switcher */}
+                <div className="px-6 py-2.5 bg-slate-50/70 flex items-center justify-between">
+                  <div className="inline-flex p-1 bg-slate-200/70 rounded-xl border border-slate-200">
+                    <button
+                      onClick={() => setActiveModalTab('match')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeModalTab === 'match'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Match & Criteria Breakdown
+                    </button>
+                    <button
+                      onClick={() => setActiveModalTab('profile')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeModalTab === 'profile'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Structured Profile
+                    </button>
+                    <button
+                      onClick={() => setActiveModalTab('raw')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        activeModalTab === 'raw'
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Raw CV & Extraction
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                {/* 3-Tab Switcher */}
-                <div className="px-6 pt-4 flex items-center gap-3 border-b border-slate-100">
-                  <button
-                    onClick={() => setActiveModalTab('match')}
-                    className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                      activeModalTab === 'match' ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Match & Criteria Breakdown
-                    {activeModalTab === 'match' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
-                  </button>
-                  <button
-                    onClick={() => setActiveModalTab('profile')}
-                    className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                      activeModalTab === 'profile' ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Structured Profile
-                    {activeModalTab === 'profile' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
-                  </button>
-                  <button
-                    onClick={() => setActiveModalTab('raw')}
-                    className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                      activeModalTab === 'raw' ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Raw CV Extraction & Diagnostics
-                    {activeModalTab === 'raw' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
-                  </button>
-                </div>
-
+              {/* Scrollable Tab Content Body (ONLY this scrolls) */}
+              <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 bg-slate-50/20 p-6 space-y-6 scroll-smooth">
                 {/* Tab 1: Match & Criteria Breakdown */}
                 {activeModalTab === 'match' && (
-                  <div className="p-6 space-y-6">
-                    {/* ScoreCards Grid */}
+                  <div className="space-y-6">
+                    {/* 1. Executive 4-Pillar Metric ScoreCards (Directly on Display) */}
                     {selectedCandidate.matchBreakdown && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <ScoreCard
                           score={selectedCandidate.matchBreakdown.skills.score}
                           maxScore={100}
-                          label="Core Skills (40%)"
+                          label="Core Skills"
                           percentage={selectedCandidate.matchBreakdown.skills.score}
-                          gradient="from-emerald-500 to-teal-500"
-                          description={`${selectedCandidate.matchBreakdown.skills.matchedSkills.length} skills matched`}
+                          description={`${selectedCandidate.matchBreakdown.skills.matchedSkills.length} competencies matched`}
                         />
                         <ScoreCard
                           score={selectedCandidate.matchBreakdown.experience.score}
                           maxScore={100}
-                          label="Experience (30%)"
+                          label="Experience"
                           percentage={selectedCandidate.matchBreakdown.experience.score}
-                          gradient="from-cyan-500 to-blue-500"
                           description={`${selectedCandidate.matchBreakdown.experience.candidateYears}y / ${selectedCandidate.matchBreakdown.experience.requiredYears}y required`}
                         />
                         <ScoreCard
                           score={selectedCandidate.matchBreakdown.education.score}
                           maxScore={100}
-                          label="Education (15%)"
+                          label="Education"
                           percentage={selectedCandidate.matchBreakdown.education.score}
-                          gradient="from-purple-500 to-indigo-500"
                           description={selectedCandidate.matchBreakdown.education.candidateDegrees[0] || 'Degree Match'}
                         />
                         <ScoreCard
                           score={selectedCandidate.matchBreakdown.keywords.score}
                           maxScore={100}
-                          label="Semantic Overlap (15%)"
+                          label="Semantic Overlap"
                           percentage={selectedCandidate.matchBreakdown.keywords.score}
-                          gradient="from-amber-500 to-orange-500"
-                          description={`${Math.round(selectedCandidate.matchBreakdown.keywords.cosineSimilarity * 100)}% Cosine Sim`}
+                          description={`${Math.round(selectedCandidate.matchBreakdown.keywords.cosineSimilarity * 100)}% Cosine Similarity`}
                         />
                       </div>
                     )}
 
-                    {/* Career Gap Analysis Banner */}
+                    {/* 2. Employment Continuity & Career Gap Audit (Directly on Display) */}
                     {(() => {
                       const gapInfo = getCandidateCareerGaps(selectedCandidate);
                       return (
-                        <div className={`border rounded-2xl p-5 transition-all ${
+                        <div className={`border rounded-2xl p-5 transition-all shadow-2xs ${
                           gapInfo.hasGap
-                            ? 'bg-amber-50/70 border-amber-200 shadow-xs'
-                            : 'bg-emerald-50/50 border-emerald-200/80'
+                            ? 'bg-amber-50/60 border-amber-200'
+                            : 'bg-white border-slate-200'
                         }`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
-                                gapInfo.hasGap ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
+                                gapInfo.hasGap
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               }`}>
                                 {gapInfo.hasGap ? '⚠️' : '✓'}
                               </div>
                               <div>
-                                <h4 className="text-xs font-bold text-[#1E293B] uppercase tracking-wider">Employment & Career Gap Analysis</h4>
-                                <p className="text-xs text-slate-700 font-semibold mt-0.5">{gapInfo.statusText}</p>
+                                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                                  Employment Continuity & Career Gap Audit
+                                </h4>
+                                <p className="text-xs text-slate-600 font-medium mt-0.5">{gapInfo.statusText}</p>
                               </div>
                             </div>
-                            <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${
+                            <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
                               gapInfo.hasGap
                                 ? 'bg-amber-100 text-amber-950 border-amber-300'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             }`}>
-                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos Total Gap` : 'Continuous Employment'}
+                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos Total Gap` : 'Verified Continuous'}
                             </span>
                           </div>
                           {gapInfo.hasGap && gapInfo.gaps.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-amber-200/60 space-y-2">
+                            <div className="mt-3 pt-3 border-t border-amber-200 space-y-2">
                               {gapInfo.gaps.map((g, gi) => (
-                                <div key={gi} className="text-xs text-amber-950 bg-white border border-amber-200 px-3.5 py-2.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                  <span className="font-bold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                    {g.gapLabel}
-                                  </span>
-                                  <span className="text-[11px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
-                                    {g.startDate} → {g.endDate}
-                                  </span>
+                                <div key={gi} className="text-xs text-amber-950 bg-white border border-amber-200 px-3 py-2 rounded-lg flex items-center justify-between">
+                                  <span className="font-semibold">{g.gapLabel}</span>
+                                  <span className="text-[11px] font-mono text-slate-500 font-semibold">{g.startDate} → {g.endDate}</span>
                                 </div>
                               ))}
                             </div>
@@ -1547,20 +1701,23 @@ export default function JobCandidatesPage() {
                       );
                     })()}
 
-                    {/* Matched vs Missing Skills */}
+                    {/* 3. Matched vs Missing Skills Alignment (Directly on Display) */}
                     {selectedCandidate.matchBreakdown && (
-                      <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Skills Alignment Breakdown</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3.5">
+                          Technical & Competency Alignment Breakdown
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                           <div>
-                            <div className="text-xs font-bold text-emerald-700 mb-2 flex items-center gap-1.5">
-                              <span>✓</span> Matched Skills ({selectedCandidate.matchBreakdown.skills.matchedSkills.length})
+                            <div className="text-xs font-bold text-emerald-800 mb-2 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              Matched Criteria ({selectedCandidate.matchBreakdown.skills.matchedSkills.length})
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {selectedCandidate.matchBreakdown.skills.matchedSkills.length > 0 ? (
                                 selectedCandidate.matchBreakdown.skills.matchedSkills.map((s: string, i: number) => (
-                                  <span key={i} className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg">
-                                    {s}
+                                  <span key={i} className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold rounded-md">
+                                    ✓ {s}
                                   </span>
                                 ))
                               ) : (
@@ -1569,18 +1726,19 @@ export default function JobCandidatesPage() {
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs font-bold text-rose-700 mb-2 flex items-center gap-1.5">
-                              <span>✕</span> Missing / Gap Skills ({selectedCandidate.matchBreakdown.skills.missingSkills.length})
+                            <div className="text-xs font-bold text-rose-800 mb-2 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                              Missing / Gap Criteria ({selectedCandidate.matchBreakdown.skills.missingSkills.length})
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {selectedCandidate.matchBreakdown.skills.missingSkills.length > 0 ? (
                                 selectedCandidate.matchBreakdown.skills.missingSkills.map((s: string, i: number) => (
-                                  <span key={i} className="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-lg">
-                                    {s}
+                                  <span key={i} className="px-2.5 py-1 bg-rose-50 border border-rose-200 text-rose-900 text-xs font-semibold rounded-md">
+                                    ✕ {s}
                                   </span>
                                 ))
                               ) : (
-                                <span className="text-xs text-slate-400 italic">No critical skill gaps identified.</span>
+                                <span className="text-xs text-emerald-700 font-semibold">✓ No critical skill gaps identified.</span>
                               )}
                             </div>
                           </div>
@@ -1588,13 +1746,31 @@ export default function JobCandidatesPage() {
                       </div>
                     )}
 
-                    {/* Deterministic Requirement Table */}
+                    {/* 4. Job Requirement Compliance Audit (In Collapsible Dropdown Accordion) */}
                     {selectedCandidate.requirementEvals && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Job Requirement Compliance Audit</h3>
-                        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
-                          <RequirementTable evaluations={selectedCandidate.requirementEvals} showEvidence={true} />
-                        </div>
+                      <div className="border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-2xs">
+                        <button
+                          onClick={() => setShowComplianceDropdown(prev => !prev)}
+                          className="w-full px-5 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100/80 transition-colors text-left cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-800">
+                              Job Requirement Compliance Audit
+                            </span>
+                            <span className="px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-mono font-bold text-xs">
+                              {selectedCandidate.requirementEvals.length} Criteria Evaluated
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-brand-orange">
+                            <span>{showComplianceDropdown ? 'Collapse Audit Criteria ▴' : 'Expand Compliance Audit Dropdown ▾'}</span>
+                          </div>
+                        </button>
+
+                        {showComplianceDropdown && (
+                          <div className="p-5 sm:p-6 border-t border-slate-200 bg-slate-50/30 animate-fadeIn">
+                            <RequirementTable evaluations={selectedCandidate.requirementEvals} showEvidence={true} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1602,73 +1778,30 @@ export default function JobCandidatesPage() {
 
                 {/* Tab 2: Structured Profile View */}
                 {activeModalTab === 'profile' && (
-                  <div className="p-6 space-y-6">
+                  <div className="space-y-6">
                     {/* Professional Summary */}
                     {(selectedCandidate.professionalSummary || selectedCandidate.summary) && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Professional Summary</h3>
-                        <p className="text-xs text-slate-700 leading-relaxed bg-[#F8FAFC] p-4 rounded-2xl border border-slate-200">
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Professional Summary</h3>
+                        <p className="text-xs text-slate-700 leading-relaxed font-normal">
                           {selectedCandidate.professionalSummary || selectedCandidate.summary}
                         </p>
                       </div>
                     )}
-
-                    {/* Career Gap Analysis */}
-                    {(() => {
-                      const gapInfo = getCandidateCareerGaps(selectedCandidate);
-                      return (
-                        <div className={`border rounded-2xl p-4.5 transition-all ${
-                          gapInfo.hasGap 
-                            ? 'bg-amber-50/50 border-amber-200' 
-                            : 'bg-emerald-50/40 border-emerald-200/80'
-                        }`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm ${
-                                gapInfo.hasGap ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                              }`}>
-                                {gapInfo.hasGap ? '⚠️' : '✓'}
-                              </div>
-                              <div>
-                                <h4 className="text-xs font-bold text-[#1E293B]">Career Gap Analysis</h4>
-                                <p className="text-[11px] text-slate-600 font-medium">{gapInfo.statusText}</p>
-                              </div>
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold border ${
-                              gapInfo.hasGap
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-emerald-100/80 text-emerald-800 border-emerald-300'
-                            }`}>
-                              {gapInfo.hasGap ? `${gapInfo.totalGapMonths} mos total gap` : 'No Gap Identified'}
-                            </span>
-                          </div>
-                          {gapInfo.hasGap && gapInfo.gaps.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-amber-200/60 space-y-2">
-                              {gapInfo.gaps.map((g, gi) => (
-                                <div key={gi} className="text-xs text-amber-950 bg-white/80 border border-amber-200 px-3 py-2 rounded-xl flex items-center justify-between">
-                                  <span className="font-semibold">{g.gapLabel}</span>
-                                  <span className="text-[11px] text-slate-500 font-medium">{g.startDate} → {g.endDate}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
 
                     {/* Extracted Competencies & Tech Stack */}
                     {(() => {
                       const effectiveSkills = getEffectiveSkills(selectedCandidate);
                       if (effectiveSkills.length === 0) return null;
                       return (
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tech Stack & Competencies</h3>
-                            <span className="text-[11px] font-bold text-slate-500">{effectiveSkills.length} Identified</span>
+                        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tech Stack & Competencies</h3>
+                            <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{effectiveSkills.length} Identified</span>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {effectiveSkills.map((s, i) => (
-                              <span key={i} className="px-2.5 py-1 bg-[#F8FAFC] border border-slate-200/90 rounded-lg text-xs font-semibold text-slate-700 hover:border-brand-orange/40 transition-colors">
+                              <span key={i} className="px-2.5 py-1 bg-slate-50 border border-slate-200/90 rounded-md text-xs font-semibold text-slate-800 hover:border-slate-300 transition-colors">
                                 {s}
                               </span>
                             ))}
@@ -1679,13 +1812,13 @@ export default function JobCandidatesPage() {
 
                     {/* Experience Timeline */}
                     {selectedCandidate.experience && selectedCandidate.experience.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Work History</h3>
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Work History & Roles</h3>
                           {(() => {
                             const expInfo = getNumericExperienceDetails(selectedCandidate);
                             return (
-                              <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-md">
+                              <span className="text-xs font-bold font-mono text-slate-900 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-md">
                                 Total: {expInfo.fullLabel}
                               </span>
                             );
@@ -1697,21 +1830,21 @@ export default function JobCandidatesPage() {
                             const durMonths = parseMonthsFromText(exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} - ${exp.endDate}` : ''));
                             const durPill = durMonths > 0 ? (durMonths < 12 ? `${durMonths} mos` : `${parseFloat((durMonths/12).toFixed(1))} yrs`) : null;
                             return (
-                              <div key={i} className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
+                              <div key={i} className="bg-slate-50/60 border border-slate-200/80 rounded-xl p-4">
                                 <div className="flex items-start justify-between">
-                                  <h4 className="text-xs font-bold text-[#1E293B]">{titleText}</h4>
+                                  <h4 className="text-xs font-bold text-slate-900">{titleText}</h4>
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] font-semibold text-slate-500">
+                                    <span className="text-[11px] font-mono text-slate-500 font-semibold">
                                       {exp.duration || (exp.startDate && exp.endDate ? `${exp.startDate} – ${exp.endDate}` : exp.startDate || exp.endDate || '')}
                                     </span>
                                     {durPill && !exp.duration?.includes('•') && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-[10px] font-bold text-slate-700">
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-200 text-[10px] font-bold text-slate-700">
                                         {durPill}
                                       </span>
                                     )}
                                   </div>
                                 </div>
-                                {exp.company && <p className="text-xs text-brand-orange font-semibold mt-0.5">{exp.company}</p>}
+                                {exp.company && <p className="text-xs text-brand-orange font-bold mt-0.5">{exp.company}</p>}
                                 {exp.description && <p className="text-xs text-slate-600 mt-2 leading-relaxed whitespace-pre-line">{exp.description}</p>}
                               </div>
                             );
@@ -1795,39 +1928,38 @@ export default function JobCandidatesPage() {
                       )}
                     </div>
                   </div>
-
                 )}
 
                 {/* Tab 3: Raw CV Extraction & Diagnostics */}
                 {activeModalTab === 'raw' && (
-                  <div className="p-6 space-y-5">
+                  <div className="space-y-5">
                     {/* Metadata Box */}
-                    <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-                      <h3 className="text-xs font-bold text-[#1E293B] mb-3">Document Extraction Diagnostics</h3>
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Document Extraction Diagnostics</h3>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">File Name</span>
-                          <p className="font-bold text-slate-800 truncate">{selectedCandidate.parsingMetadata?.fileName || selectedCandidate.fileName}</p>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">File Name</span>
+                          <p className="font-semibold text-slate-800 font-mono truncate">{selectedCandidate.parsingMetadata?.fileName || selectedCandidate.fileName}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">File Type</span>
-                          <p className="font-bold text-slate-800 truncate">{selectedCandidate.parsingMetadata?.fileType || 'PDF'}</p>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">File Type</span>
+                          <p className="font-semibold text-slate-800 font-mono truncate">{selectedCandidate.parsingMetadata?.fileType || 'PDF'}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">Page Count</span>
-                          <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.pageCount || 1}</p>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Page Count</span>
+                          <p className="font-semibold text-slate-800 font-mono">{selectedCandidate.parsingMetadata?.pageCount || 1}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">Extraction Method</span>
-                          <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.extractionMethod || 'python-pdfplumber'}</p>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Extraction Method</span>
+                          <p className="font-semibold text-slate-800 font-mono">{selectedCandidate.parsingMetadata?.extractionMethod || 'nextjs-ats-engine'}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">OCR Used</span>
-                          <p className="font-bold text-slate-800">{selectedCandidate.parsingMetadata?.ocrUsed ? 'Yes' : 'No'}</p>
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">OCR Used</span>
+                          <p className="font-semibold text-slate-800 font-mono">{selectedCandidate.parsingMetadata?.ocrUsed ? 'Yes' : 'No'}</p>
                         </div>
                         <div>
-                          <span className="text-slate-400 font-semibold text-[10px] uppercase">Characters / Words</span>
-                          <p className="font-bold text-slate-800">
+                          <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wider">Characters / Words</span>
+                          <p className="font-semibold text-slate-800 font-mono">
                             {selectedCandidate.parsingMetadata?.characterCount || 0} / {selectedCandidate.parsingMetadata?.wordCount || 0}
                           </p>
                         </div>
@@ -1837,36 +1969,50 @@ export default function JobCandidatesPage() {
                     {/* Raw Text Viewer */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">RAW CV EXTRACTED TEXT</h4>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">Raw Extracted Document Text</h4>
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(selectedCandidate.rawText || '');
                             setCopiedRawText(true);
                             setTimeout(() => setCopiedRawText(false), 2000);
                           }}
-                          className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 shadow-xs cursor-pointer"
+                          className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer flex items-center gap-1 shadow-2xs"
                         >
-                          {copiedRawText ? '✓ Copied' : 'Copy Text'}
+                          <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                          </svg>
+                          {copiedRawText ? 'Copied' : 'Copy Plaintext'}
                         </button>
                       </div>
-                      <div className="bg-[#1E293B] text-slate-200 rounded-2xl p-4 font-mono text-[11px] leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap border border-slate-700 shadow-inner">
-                        {selectedCandidate.rawText || 'No raw extracted text available for this candidate record.'}
-                      </div>
+                      <pre className="p-4 bg-slate-950 text-slate-200 font-mono text-[11px] rounded-xl border border-slate-800 overflow-x-auto max-h-96 leading-relaxed whitespace-pre-wrap select-all">
+                        {selectedCandidate.rawText || 'No raw document text available for candidate.'}
+                      </pre>
                     </div>
                   </div>
                 )}
               </div>
 
 
-              {/* Drawer Footer */}
-              <div className="p-5 border-t border-slate-100 bg-[#F8FAFC] flex items-center justify-between">
-                <span className="text-xs text-slate-500">Candidate ID: <code className="font-mono text-slate-700">{selectedCandidate.id}</code></span>
-                <button
-                  onClick={() => setSelectedCandidate(null)}
-                  className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-                >
-                  Close Profile
-                </button>
+              {/* 3. PERMANENTLY FIXED BOTTOM FOOTER CONTROLS */}
+              <div className="p-4 border-t border-slate-200 bg-white flex items-center justify-between flex-shrink-0 z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] select-none">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Evaluation Status:</span>
+                  <MatchBadge score={selectedCandidate.matchScore} size="sm" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRetryCandidate(selectedCandidate.id)}
+                    className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg transition-all shadow-2xs cursor-pointer"
+                  >
+                    Re-Audit Criteria
+                  </button>
+                  <button
+                    onClick={() => setSelectedCandidate(null)}
+                    className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -55,7 +55,7 @@ export default function EvaluationsPage() {
   const [filter, setFilter] = useState<'All' | 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT'>('All');
   const [sort, setSort] = useState<'score' | 'date'>('score');
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
 
   const fetchEvaluations = useCallback(async () => {
     try {
@@ -106,6 +106,16 @@ export default function EvaluationsPage() {
                   const singleEvalData = await singleEvalRes.json();
                   const evalObj = singleEvalData.evaluation;
                   if (evalObj) {
+                    const score = typeof evalObj.overallMatch === 'number' ? evalObj.overallMatch : (typeof evalObj.overallScore === 'number' ? Math.round(evalObj.overallScore) : 0);
+                    const ats = typeof evalObj.atsScore === 'number' ? evalObj.atsScore : score;
+                    const mandatoryStr = evalObj.mandatoryCompliance 
+                      ? `${evalObj.mandatoryCompliance.met ?? 0}/${evalObj.mandatoryCompliance.total ?? 0}`
+                      : (evalObj.mandatory || '0/0');
+                    const mandatoryFailed = evalObj.mandatoryCompliance 
+                      ? !evalObj.mandatoryCompliance.passed 
+                      : Boolean(evalObj.mandatoryRequirementFailed);
+                    const decision = evalObj.recommendation || (score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
+
                     allItems.push({
                       id: c.id,
                       candidate: evalObj.candidateName || c.name || 'Candidate',
@@ -114,11 +124,11 @@ export default function EvaluationsPage() {
                       jobId: j.id,
                       company: evalObj.candidateCompany || c.currentCompany || j.client || 'Organization',
                       date: evalObj.evaluatedAt ? new Date(evalObj.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
-                      score: evalObj.overallMatch,
-                      ats: evalObj.atsScore,
-                      mandatory: `${evalObj.mandatoryCompliance.met}/${evalObj.mandatoryCompliance.total}`,
-                      mandatoryFailed: !evalObj.mandatoryCompliance.passed,
-                      decision: evalObj.recommendation,
+                      score,
+                      ats,
+                      mandatory: mandatoryStr,
+                      mandatoryFailed,
+                      decision,
                       by: evalObj.evaluator || 'Deterministic ATS Engine'
                     });
                     continue;
@@ -341,9 +351,10 @@ export default function EvaluationsPage() {
                       <td className="px-6 py-4 text-right">
                         <Link
                           href={`/evaluations/${e.id}?jobId=${e.jobId}`}
-                          className="inline-flex items-center gap-1 px-3.5 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all shadow-xs"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer"
                         >
-                          Evidence Audit →
+                          <span>Inspect Audit</span>
+                          <span className="text-slate-400">→</span>
                         </Link>
                       </td>
                     </tr>

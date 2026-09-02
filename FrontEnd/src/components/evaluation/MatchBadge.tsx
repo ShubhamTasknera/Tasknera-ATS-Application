@@ -19,134 +19,111 @@ export default function MatchBadge({
   const getStyles = () => {
     // If numeric score is provided
     if (typeof score === 'number') {
-      if (score >= 80) {
+      if (score >= 75) {
         return {
-          bg: 'bg-emerald-500/10 dark:bg-emerald-500/20',
-          border: 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300',
-          text: 'text-emerald-700 dark:text-emerald-300',
-          icon: '✓',
+          bg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          dot: 'bg-emerald-600',
           label: matchLevel || 'STRONG MATCH',
         };
       }
       if (score >= 50) {
         return {
-          bg: 'bg-amber-500/10 dark:bg-amber-500/20',
-          border: 'border-amber-500/40 text-amber-700 dark:text-amber-300',
-          text: 'text-amber-700 dark:text-amber-300',
-          icon: '◐',
+          bg: 'bg-amber-50 text-amber-800 border-amber-200',
+          dot: 'bg-amber-500',
           label: matchLevel || 'MODERATE MATCH',
         };
       }
       return {
-        bg: 'bg-red-500/10 dark:bg-red-500/20',
-        border: 'border-red-500/40 text-red-700 dark:text-red-300',
-        text: 'text-red-700 dark:text-red-300',
-        icon: '✗',
+        bg: 'bg-rose-50 text-rose-800 border-rose-200',
+        dot: 'bg-rose-500',
         label: matchLevel || 'LOW FIT',
       };
     }
 
     if (matchLevel === MatchLevel.STRONG_MATCH || matchLevel === 'STRONG MATCH') {
       return {
-        bg: 'bg-emerald-500/20',
-        border: 'border-emerald-400/50',
-        text: 'text-emerald-300',
-        icon: '✓',
+        bg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        dot: 'bg-emerald-600',
         label: 'STRONG MATCH',
       };
     }
     if (matchLevel === MatchLevel.GOOD_MATCH || matchLevel === 'GOOD MATCH') {
       return {
-        bg: 'bg-cyan-500/20',
-        border: 'border-cyan-400/50',
-        text: 'text-cyan-300',
-        icon: '✓',
+        bg: 'bg-teal-50 text-teal-800 border-teal-200',
+        dot: 'bg-teal-600',
         label: 'GOOD MATCH',
       };
     }
     if (matchLevel === MatchLevel.REVIEW || matchLevel === 'REVIEW' || matchLevel === 'MODERATE MATCH') {
       return {
-        bg: 'bg-amber-500/20',
-        border: 'border-amber-400/50',
-        text: 'text-amber-300',
-        icon: '◐',
-        label: matchLevel,
+        bg: 'bg-amber-50 text-amber-800 border-amber-200',
+        dot: 'bg-amber-500',
+        label: matchLevel || 'REVIEW',
       };
     }
     if (matchLevel === MatchLevel.WEAK_MATCH || matchLevel === 'WEAK MATCH' || matchLevel === 'LOW FIT') {
       return {
-        bg: 'bg-orange-500/20',
-        border: 'border-orange-400/50',
-        text: 'text-orange-300',
-        icon: '◒',
-        label: matchLevel,
+        bg: 'bg-orange-50 text-orange-800 border-orange-200',
+        dot: 'bg-orange-500',
+        label: matchLevel || 'LOW FIT',
       };
     }
     if (matchLevel === MatchLevel.NOT_RECOMMENDED || matchLevel === 'NOT RECOMMENDED') {
       return {
-        bg: 'bg-red-500/20',
-        border: 'border-red-400/50',
-        text: 'text-red-300',
-        icon: '✗',
+        bg: 'bg-rose-50 text-rose-800 border-rose-200',
+        dot: 'bg-rose-500',
         label: 'NOT RECOMMENDED',
       };
     }
 
     if (submissionDecision === SubmissionDecision.SUBMIT || submissionDecision === 'SUBMIT') {
       return {
-        bg: 'bg-emerald-500/20',
-        border: 'border-emerald-400/50',
-        text: 'text-emerald-300',
-        icon: '→',
+        bg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        dot: 'bg-emerald-600',
         label: 'SUBMIT',
       };
     }
     if (submissionDecision === SubmissionDecision.REVIEW || submissionDecision === 'REVIEW') {
       return {
-        bg: 'bg-amber-500/20',
-        border: 'border-amber-400/50',
-        text: 'text-amber-300',
-        icon: '⊙',
+        bg: 'bg-amber-50 text-amber-800 border-amber-200',
+        dot: 'bg-amber-500',
         label: 'REVIEW',
       };
     }
-    if (submissionDecision === SubmissionDecision.DO_NOT_SUBMIT || submissionDecision === 'DO NOT SUBMIT') {
+    if (submissionDecision === SubmissionDecision.REJECT || submissionDecision === 'REJECT') {
       return {
-        bg: 'bg-red-500/20',
-        border: 'border-red-400/50',
-        text: 'text-red-300',
-        icon: '⊗',
+        bg: 'bg-rose-50 text-rose-800 border-rose-200',
+        dot: 'bg-rose-500',
         label: 'DO NOT SUBMIT',
       };
     }
 
     return {
-      bg: 'bg-white/5',
-      border: 'border-white/20',
-      text: 'text-slate-300',
-      icon: '?',
-      label: 'EVALUATION',
+      bg: 'bg-slate-50 text-slate-700 border-slate-200',
+      dot: 'bg-slate-400',
+      label: 'EVALUATED',
     };
   };
 
-  const styles = getStyles();
+  const style = getStyles();
 
   const sizeClasses = {
-    sm: 'px-2.5 py-0.5 text-xs',
-    md: 'px-3.5 py-1 text-xs sm:text-sm',
-    lg: 'px-5 py-2 text-base',
+    sm: 'text-[11px] px-2 py-0.5 gap-1.5 font-bold',
+    md: 'text-xs px-2.5 py-1 gap-1.5 font-bold',
+    lg: 'text-sm px-3.5 py-1.5 gap-2 font-black',
   };
 
   return (
-    <div
-      className={`inline-flex items-center gap-1.5 ${sizeClasses[size]} rounded-full ${styles.bg} border ${styles.border} ${styles.text} font-bold backdrop-blur-xl shadow-sm`}
+    <span
+      className={`inline-flex items-center rounded-md border tracking-tight uppercase shadow-2xs ${style.bg} ${sizeClasses[size]}`}
     >
-      <span>{styles.icon}</span>
-      <span>{styles.label}</span>
+      <span className={`w-1.5 h-1.5 rounded-full ${style.dot} flex-shrink-0`} />
+      <span>{style.label}</span>
       {typeof score === 'number' && showPercentage && (
-        <span className="ml-1 opacity-90">({score}%)</span>
+        <span className="font-mono font-extrabold ml-0.5">
+          {score}%
+        </span>
       )}
-    </div>
+    </span>
   );
 }
-
