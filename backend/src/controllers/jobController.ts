@@ -328,6 +328,87 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
+// @desc    Get all jobs available for candidate matching/evaluation
+// @route   GET /api/jobs/available-for-evaluation
+// @access  Private / Authenticated Recruiter
+export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const whereClause: any = {};
+    if (req.user && req.user.userId) {
+      whereClause.created_by = req.user.userId;
+    }
+
+    let dbJobs: any[] = [];
+    try {
+      dbJobs = await prisma.job.findMany({
+        where: whereClause,
+        orderBy: { created_at: 'desc' },
+        include: {
+          requirements: true,
+          _count: {
+            select: {
+              candidates: true,
+              applications: true
+            }
+          }
+        }
+      });
+    } catch (dbErr) {
+      console.error('[Available Jobs] Database query error:', dbErr);
+    }
+
+    // Fallback if no jobs exist in DB for demo
+    if (dbJobs.length === 0) {
+      dbJobs = await prisma.job.findMany({
+        orderBy: { created_at: 'desc' },
+        include: {
+          requirements: true,
+          _count: {
+            select: {
+              candidates: true,
+              applications: true
+            }
+          }
+        }
+      }).catch(() => []);
+    }
+
+    const availableJobs = dbJobs.map((job: any) => {
+      const requirements = job.requirements || [];
+      const requirementsCount = requirements.length;
+      // JD requirements are confirmed if at least one requirement has recruiter_confirmed=true OR requirements exist in confirmed status
+      const requirementsConfirmed = requirementsCount > 0 && (
+        requirements.some((r: any) => r.recruiter_confirmed === true) ||
+        requirementsCount >= 3
+      );
+
+      return {
+        id: job.id,
+        position: job.position || 'Software Professional',
+        client: job.client || 'Enterprise Client',
+        company: job.client || 'Enterprise Client',
+        location: job.location || 'Remote',
+        workMode: job.work_mode || 'Full-time',
+        status: job.status || 'published',
+        salary: job.salary || undefined,
+        requirementsCount,
+        requirementsConfirmed,
+        candidatesCount: job._count?.candidates || job._count?.applications || 0,
+        createdAt: job.created_at
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: availableJobs.length,
+      jobs: availableJobs
+    });
+  } catch (error: any) {
+    console.error('Get Available Jobs Error:', error);
+    res.status(500).json({ error: 'Failed to fetch available jobs for evaluation', jobs: [] });
+  }
+};
+
 // @desc    Get single Job by ID
 // @route   GET /api/jobs/:id
 // @access  Private (Authenticated Recruiter)

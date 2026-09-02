@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RequirementEvaluation, RequirementStatus, ConfidenceLevel } from '@/types';
 
 interface RequirementTableProps {
@@ -6,190 +6,198 @@ interface RequirementTableProps {
   showEvidence?: boolean;
 }
 
-export default function RequirementTable({ evaluations, showEvidence = false }: RequirementTableProps) {
+export default function RequirementTable({ evaluations, showEvidence = true }: RequirementTableProps) {
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   const getStatusBadge = (status: RequirementStatus) => {
-    const styles: Record<RequirementStatus, { bg: string; text: string; icon: string }> = {
-      [RequirementStatus.FULLY_MET]: {
-        bg: 'bg-emerald-500/20',
-        text: 'text-emerald-300',
-        icon: '✓',
-      },
-      [RequirementStatus.PARTIALLY_MET]: {
-        bg: 'bg-cyan-500/20',
-        text: 'text-cyan-300',
-        icon: '◐',
-      },
-      [RequirementStatus.NOT_MET]: {
-        bg: 'bg-red-500/20',
-        text: 'text-red-300',
-        icon: '✗',
-      },
-      [RequirementStatus.NOT_FOUND]: {
-        bg: 'bg-orange-500/20',
-        text: 'text-orange-300',
-        icon: '?',
-      },
-      [RequirementStatus.NEEDS_VERIFICATION]: {
-        bg: 'bg-amber-500/20',
-        text: 'text-amber-300',
-        icon: '⊙',
-      },
-    };
-
-    const style = styles[status];
-    return (
-      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${style.bg} ${style.text} text-xs font-semibold`}>
-        <span>{style.icon}</span>
-        {status}
-      </span>
-    );
+    switch (status) {
+      case RequirementStatus.FULLY_MET:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+            <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+            Fully Met
+          </span>
+        );
+      case RequirementStatus.PARTIALLY_MET:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
+            Partially Met
+          </span>
+        );
+      case RequirementStatus.NOT_MET:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 text-rose-900 border border-rose-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+            <svg className="w-4 h-4 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Not Met
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-300 text-xs sm:text-sm font-bold whitespace-nowrap">
+            {status}
+          </span>
+        );
+    }
   };
 
-  const getConfidenceBadge = (confidence: ConfidenceLevel) => {
-    const styles: Record<ConfidenceLevel, { bg: string; text: string }> = {
-      [ConfidenceLevel.HIGH]: {
-        bg: 'bg-emerald-500/10',
-        text: 'text-emerald-400',
-      },
-      [ConfidenceLevel.MEDIUM]: {
-        bg: 'bg-amber-500/10',
-        text: 'text-amber-400',
-      },
-      [ConfidenceLevel.LOW]: {
-        bg: 'bg-red-500/10',
-        text: 'text-red-400',
-      },
-    };
-
-    const style = styles[confidence];
-    return (
-      <span className={`inline-flex px-2 py-0.5 rounded ${style.bg} ${style.text} text-xs font-medium`}>
-        {confidence}
-      </span>
-    );
+  const getConfidenceText = (confidence: ConfidenceLevel) => {
+    switch (confidence) {
+      case ConfidenceLevel.HIGH:
+        return 'High Confidence';
+      case ConfidenceLevel.MEDIUM:
+        return 'Medium Confidence';
+      case ConfidenceLevel.LOW:
+        return 'Low Confidence';
+      default:
+        return String(confidence);
+    }
   };
+
+  if (!evaluations || evaluations.length === 0) {
+    return (
+      <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-xs font-semibold">
+        No specific requirement criteria loaded for this evaluation audit.
+      </div>
+    );
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-white/10">
-            <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300">Requirement</th>
-            <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300">Category</th>
-            <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300">Mandatory</th>
-            <th className="text-left py-4 px-4 text-sm font-semibold text-slate-300">Status</th>
-            <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300">Confidence</th>
-            <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300">Score</th>
-            <th className="text-center py-4 px-4 text-sm font-semibold text-slate-300">Match</th>
-          </tr>
-        </thead>
-        <tbody>
-          {evaluations.map((evalItem, index) => (
-            <React.Fragment key={evalItem.id}>
-              <tr className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                <td className="py-4 px-4">
-                  <div className="text-white font-medium">{evalItem.requirement.text}</div>
-                  {showEvidence && evalItem.hasEvidence && (
-                    <div className="text-xs text-slate-400 mt-1">
-                      {evalItem.evidence.length} evidence item(s)
-                    </div>
-                  )}
-                </td>
-                <td className="py-4 px-4">
-                  <span className="inline-flex px-2 py-1 rounded bg-white/5 text-slate-300 text-xs">
-                    {evalItem.requirement.category}
+    <div className="space-y-4">
+      {evaluations.map((evalItem) => {
+        const isExpanded = Boolean(expandedRows[evalItem.id]);
+        const hasEvidenceItems = evalItem.hasEvidence && evalItem.evidence && evalItem.evidence.length > 0;
+
+        return (
+          <div
+            key={evalItem.id}
+            className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 hover:border-slate-300 transition-all shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
+          >
+            {/* Top row: Priority, Category, Confidence tags + Score pts */}
+            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                {evalItem.requirement.isMandatory ? (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
+                    Mandatory
                   </span>
-                </td>
-                <td className="py-4 px-4 text-center">
-                  {evalItem.requirement.isMandatory ? (
-                    <span className="inline-flex items-center gap-1 text-red-300 text-xs font-semibold">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      YES
-                    </span>
-                  ) : (
-                    <span className="text-slate-500 text-xs">Optional</span>
-                  )}
-                </td>
-                <td className="py-4 px-4">{getStatusBadge(evalItem.status)}</td>
-                <td className="py-4 px-4 text-center">{getConfidenceBadge(evalItem.confidence)}</td>
-                <td className="py-4 px-4 text-center">
-                  <span className="text-white font-semibold">
-                    {evalItem.pointsAwarded}/{evalItem.maxPoints}
+                ) : (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                    Preferred
                   </span>
-                </td>
-                <td className="py-4 px-4 text-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <span className={`text-sm font-bold ${
-                      evalItem.matchPercentage >= 90 ? 'text-emerald-400' :
-                      evalItem.matchPercentage >= 70 ? 'text-cyan-400' :
-                      evalItem.matchPercentage >= 50 ? 'text-amber-400' :
-                      'text-red-400'
-                    }`}>
-                      {evalItem.matchPercentage}%
-                    </span>
-                    <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          evalItem.matchPercentage >= 90 ? 'bg-emerald-400' :
-                          evalItem.matchPercentage >= 70 ? 'bg-cyan-400' :
-                          evalItem.matchPercentage >= 50 ? 'bg-amber-400' :
-                          'bg-red-400'
-                        }`}
-                        style={{ width: `${evalItem.matchPercentage}%` }}
-                      />
-                    </div>
-                  </div>
-                </td>
-              </tr>
-              {showEvidence && evalItem.hasEvidence && (
-                <tr className="bg-white/[0.02]">
-                  <td colSpan={7} className="py-3 px-4">
-                    <div className="pl-4">
-                      <div className="text-xs font-semibold text-slate-400 mb-2">Evidence:</div>
-                      <div className="space-y-2">
-                        {evalItem.evidence.map((evidence) => (
-                          <div
-                            key={evidence.id}
-                            className="bg-white/5 border border-white/10 rounded-lg p-3"
-                          >
-                            <div className="flex items-start justify-between gap-4 mb-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  evidence.type === 'Explicit' ? 'bg-emerald-500/20 text-emerald-300' :
-                                  evidence.type === 'Semantic' ? 'bg-cyan-500/20 text-cyan-300' :
-                                  'bg-amber-500/20 text-amber-300'
-                                }`}>
-                                  {evidence.type}
-                                </span>
-                                <span className="text-xs text-slate-400">{evidence.source}</span>
-                              </div>
-                              <div className="text-xs font-semibold text-cyan-400">
-                                {evidence.matchStrength}% match
-                              </div>
-                            </div>
-                            <div className="text-sm text-slate-300 italic">"{evidence.text}"</div>
-                            {evidence.explanation && (
-                              <div className="text-xs text-slate-400 mt-2">
-                                {evidence.explanation}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                )}
+                <span className="inline-flex px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  {evalItem.requirement.category || 'Technical Skill'}
+                </span>
+                <span className="text-xs font-medium text-slate-400">
+                  • {getConfidenceText(evalItem.confidence)}
+                </span>
+              </div>
+
+              {/* Large Score Metric on Right */}
+              <div className="flex items-center gap-2.5 font-mono text-sm sm:text-base font-black text-slate-900">
+                <span>{evalItem.pointsAwarded} / {evalItem.maxPoints} pts</span>
+                <span className={`px-2 py-0.5 rounded-md text-xs font-extrabold ${
+                  evalItem.matchPercentage >= 75
+                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                    : evalItem.matchPercentage >= 50
+                    ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                    : 'bg-rose-100 text-rose-900 border border-rose-200'
+                }`}>
+                  {evalItem.matchPercentage}%
+                </span>
+              </div>
+            </div>
+
+            {/* Middle row: Large Prominent Requirement text + Status Badge */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 my-2">
+              <div className="flex-1 pr-2">
+                <h4 className="text-base sm:text-lg font-extrabold text-slate-900 leading-snug tracking-tight">
+                  {evalItem.requirement.text}
+                </h4>
+              </div>
+
+              <div className="flex-shrink-0 self-start sm:self-center">
+                {getStatusBadge(evalItem.status)}
+              </div>
+            </div>
+
+            {/* Evidence toggle bar & Progress Bar */}
+            {hasEvidenceItems && showEvidence && (
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                <button
+                  onClick={() => toggleRow(evalItem.id)}
+                  className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-brand-orange hover:text-orange-700 cursor-pointer transition-colors"
+                >
+                  <svg
+                    className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span>{isExpanded ? 'Hide Verified Resume Evidence' : `▸ ${evalItem.evidence.length} Verified Evidence Snippet in CV`}</span>
+                </button>
+
+                <div className="w-28 sm:w-36 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      evalItem.matchPercentage >= 75
+                        ? 'bg-emerald-600'
+                        : evalItem.matchPercentage >= 50
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                    }`}
+                    style={{ width: `${evalItem.matchPercentage}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Expanded Verified Evidence Drawer */}
+            {isExpanded && hasEvidenceItems && (
+              <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5 animate-fadeIn">
+                <div className="text-[11px] uppercase font-bold tracking-wider text-slate-400">
+                  Extracted CV Verification & Context:
+                </div>
+                {evalItem.evidence.map((ev, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs sm:text-sm flex items-start justify-between gap-3"
+                  >
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          {ev.type || 'Direct Match'}
+                        </span>
+                        <span className="text-xs font-mono font-semibold text-slate-500">
+                          {ev.source || 'Candidate Resume Text'}
+                        </span>
                       </div>
+                      <p className="text-slate-900 font-serif italic text-xs sm:text-sm leading-relaxed mt-1">
+                        &ldquo;{ev.text}&rdquo;
+                      </p>
                     </div>
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
-          ))}
-        </tbody>
-      </table>
+                    {typeof ev.matchStrength === 'number' && (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                        {ev.matchStrength}% Match
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

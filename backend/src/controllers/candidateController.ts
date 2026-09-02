@@ -23,75 +23,8 @@ export interface CandidateRecord extends CandidateParsedProfile {
 export const CANDIDATE_STORE: Map<string, CandidateRecord[]> = new Map();
 export const GLOBAL_CANDIDATES: Map<string, CandidateRecord> = new Map(); // Keyed by fileHash or id
 
-// Initial realistic default candidates for demo jobs
-const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {
-  'jd-1': [
-    {
-      id: 'cand-101',
-      jobId: 'jd-1',
-      name: 'Rahul Sharma',
-      email: 'rahul.sharma@example.com',
-      phone: '+91 98234 56789',
-      location: 'Pune, Maharashtra',
-      totalExperience: '5 years',
-      relevantExperience: '5 years',
-      currentTitle: 'Senior Frontend Developer',
-      currentCompany: 'TechNova Solutions',
-      summary: 'Frontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.',
-      skills: ['React', 'TypeScript', 'Next.js', 'Tailwind CSS', 'Redux', 'Jest', 'REST APIs', 'Node.js'],
-      technologies: ['React', 'Next.js', 'TypeScript', 'Node.js'],
-      tools: ['Git', 'Jest', 'Tailwind CSS'],
-      industries: [],
-      education: [
-        {
-          degree: 'Bachelor of Engineering (B.E.)',
-          field: 'Computer Engineering',
-          institution: 'Pune Institute of Computer Technology',
-          year: '2019',
-          details: 'First Class with Distinction'
-        }
-      ],
-      certifications: ['Meta Certified Front-End Developer', 'AWS Certified Cloud Practitioner'],
-      experience: [
-        {
-          title: 'Senior Frontend Developer',
-          company: 'TechNova Solutions',
-          duration: '3 years',
-          startDate: '2021',
-          endDate: 'Present',
-          location: 'Pune, Maharashtra',
-          description: 'Architecting core web applications, implementing UI components, and optimizing Core Web Vitals.'
-        }
-      ],
-      projects: [
-        {
-          name: 'Enterprise Recruitment Portal',
-          description: 'Built modular dashboard with real-time state management and custom Tailwind UI components.',
-          technologies: ['React', 'TypeScript', 'Tailwind CSS']
-        }
-      ],
-      languages: ['English', 'Hindi', 'Marathi'],
-      responsibilities: [],
-      achievements: [],
-      rawText: `RAHUL SHARMA\nSenior Frontend Developer\nEmail: rahul.sharma@example.com | Phone: +91 98234 56789 | Location: Pune, Maharashtra\n\nSUMMARY\nFrontend Specialist with 5 years experience designing high-throughput web applications with React, TypeScript, and modern design systems.\n\nEXPERIENCE\nSenior Frontend Developer — TechNova Solutions (2021 – Present)\n- Architected enterprise client portal in React & TypeScript.\n- Improved frontend load speed by 42% through code-splitting and asset optimization.\n\nEDUCATION\nBachelor of Engineering (B.E.), Pune Institute of Computer Technology (2015 – 2019)\n\nSKILLS\nReact, TypeScript, Next.js, Tailwind CSS, Redux, Node.js, REST APIs, Git, Jest`,
-      parsingStatus: 'PARSED',
-      validationErrors: [],
-      parsingMetadata: {
-        fileName: 'CV_Rahul_Sharma_Frontend.pdf',
-        fileType: 'application/pdf',
-        pageCount: 2,
-        extractionMethod: 'pymupdf-layout',
-        ocrUsed: false,
-        characterCount: 980,
-        wordCount: 145
-      },
-      fileName: 'CV_Rahul_Sharma_Frontend.pdf',
-      fileSize: 184500,
-      fileHash: 'seeded-hash-rahul-sharma',
-      uploadedAt: '2024-02-15T09:30:00.000Z'
-    }
-  ]
-};
+// Initial default candidates (empty so only user uploaded CVs are present)
+const DEFAULT_INITIAL_CANDIDATES: Record<string, CandidateRecord[]> = {};
 
 // Initialize global store with defaults
 for (const [jobId, list] of Object.entries(DEFAULT_INITIAL_CANDIDATES)) {
@@ -101,6 +34,219 @@ for (const [jobId, list] of Object.entries(DEFAULT_INITIAL_CANDIDATES)) {
     GLOBAL_CANDIDATES.set(c.id, c);
   }
 }
+
+/**
+ * Helper to convert Prisma Candidate DB entity to CandidateRecord,
+ * automatically extracting skills, experience, and education from raw_text
+ * if the relational child tables are empty or incomplete.
+ */
+export function mapDbCandidateToRecord(c: any, defaultJobId?: string): CandidateRecord {
+  const associatedJobId = c.job_id || c.applications?.[0]?.job_id || defaultJobId || 'jd-1';
+  let skills: string[] = Array.isArray(c.skills) ? c.skills.map((s: any) => s.skill).filter(Boolean) : [];
+  let experience: any[] = Array.isArray(c.experiences) ? c.experiences.map((ex: any) => ({
+    title: ex.title || '',
+    company: ex.company || '',
+    startDate: ex.start_date || '',
+    endDate: ex.end_date || '',
+    duration: ex.duration || '',
+    description: ex.description || '',
+  })) : [];
+  let education: any[] = Array.isArray(c.education) ? c.education.map((e: any) => ({
+    degree: e.degree || '',
+    institution: e.institution || '',
+    field: e.field || '',
+    year: e.start_year ? `${e.start_year}` : undefined,
+  })) : [];
+
+  let totalExp = c.total_experience;
+  let title = c.current_title;
+  let company = c.current_company;
+  let location = c.location;
+  let summary = c.summary;
+
+  // If skills or structured fields are missing from DB relational tables, parse from raw_text on the fly
+  if ((skills.length === 0 || experience.length === 0 || !title) && c.raw_text && c.raw_text.trim().length > 10) {
+    try {
+      const parsed = extractStructuredCandidateFromText(c.raw_text, c.resume_file_url || 'cv.pdf', {
+        fileType: 'application/pdf',
+        pageCount: 1,
+        extractionMethod: 'database_reparse',
+        ocrUsed: false,
+        characterCount: c.raw_text.length,
+        wordCount: c.raw_text.split(/\s+/).filter(Boolean).length,
+      });
+
+      if (skills.length === 0 && parsed.skills && parsed.skills.length > 0) {
+        skills = parsed.skills;
+        // Asynchronously persist skills into database for permanent caching
+        prisma.candidateSkill.createMany({
+          data: skills.map((s: string) => ({ candidate_id: c.id, skill: s })),
+          skipDuplicates: true,
+        }).catch(() => null);
+      }
+
+      if (experience.length === 0 && parsed.experience && parsed.experience.length > 0) {
+        experience = parsed.experience;
+        prisma.candidateExperience.createMany({
+          data: experience.map((ex: any) => ({
+            candidate_id: c.id,
+            company: ex.company || 'Company',
+            title: ex.title || 'Role',
+            duration: ex.duration || '',
+            description: ex.description || '',
+            start_date: ex.startDate || '',
+            end_date: ex.endDate || '',
+          })),
+          skipDuplicates: true,
+        }).catch(() => null);
+      }
+
+      if (education.length === 0 && parsed.education && parsed.education.length > 0) {
+        education = parsed.education;
+        prisma.candidateEducation.createMany({
+          data: education.map((edu: any) => ({
+            candidate_id: c.id,
+            degree: edu.degree || 'Degree',
+            institution: edu.institution || 'University',
+            field: edu.field || '',
+          })),
+          skipDuplicates: true,
+        }).catch(() => null);
+      }
+
+      if (!totalExp && parsed.totalExperience) totalExp = parsed.totalExperience;
+      if (!title && parsed.currentTitle) title = parsed.currentTitle;
+      if (!company && parsed.currentCompany) company = parsed.currentCompany;
+      if (!location && parsed.location) location = parsed.location;
+      if (!summary && parsed.summary) summary = parsed.summary;
+    } catch (parseErr) {
+      console.warn('[DB Candidate Reparse Notice]:', parseErr);
+    }
+  }
+
+  const cleanName = c.name && c.name.trim() && c.name.toLowerCase() !== 'candidate'
+    ? c.name.trim()
+    : (c.resume_file_url ? c.resume_file_url.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' ') : 'Candidate Profile');
+
+  return {
+    id: c.id,
+    jobId: associatedJobId,
+    name: cleanName,
+    email: c.email || '',
+    phone: c.phone || '',
+    location: location || 'Remote',
+    totalExperience: totalExp || (experience.length ? `${experience.length * 2} yrs` : '3 yrs'),
+    relevantExperience: totalExp || '3 yrs',
+    currentTitle: title || 'Candidate Profile',
+    currentCompany: company || '',
+    summary: summary || '',
+    professionalSummary: summary || '',
+    skills,
+    technologies: skills,
+    tools: [],
+    industries: [],
+    education,
+    certifications: c.certifications?.map((ct: any) => ct.certification) || [],
+    languages: c.languages?.map((l: any) => l.language) || [],
+    experience,
+    gapAnalysis: calculateCareerGaps(experience, c.raw_text || ''),
+    responsibilities: [],
+    achievements: [],
+    projects: c.projects?.map((p: any) => ({
+      name: p.name || '',
+      description: p.description || '',
+      technologies: p.technologies || [],
+    })) || [],
+    rawText: c.raw_text || '',
+    parsingStatus: (c.parsing_status as any) || 'PARSED',
+    validationErrors: [],
+    parsingMetadata: {
+      fileName: c.resume_file_url || 'cv.pdf',
+      fileType: 'application/pdf',
+      pageCount: 1,
+      extractionMethod: 'prisma-db',
+      ocrUsed: false,
+      characterCount: (c.raw_text || '').length,
+      wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
+    },
+    fileName: c.resume_file_url || 'cv.pdf',
+    fileSize: 100000,
+    fileHash: c.file_hash || undefined,
+    uploadedAt: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
+  };
+}
+
+/**
+/**
+ * Get all candidates belonging to the Search Talent Pool (job_id IS NULL)
+ * GET /api/candidates
+ */
+export const getAllCandidates = async (req: Request, res: Response): Promise<void> => {
+  try {
+    let dbCandidates: CandidateRecord[] = [];
+    try {
+      // ONLY fetch candidates from Talent Pool (job_id IS NULL)
+      const candidatesFromDb = await prisma.candidate.findMany({
+        where: {
+          job_id: null
+        },
+        include: {
+          experiences: true,
+          education: true,
+          skills: true,
+          certifications: true,
+          languages: true,
+          projects: true,
+        },
+        orderBy: { created_at: 'desc' }
+      });
+
+      if (candidatesFromDb && candidatesFromDb.length > 0) {
+        dbCandidates = candidatesFromDb.map((c: any) => mapDbCandidateToRecord(c, 'pool'));
+      }
+    } catch (dbErr) {
+      console.warn('[Talent Pool Candidates] Database query error:', dbErr);
+    }
+
+    // Combine pool memory candidates (jobId === 'pool')
+    const poolList = CANDIDATE_STORE.get('pool') || [];
+    const combinedMap = new Map<string, CandidateRecord>();
+    for (const c of dbCandidates) {
+      combinedMap.set(c.id, c);
+    }
+    for (const c of poolList) {
+      if (!combinedMap.has(c.id)) {
+        combinedMap.set(c.id, c);
+      }
+    }
+
+    const rawList = Array.from(combinedMap.values());
+    const seenKeys = new Set<string>();
+    const resultList: CandidateRecord[] = [];
+
+    for (const c of rawList) {
+      const key = (c.email && c.email.trim().toLowerCase()) ||
+                  (c.fileHash && c.fileHash.trim()) ||
+                  (c.fileName && c.fileName.trim().toLowerCase()) ||
+                  (c.name && c.name.trim().toLowerCase()) ||
+                  c.id;
+
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        resultList.push(c);
+      }
+    }
+
+    res.json({
+      success: true,
+      total: resultList.length,
+      candidates: resultList
+    });
+  } catch (error: any) {
+    console.error('Error fetching talent pool candidates:', error);
+    res.status(500).json({ error: 'Failed to retrieve talent pool candidates' });
+  }
+};
 
 /**
  * Get all candidates associated with a specific Job
@@ -114,98 +260,71 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
       return;
     }
 
-    // 1. Try fetching from Prisma DB if accessible
+    if (jobId === 'all') {
+      return getAllCandidates(req, res);
+    }
+
+    // 1. Try fetching from Prisma DB if accessible and valid UUID
     let dbCandidates: CandidateRecord[] = [];
-    try {
-      const apps = await (prisma as any).candidateApplication?.findMany({
-        where: { job_id: jobId },
-        include: {
-          candidate: {
-            include: {
-              experiences: true,
-              education: true,
-              skills: true,
-              certifications: true,
-              languages: true,
-              projects: true,
+    const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
+    if (isJobUuid) {
+      try {
+        const apps = await (prisma as any).candidateApplication?.findMany({
+          where: { job_id: jobId },
+          include: {
+            candidate: {
+              include: {
+                experiences: true,
+                education: true,
+                skills: true,
+                certifications: true,
+                languages: true,
+                projects: true,
+              }
+            }
+          },
+          orderBy: { created_at: 'desc' }
+        });
+
+        const directCands = await (prisma as any).candidate?.findMany({
+          where: { job_id: jobId },
+          include: {
+            experiences: true,
+            education: true,
+            skills: true,
+            certifications: true,
+            languages: true,
+            projects: true,
+          },
+          orderBy: { created_at: 'desc' }
+        });
+
+        const combinedCands: any[] = [];
+        const seenCandIds = new Set<string>();
+
+        if (apps && apps.length > 0) {
+          for (const app of apps) {
+            if (app.candidate && !seenCandIds.has(app.candidate.id)) {
+              seenCandIds.add(app.candidate.id);
+              combinedCands.push(app.candidate);
             }
           }
-        },
-        orderBy: { created_at: 'desc' }
-      });
+        }
+        if (directCands && directCands.length > 0) {
+          for (const c of directCands) {
+            if (!seenCandIds.has(c.id)) {
+              seenCandIds.add(c.id);
+              combinedCands.push(c);
+            }
+          }
+        }
 
-      if (apps && apps.length > 0) {
-        dbCandidates = apps.map((app: any) => {
-          const c = app.candidate;
-          return {
-            id: c.id,
-            jobId,
-            name: c.name,
-            email: c.email,
-            phone: c.phone,
-            location: c.location,
-            totalExperience: c.total_experience,
-            relevantExperience: c.total_experience,
-            currentTitle: c.current_title,
-            currentCompany: c.current_company,
-            summary: c.summary,
-            professionalSummary: c.summary,
-            skills: c.skills?.map((s: any) => s.skill) || [],
-            technologies: c.skills?.map((s: any) => s.skill) || [],
-            tools: [],
-            industries: [],
-            education: c.education?.map((e: any) => ({
-              degree: e.degree,
-              institution: e.institution,
-              field: e.field,
-              year: e.start_year ? `${e.start_year}` : undefined,
-            })) || [],
-            certifications: c.certifications?.map((ct: any) => ct.certification) || [],
-            languages: c.languages?.map((l: any) => l.language) || [],
-            experience: c.experiences?.map((ex: any) => ({
-              title: ex.title,
-              company: ex.company,
-              startDate: ex.start_date,
-              endDate: ex.end_date,
-              duration: ex.duration,
-              description: ex.description,
-            })) || [],
-            gapAnalysis: calculateCareerGaps(c.experiences?.map((ex: any) => ({
-              title: ex.title,
-              company: ex.company,
-              startDate: ex.start_date,
-              endDate: ex.end_date,
-              duration: ex.duration,
-              description: ex.description,
-            })) || []),
-            responsibilities: [],
-            achievements: [],
-            projects: c.projects?.map((p: any) => ({
-              name: p.name,
-              description: p.description,
-              technologies: p.technologies,
-            })) || [],
-            rawText: c.raw_text || '',
-            parsingStatus: (c.parsing_status as any) || 'PARSED',
-            validationErrors: [],
-            parsingMetadata: {
-              fileName: c.resume_file_url || 'cv.pdf',
-              fileType: 'application/pdf',
-              pageCount: 1,
-              extractionMethod: 'prisma-db',
-              ocrUsed: false,
-              characterCount: (c.raw_text || '').length,
-              wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
-            },
-            fileName: c.resume_file_url || 'cv.pdf',
-            fileSize: 100000,
-            fileHash: c.file_hash || undefined,
-            uploadedAt: c.created_at.toISOString(),
-          };
-        });
+        if (combinedCands.length > 0) {
+          dbCandidates = combinedCands.map((c: any) => mapDbCandidateToRecord(c, jobId));
+        }
+      } catch (dbErr) {
+        console.warn('[Candidates] Database query fallback to memory store:', dbErr);
       }
-    } catch (dbErr) {
-      console.warn('[Candidates] Database query fallback to memory store:', dbErr);
     }
 
     // 2. Check memory store
@@ -213,8 +332,6 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
     if (!memCandidates) {
       if (DEFAULT_INITIAL_CANDIDATES[jobId]) {
         memCandidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
-      } else if (jobId === 'default' || jobId === 'all') {
-        memCandidates = [...DEFAULT_INITIAL_CANDIDATES['jd-1']];
       } else {
         memCandidates = [];
       }
@@ -280,10 +397,12 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // Try DB
-    try {
-      const c = await prisma.candidate.findUnique({
-        where: { id: candidateId },
+    // Try DB if candidateId is a valid UUID
+    const isCandidateUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
+    if (isCandidateUuid) {
+      try {
+        const c = await prisma.candidate.findUnique({
+          where: { id: candidateId },
         include: {
           experiences: true,
           education: true,
@@ -294,68 +413,13 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
         }
       });
       if (c) {
-        const record: CandidateRecord = {
-          id: c.id,
-          jobId,
-          name: c.name,
-          email: c.email,
-          phone: c.phone,
-          location: c.location,
-          totalExperience: c.total_experience,
-          relevantExperience: c.total_experience,
-          currentTitle: c.current_title,
-          currentCompany: c.current_company,
-          summary: c.summary,
-          professionalSummary: c.summary,
-          skills: c.skills.map(s => s.skill),
-          technologies: c.skills.map(s => s.skill),
-          tools: [],
-          industries: [],
-          education: c.education.map(e => ({
-            degree: e.degree,
-            institution: e.institution,
-            field: e.field,
-            year: e.start_year ? `${e.start_year}` : undefined,
-          })),
-          certifications: c.certifications.map(ct => ct.certification),
-          languages: c.languages.map(l => l.language),
-          experience: c.experiences.map(ex => ({
-            title: ex.title,
-            company: ex.company,
-            startDate: ex.start_date,
-            endDate: ex.end_date,
-            duration: ex.duration,
-            description: ex.description,
-          })),
-          responsibilities: [],
-          achievements: [],
-          projects: c.projects.map(p => ({
-            name: p.name,
-            description: p.description,
-            technologies: p.technologies,
-          })),
-          rawText: c.raw_text || '',
-          parsingStatus: (c.parsing_status as any) || 'PARSED',
-          validationErrors: [],
-          parsingMetadata: {
-            fileName: c.resume_file_url || 'cv.pdf',
-            fileType: 'application/pdf',
-            pageCount: 1,
-            extractionMethod: 'prisma-db',
-            ocrUsed: false,
-            characterCount: (c.raw_text || '').length,
-            wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
-          },
-          fileName: c.resume_file_url || 'cv.pdf',
-          fileSize: 100000,
-          fileHash: c.file_hash || undefined,
-          uploadedAt: c.created_at.toISOString(),
-        };
+        const record = mapDbCandidateToRecord(c, jobId);
         res.json({ success: true, jobId, candidate: record });
         return;
       }
-    } catch (e) {
-      console.warn('[Candidate Detail] DB lookup error:', e);
+      } catch (e) {
+        console.warn('[Candidate Detail] DB lookup error:', e);
+      }
     }
 
     res.status(404).json({ error: 'Candidate profile not found' });
@@ -374,7 +438,8 @@ export const getCandidateById = async (req: Request, res: Response): Promise<voi
  */
 export const uploadCandidateCVs = async (req: Request, res: Response): Promise<void> => {
   try {
-    const jobId = String(req.params.jobId || req.body?.jobId || '');
+    const isPoolUpload = req.baseUrl?.includes('/candidates') || req.originalUrl?.includes('/candidates/upload') || req.body?.jobId === 'pool' || !req.params.jobId;
+    let jobId = isPoolUpload ? 'pool' : String(req.params.jobId || req.body?.jobId || '');
     
     // Support files from multer array, any fields, or single file fallback
     let files: Express.Multer.File[] = [];
@@ -390,11 +455,6 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       }
     } else if (req.file) {
       files = [req.file];
-    }
-
-    if (!jobId) {
-      res.status(400).json({ error: 'Job ID is required in URL parameters or request body' });
-      return;
     }
 
     if (!files || files.length === 0) {
@@ -459,6 +519,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
               ]
             },
             include: {
+              applications: true,
               experiences: true,
               education: true,
               skills: true,
@@ -525,28 +586,119 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       } : null);
 
       if (existingProfile) {
-        console.log(`[CV Processing] Duplicate CV detected for: ${fileName}. Skipping insertion.`);
-        const dupCandidate: CandidateRecord = {
+        console.log(`[CV Processing] Existing CV detected for: ${fileName}.`);
+        const existingCandId = existingDbCandidate?.id || existingProfile.id;
+        
+        // 1. If uploading to Talent Pool and candidate already exists:
+        if (isPoolUpload) {
+          const dupCandidate: CandidateRecord = {
+            ...existingProfile,
+            jobId: 'pool',
+            isDuplicate: true,
+            parsingStatus: 'DUPLICATE' as any,
+            errorMessage: 'Duplicate CV: This candidate already exists in the Talent Pool.',
+            fileName,
+            fileSize,
+            fileHash,
+          };
+          processedCandidates.push(dupCandidate);
+          candidateIds.push(existingCandId);
+
+          if (files.length === 1) {
+            res.status(200).json({
+              status: 'duplicate',
+              message: 'Candidate CV already exists in the Talent Pool',
+              isDuplicate: true,
+              candidate: dupCandidate,
+              candidates: [dupCandidate],
+              allCandidates: existingCandidates
+            });
+            return;
+          }
+          continue;
+        }
+
+        // 2. If uploading to a specific Job:
+        const isAlreadyInJob = existingInJob || (existingDbCandidate && (
+          existingDbCandidate.job_id === jobId ||
+          (existingDbCandidate.applications && existingDbCandidate.applications.some((a: any) => a.job_id === jobId))
+        ));
+
+        if (isAlreadyInJob) {
+          const dupCandidate: CandidateRecord = {
+            ...existingProfile,
+            jobId,
+            isDuplicate: true,
+            parsingStatus: 'DUPLICATE' as any,
+            errorMessage: 'Duplicate CV: This candidate is already attached to this Job Requisition.',
+            fileName,
+            fileSize,
+            fileHash,
+          };
+          processedCandidates.push(dupCandidate);
+          candidateIds.push(existingCandId);
+
+          if (files.length === 1) {
+            res.status(200).json({
+              status: 'duplicate',
+              message: 'This candidate is already attached to this job requisition',
+              isDuplicate: true,
+              candidate: dupCandidate,
+              candidates: [dupCandidate],
+              allCandidates: existingCandidates
+            });
+            return;
+          }
+          continue;
+        }
+
+        // Candidate exists in database / pool but NOT in this job yet -> Link to this job via Application without duplicating candidate row
+        try {
+          if (existingCandId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existingCandId) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+            await (prisma as any).candidateApplication.upsert({
+              where: {
+                job_id_candidate_id: {
+                  job_id: jobId,
+                  candidate_id: existingCandId
+                }
+              },
+              update: {
+                stage: 'PARSED',
+                status: 'active'
+              },
+              create: {
+                job_id: jobId,
+                candidate_id: existingCandId,
+                stage: 'PARSED',
+                status: 'active'
+              }
+            }).catch(() => null);
+          }
+        } catch (linkErr) {
+          console.warn('[CV Upload] Link existing candidate to job note:', linkErr);
+        }
+
+        const linkedRecord: CandidateRecord = {
           ...existingProfile,
           jobId,
-          isDuplicate: true,
-          parsingStatus: 'DUPLICATE' as any,
-          errorMessage: 'Duplicate CV: This document has already been uploaded for this position.',
+          isDuplicate: false,
+          parsingStatus: 'PARSED',
           fileName,
           fileSize,
           fileHash,
+          uploadedAt: new Date().toISOString()
         };
 
-        processedCandidates.push(dupCandidate);
-        candidateIds.push(existingProfile.id);
+        existingCandidates.push(linkedRecord);
+        processedCandidates.push(linkedRecord);
+        candidateIds.push(existingCandId);
 
         if (files.length === 1) {
           res.status(200).json({
-            status: 'duplicate',
-            message: 'Candidate CV already exists for this position',
-            isDuplicate: true,
-            candidate: dupCandidate,
-            candidates: [dupCandidate],
+            status: 'success',
+            message: 'Candidate added to this position successfully (reused existing verified profile)',
+            candidate: linkedRecord,
+            candidates: [linkedRecord],
             allCandidates: existingCandidates
           });
           return;
@@ -559,11 +711,12 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
       // Step 0: Record initial candidate in Prisma database with status PROCESSING
       let dbCandidateId: string | null = null;
+      const dbJobId = (!isPoolUpload && jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) ? jobId : null;
       if (defaultUserId) {
         try {
           const initialDbCand = await prisma.candidate.create({
             data: {
-              job_id: jobId.includes('-') && jobId.length === 36 ? jobId : undefined,
+              job_id: dbJobId,
               name: fileName.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' '),
               resume_file_url: fileName,
               file_hash: fileHash,
@@ -572,7 +725,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             }
           });
           dbCandidateId = initialDbCand.id;
-          console.log(`[Prisma DB] Stored initial candidate record ${dbCandidateId} with status PROCESSING`);
+          console.log(`[Prisma DB] Stored initial candidate record ${dbCandidateId} (job_id: ${dbJobId || 'POOL'}) with status PROCESSING`);
         } catch (dbInitErr) {
           console.warn('[Prisma DB Init Notice] Initial candidate record creation bypassed:', dbInitErr);
         }
@@ -858,6 +1011,47 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             });
             newRecord.id = createdDbCand.id;
           }
+
+          const targetId = dbCandidateId || newRecord.id;
+          if (targetId && targetId.length === 36) {
+            // Save child skills
+            if (newRecord.skills && newRecord.skills.length > 0) {
+              await prisma.candidateSkill.deleteMany({ where: { candidate_id: targetId } }).catch(() => null);
+              await prisma.candidateSkill.createMany({
+                data: newRecord.skills.map(s => ({ candidate_id: targetId, skill: s })),
+                skipDuplicates: true,
+              }).catch(() => null);
+            }
+            // Save child experiences
+            if (newRecord.experience && newRecord.experience.length > 0) {
+              await prisma.candidateExperience.deleteMany({ where: { candidate_id: targetId } }).catch(() => null);
+              await prisma.candidateExperience.createMany({
+                data: newRecord.experience.map(ex => ({
+                  candidate_id: targetId,
+                  company: ex.company || 'Company',
+                  title: ex.title || 'Role',
+                  duration: ex.duration || '',
+                  description: ex.description || '',
+                  start_date: ex.startDate || '',
+                  end_date: ex.endDate || '',
+                })),
+                skipDuplicates: true,
+              }).catch(() => null);
+            }
+            // Save child education
+            if (newRecord.education && newRecord.education.length > 0) {
+              await prisma.candidateEducation.deleteMany({ where: { candidate_id: targetId } }).catch(() => null);
+              await prisma.candidateEducation.createMany({
+                data: newRecord.education.map(e => ({
+                  candidate_id: targetId,
+                  degree: e.degree || 'Degree',
+                  institution: e.institution || 'Institution',
+                  field: e.field || '',
+                })),
+                skipDuplicates: true,
+              }).catch(() => null);
+            }
+          }
         } catch (dbSaveErr) {
           console.warn('[Prisma DB Save Notice] Candidate metadata stored in memory cache:', dbSaveErr);
         }
@@ -996,67 +1190,46 @@ export const retryCandidateParsing = async (req: Request, res: Response): Promis
 };
 
 /**
- * Maps a Prisma Candidate record to a frontend/evaluation-compatible CandidateRecord
+ * Delete a candidate profile from database & memory store
+ * DELETE /api/candidates/:candidateId or DELETE /api/jobs/:jobId/candidates/:candidateId
  */
-export function mapDbCandidateToRecord(c: any, defaultJobId?: string): CandidateRecord {
-  return {
-    id: c.id,
-    jobId: c.job_id || defaultJobId || 'jd-1',
-    name: c.name || 'Candidate',
-    email: c.email || '',
-    phone: c.phone || '',
-    location: c.location || '',
-    totalExperience: c.total_experience || '',
-    relevantExperience: c.total_experience || '',
-    currentTitle: c.current_title || '',
-    currentCompany: c.current_company || '',
-    summary: c.summary || '',
-    professionalSummary: c.summary || '',
-    skills: Array.isArray(c.skills) ? c.skills.map((s: any) => typeof s === 'string' ? s : s.skill) : [],
-    technologies: Array.isArray(c.skills) ? c.skills.map((s: any) => typeof s === 'string' ? s : s.skill) : [],
-    tools: [],
-    industries: [],
-    education: Array.isArray(c.education) ? c.education.map((e: any) => ({
-      degree: e.degree || '',
-      institution: e.institution || '',
-      field: e.field || '',
-      year: e.start_year ? `${e.start_year}` : (e.year ? `${e.year}` : undefined),
-    })) : [],
-    certifications: Array.isArray(c.certifications) ? c.certifications.map((ct: any) => typeof ct === 'string' ? ct : ct.certification) : [],
-    languages: Array.isArray(c.languages) ? c.languages.map((l: any) => typeof l === 'string' ? l : l.language) : [],
-    experience: Array.isArray(c.experiences) ? c.experiences.map((ex: any) => ({
-      title: ex.title || '',
-      company: ex.company || '',
-      startDate: ex.start_date || '',
-      endDate: ex.end_date || '',
-      duration: ex.duration || '',
-      description: ex.description || '',
-    })) : [],
-    responsibilities: [],
-    achievements: [],
-    projects: Array.isArray(c.projects) ? c.projects.map((p: any) => ({
-      name: p.name || '',
-      description: p.description || '',
-      technologies: p.technologies || [],
-    })) : [],
-    rawText: c.raw_text || '',
-    parsingStatus: (c.parsing_status as any) || 'PARSED',
-    validationErrors: [],
-    parsingMetadata: {
-      fileName: c.resume_file_url || 'cv.pdf',
-      fileType: 'application/pdf',
-      pageCount: 1,
-      extractionMethod: 'prisma-db',
-      ocrUsed: false,
-      characterCount: (c.raw_text || '').length,
-      wordCount: (c.raw_text || '').split(/\s+/).filter(Boolean).length,
-    },
-    fileName: c.resume_file_url || 'cv.pdf',
-    fileSize: 100000,
-    fileHash: c.file_hash || undefined,
-    uploadedAt: c.created_at ? new Date(c.created_at).toISOString() : new Date().toISOString(),
-  };
-}
+export const deleteCandidate = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const candidateId = String(req.params.candidateId || '');
+    const jobId = String(req.params.jobId || '');
+
+    if (!candidateId) {
+      res.status(400).json({ error: 'Candidate ID is required' });
+      return;
+    }
+
+    // 1. Delete from Prisma database
+    try {
+      await prisma.candidate.delete({
+        where: { id: candidateId }
+      }).catch(() => null);
+    } catch (dbErr) {
+      console.warn('[Delete Candidate] Prisma delete error:', dbErr);
+    }
+
+    // 2. Delete from memory store
+    if (jobId && CANDIDATE_STORE.has(jobId)) {
+      const list = CANDIDATE_STORE.get(jobId) || [];
+      CANDIDATE_STORE.set(jobId, list.filter(c => c.id !== candidateId));
+    }
+    for (const [jId, list] of CANDIDATE_STORE.entries()) {
+      CANDIDATE_STORE.set(jId, list.filter(c => c.id !== candidateId));
+    }
+    GLOBAL_CANDIDATES.delete(candidateId);
+
+    res.json({ success: true, message: 'Candidate deleted successfully', candidateId });
+  } catch (error: any) {
+    console.error('Error deleting candidate:', error);
+    res.status(500).json({ error: 'Failed to delete candidate' });
+  }
+};
+
+
 
 /**
  * Find candidate record from memory store or DB

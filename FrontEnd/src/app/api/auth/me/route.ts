@@ -24,13 +24,21 @@ export async function GET(req: Request) {
       console.warn('Backend /auth/me call failed, using local token decoding fallback');
     }
 
-    // Decode fallback token
-    let email = 'recruiter@tasknera.com';
+    // Decode fallback token safely
+    let email = 'Sakshi Koparde';
+    let displayName = 'Sakshi Koparde';
     if (token.startsWith('jwt_local_session_')) {
       const parts = token.split('_');
-      if (parts[3]) {
+      // parts = ['jwt', 'local', 'session', timestamp, base64Email]
+      const emailBase64 = parts[4] || parts[3];
+      if (emailBase64) {
         try {
-          email = Buffer.from(parts[3], 'base64').toString('utf-8');
+          const decoded = Buffer.from(emailBase64, 'base64').toString('utf-8');
+          if (decoded && decoded.includes('@')) {
+            email = decoded;
+            const handle = decoded.split('@')[0];
+            displayName = handle.split(/[._-]/).map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          }
         } catch {}
       }
     }
@@ -38,8 +46,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       user: {
         id: 'usr_current',
-        name: email.split('@')[0].replace(/[._-]/g, ' '),
-        email,
+        name: displayName,
+        email: email.includes('@') ? email : 'sakshi.koparde@tasknera.com',
         role: 'MEMBER',
         createdAt: new Date().toISOString(),
       },

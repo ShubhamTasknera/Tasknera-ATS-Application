@@ -15,6 +15,7 @@ export interface EvaluationItem {
   date: string;
   score: number;
   ats: number;
+  matchLevel?: string;
   mandatory: string;
   mandatoryFailed: boolean;
   decision: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT';
@@ -106,6 +107,16 @@ export default function EvaluationsPage() {
                   const singleEvalData = await singleEvalRes.json();
                   const evalObj = singleEvalData.evaluation;
                   if (evalObj) {
+                    const score = typeof evalObj.overallMatch === 'number' ? evalObj.overallMatch : (typeof evalObj.overallScore === 'number' ? Math.round(evalObj.overallScore) : 0);
+                    const ats = typeof evalObj.atsScore === 'number' ? evalObj.atsScore : score;
+                    const mandatoryStr = evalObj.mandatoryCompliance 
+                      ? `${evalObj.mandatoryCompliance.met ?? 0}/${evalObj.mandatoryCompliance.total ?? 0}`
+                      : (evalObj.mandatory || '0/0');
+                    const mandatoryFailed = evalObj.mandatoryCompliance 
+                      ? !evalObj.mandatoryCompliance.passed 
+                      : Boolean(evalObj.mandatoryRequirementFailed);
+                    const decision = evalObj.recommendation || (score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
+
                     allItems.push({
                       id: c.id,
                       candidate: evalObj.candidateName || c.name || 'Candidate',
@@ -114,11 +125,11 @@ export default function EvaluationsPage() {
                       jobId: j.id,
                       company: evalObj.candidateCompany || c.currentCompany || j.client || 'Organization',
                       date: evalObj.evaluatedAt ? new Date(evalObj.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
-                      score: evalObj.overallMatch,
-                      ats: evalObj.atsScore,
-                      mandatory: `${evalObj.mandatoryCompliance.met}/${evalObj.mandatoryCompliance.total}`,
-                      mandatoryFailed: !evalObj.mandatoryCompliance.passed,
-                      decision: evalObj.recommendation,
+                      score,
+                      ats,
+                      mandatory: mandatoryStr,
+                      mandatoryFailed,
+                      decision,
                       by: evalObj.evaluator || 'Deterministic ATS Engine'
                     });
                     continue;
@@ -289,13 +300,12 @@ export default function EvaluationsPage() {
                     <th className="px-4 py-4 text-center">ATS Format</th>
                     <th className="px-4 py-4 text-center">Mandatory Met</th>
                     <th className="px-4 py-4 text-center">Decision</th>
-                    <th className="px-4 py-4 hidden md:table-cell">Evaluator</th>
                     <th className="px-6 py-4 text-right">Audit Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {filtered.map(e => (
-                    <tr key={e.id} className="hover:bg-slate-50/80 transition-colors group">
+                  {filtered.map((e, idx) => (
+                    <tr key={`${e.id}-${e.jobId}-${idx}`} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl font-extrabold text-sm flex items-center justify-center flex-shrink-0 ${avatarColor(e.candidate)} shadow-xs`}>
@@ -319,6 +329,11 @@ export default function EvaluationsPage() {
                             style={{ width: `${Math.min(100, Math.max(0, e.score))}%` }}
                           />
                         </div>
+                        {e.matchLevel && (
+                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block mt-1">
+                            {e.matchLevel}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className="text-xs font-bold text-slate-700">{e.ats}%</span>
@@ -335,15 +350,13 @@ export default function EvaluationsPage() {
                           {e.decision === 'DO NOT SUBMIT' ? 'REJECT' : e.decision}
                         </span>
                       </td>
-                      <td className="px-4 py-4 hidden md:table-cell text-xs text-slate-500 font-medium">
-                        {e.by} • {e.date}
-                      </td>
                       <td className="px-6 py-4 text-right">
                         <Link
                           href={`/evaluations/${e.id}?jobId=${e.jobId}`}
-                          className="inline-flex items-center gap-1 px-3.5 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all shadow-xs"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer"
                         >
-                          Evidence Audit →
+                          <span>Inspect Audit</span>
+                          <span className="text-slate-400">→</span>
                         </Link>
                       </td>
                     </tr>
