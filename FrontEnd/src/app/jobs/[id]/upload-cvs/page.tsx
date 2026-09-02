@@ -369,7 +369,7 @@ export default function BatchCVUploadPage() {
               ...it,
               status: 'Duplicate',
               progress: 100,
-              errorMessage: data.message || matchedCandidate?.message || 'Candidate CV already exists in your account',
+              errorMessage: data.message || matchedCandidate?.errorMessage || matchedCandidate?.message || 'This CV is already uploaded to this JD.',
               candidateInfo: matchedCandidate
                 ? {
                     id: matchedCandidate.id,
@@ -866,7 +866,7 @@ export default function BatchCVUploadPage() {
                             <svg className="w-3.5 h-3.5 flex-shrink-0 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                             </svg>
-                            <span>Skipped (Duplicate): {item.errorMessage || 'Candidate CV already exists in your account'}</span>
+                            <span>Skipped (Duplicate): {item.errorMessage || 'This CV is already uploaded to this JD.'}</span>
                           </div>
                         )}
 
