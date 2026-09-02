@@ -14,8 +14,9 @@ const ALLOWED_TYPES = [
 ];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 
-// Global in-memory cache for demo duplicate tracking
-const SEEN_FILE_HASHES = new Set<string>();
+// Per-job in-memory cache for duplicate tracking (key: jobId, value: Set of content hashes)
+const SEEN_FILE_HASHES_BY_JOB = new Map<string, Set<string>>();
+
 
 export interface UploadedFileResult {
   id: string;
@@ -118,13 +119,20 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Convert file buffer and calculate hash
+      // Convert file buffer and calculate content hash
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
-      const fileKey = `${file.name.toLowerCase()}_${file.size}`;
+      const crypto = await import('crypto');
+      const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+      const jobKey = String(jobId || 'default');
 
-      // Check if file was previously uploaded
-      if (SEEN_FILE_HASHES.has(fileKey)) {
+      if (!SEEN_FILE_HASHES_BY_JOB.has(jobKey)) {
+        SEEN_FILE_HASHES_BY_JOB.set(jobKey, new Set<string>());
+      }
+      const jobSeenHashes = SEEN_FILE_HASHES_BY_JOB.get(jobKey)!;
+
+      // Check if file content hash was previously uploaded for THIS job
+      if (jobSeenHashes.has(fileHash)) {
         const dupCandidateId = `cand-dup-${Math.random().toString(36).substring(2, 7)}`;
         const dupResult: UploadedFileResult = {
           id: dupCandidateId,
@@ -138,14 +146,14 @@ export async function POST(request: NextRequest) {
           status: 'duplicate',
           isDuplicate: true,
           jobId,
-          message: 'Candidate CV already exists in your account',
+          message: 'This CV is already uploaded to this JD.',
         };
         results.push(dupResult);
 
         if (fileEntries.length === 1) {
           return NextResponse.json({
             status: 'duplicate',
-            message: 'Candidate CV already exists in your account',
+            message: 'This CV is already uploaded to this JD.',
             candidate: dupResult,
             candidates: [dupResult],
           });
@@ -153,7 +161,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      SEEN_FILE_HASHES.add(fileKey);
+      jobSeenHashes.add(fileHash);
 
       const timestamp = Date.now();
       const safeOriginalName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');

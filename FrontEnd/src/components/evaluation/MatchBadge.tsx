@@ -90,7 +90,11 @@ export default function MatchBadge({
         label: 'REVIEW',
       };
     }
-    if (submissionDecision === SubmissionDecision.REJECT || submissionDecision === 'REJECT') {
+    if (
+      submissionDecision === SubmissionDecision.DO_NOT_SUBMIT ||
+      submissionDecision === 'DO NOT SUBMIT' ||
+      submissionDecision === 'REJECT'
+    ) {
       return {
         bg: 'bg-rose-50 text-rose-800 border-rose-200',
         dot: 'bg-rose-500',

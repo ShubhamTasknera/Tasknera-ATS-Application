@@ -137,6 +137,12 @@ export default function JobsPage() {
         };
       });
 
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('tasknera_all_jobs', JSON.stringify(combined));
+        } catch {}
+      }
+
       setAllJobs(mappedJobs);
     } catch (err) {
       console.warn('Error fetching jobs:', err);

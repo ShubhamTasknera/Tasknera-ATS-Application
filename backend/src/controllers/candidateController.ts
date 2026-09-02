@@ -630,7 +630,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             jobId,
             isDuplicate: true,
             parsingStatus: 'DUPLICATE' as any,
-            errorMessage: 'Duplicate CV: This candidate is already attached to this Job Requisition.',
+            errorMessage: 'This CV is already uploaded to this JD.',
             fileName,
             fileSize,
             fileHash,
@@ -641,7 +641,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           if (files.length === 1) {
             res.status(200).json({
               status: 'duplicate',
-              message: 'This candidate is already attached to this job requisition',
+              message: 'This CV is already uploaded to this JD.',
               isDuplicate: true,
               candidate: dupCandidate,
               candidates: [dupCandidate],
@@ -853,7 +853,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
             jobId,
             isDuplicate: true,
             parsingStatus: 'DUPLICATE' as any,
-            errorMessage: `Duplicate Candidate: "${structuredProfile.name || fileName}" has already been uploaded for this position.`,
+            errorMessage: 'This CV is already uploaded to this JD.',
             fileName,
             fileSize,
             fileHash,
@@ -864,7 +864,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           if (files.length === 1) {
             res.status(200).json({
               status: 'duplicate',
-              message: 'Candidate CV already exists for this position',
+              message: 'This CV is already uploaded to this JD.',
               isDuplicate: true,
               candidate: dupRecord,
               candidates: [dupRecord],
@@ -889,45 +889,98 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                     ]
                   }
                 ]
+              },
+              include: {
+                applications: true
               }
             });
 
             if (existingByEmailOrPhone) {
-              console.log(`[CV Processing] Candidate with matching email/phone already exists in database (ID: ${existingByEmailOrPhone.id}).`);
-              
-              if (dbCandidateId && dbCandidateId !== existingByEmailOrPhone.id) {
-                await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
-              }
+              const isLinkedToThisJob = existingByEmailOrPhone.job_id === jobId ||
+                (existingByEmailOrPhone.applications && existingByEmailOrPhone.applications.some((a: any) => a.job_id === jobId)) ||
+                existingCandidates.some(c => c.id === existingByEmailOrPhone.id || (c.email && c.email.toLowerCase() === structuredProfile.email?.toLowerCase()));
 
-              const dupRecord: CandidateRecord = {
-                id: existingByEmailOrPhone.id,
-                jobId,
-                ...structuredProfile,
-                isDuplicate: true,
-                parsingStatus: 'DUPLICATE' as any,
-                errorMessage: `Candidate "${structuredProfile.name || fileName}" already exists in your account.`,
-                fileName,
-                fileSize,
-                fileHash,
-                uploadedAt: existingByEmailOrPhone.created_at.toISOString(),
-              };
+              if (isLinkedToThisJob) {
+                console.log(`[CV Processing] Candidate already linked to this job (ID: ${existingByEmailOrPhone.id}).`);
+                if (dbCandidateId && dbCandidateId !== existingByEmailOrPhone.id) {
+                  await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
+                }
 
-              GLOBAL_CANDIDATES.set(fileHash, dupRecord);
-              GLOBAL_CANDIDATES.set(fileMd5, dupRecord);
-              processedCandidates.push(dupRecord);
-
-              if (files.length === 1) {
-                res.status(200).json({
-                  status: 'duplicate',
-                  message: 'Candidate CV already exists in your account',
+                const dupRecord: CandidateRecord = {
+                  id: existingByEmailOrPhone.id,
+                  jobId,
+                  ...structuredProfile,
                   isDuplicate: true,
-                  candidate: dupRecord,
-                  candidates: [dupRecord],
-                  allCandidates: existingCandidates,
-                });
-                return;
+                  parsingStatus: 'DUPLICATE' as any,
+                  errorMessage: 'This CV is already uploaded to this JD.',
+                  fileName,
+                  fileSize,
+                  fileHash,
+                  uploadedAt: existingByEmailOrPhone.created_at.toISOString(),
+                };
+
+                processedCandidates.push(dupRecord);
+
+                if (files.length === 1) {
+                  res.status(200).json({
+                    status: 'duplicate',
+                    message: 'This CV is already uploaded to this JD.',
+                    isDuplicate: true,
+                    candidate: dupRecord,
+                    candidates: [dupRecord],
+                    allCandidates: existingCandidates,
+                  });
+                  return;
+                }
+                continue;
+              } else {
+                // Allowed for this new JD! Link to this position without duplication
+                console.log(`[CV Processing] Candidate exists from another JD (ID: ${existingByEmailOrPhone.id}). Linking to new JD: ${jobId}`);
+                if (dbCandidateId && dbCandidateId !== existingByEmailOrPhone.id) {
+                  await prisma.candidate.delete({ where: { id: dbCandidateId } }).catch(() => null);
+                }
+                if (dbJobId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existingByEmailOrPhone.id)) {
+                  await (prisma as any).candidateApplication.upsert({
+                    where: {
+                      job_id_candidate_id: {
+                        job_id: dbJobId,
+                        candidate_id: existingByEmailOrPhone.id
+                      }
+                    },
+                    update: { stage: 'PARSED', status: 'active' },
+                    create: { job_id: dbJobId, candidate_id: existingByEmailOrPhone.id, stage: 'PARSED', status: 'active' }
+                  }).catch(() => null);
+                }
+
+                const linkedRecord: CandidateRecord = {
+                  id: existingByEmailOrPhone.id,
+                  jobId,
+                  ...structuredProfile,
+                  isDuplicate: false,
+                  parsingStatus: 'PARSED',
+                  fileName,
+                  fileSize,
+                  fileHash,
+                  uploadedAt: new Date().toISOString(),
+                };
+
+                existingCandidates.unshift(linkedRecord);
+                processedCandidates.push(linkedRecord);
+                candidateIds.push(existingByEmailOrPhone.id);
+
+                if (files.length === 1) {
+                  res.status(200).json({
+                    status: 'success',
+                    message: 'Candidate added to this position successfully',
+                    isDuplicate: false,
+                    candidate: linkedRecord,
+                    candidates: [linkedRecord],
+                    allCandidates: existingCandidates,
+                  });
+                  return;
+                }
+                continue;
               }
-              continue;
             }
           } catch (dupLookupErr) {
             console.warn('[Duplicate Check] Email/Phone lookup note:', dupLookupErr);
