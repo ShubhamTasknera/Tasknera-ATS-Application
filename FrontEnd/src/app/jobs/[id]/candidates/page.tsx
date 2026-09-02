@@ -1374,7 +1374,6 @@ export default function JobCandidatesPage() {
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                     <th className="px-6 py-3.5">Candidate Profile</th>
-                    <th className="px-6 py-3.5">Match & Fit Evaluation</th>
                     <th className="px-6 py-3.5">Experience & History</th>
                     <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
                     <th className="px-6 py-3.5 text-center">Status</th>
@@ -1404,33 +1403,6 @@ export default function JobCandidatesPage() {
                               </button>
                               <div className="text-xs text-slate-500 truncate max-w-[200px] font-medium mt-0.5">
                                 {c.location || c.email || 'Verified Candidate'}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Unified Executive Match Score & ATS Rating */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-mono border shadow-2xs flex-shrink-0 ${
-                              (c.matchScore ?? 0) >= 75
-                                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900'
-                                : (c.matchScore ?? 0) >= 50
-                                ? 'bg-amber-50/90 border-amber-300 text-amber-900'
-                                : 'bg-rose-50/90 border-rose-300 text-rose-900'
-                            }`}>
-                              <span className="text-sm font-black leading-none">{c.matchScore}%</span>
-                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mt-0.5">Match</span>
-                            </div>
-                            <div className="flex flex-col items-start gap-1">
-                              <MatchBadge score={c.matchScore} size="sm" showPercentage={false} />
-                              <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    (c.matchScore ?? 0) >= 75 ? 'bg-emerald-600' : (c.matchScore ?? 0) >= 50 ? 'bg-amber-500' : 'bg-rose-500'
-                                  }`}
-                                  style={{ width: `${c.matchScore}%` }}
-                                />
                               </div>
                             </div>
                           </div>
@@ -1554,12 +1526,9 @@ export default function JobCandidatesPage() {
                       {(selectedCandidate.name || 'Candidate').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">
-                          {selectedCandidate.name || selectedCandidate.fileName || 'Candidate Profile'}
-                        </h2>
-                        <MatchBadge score={selectedCandidate.matchScore} size="sm" />
-                      </div>
+                      <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900">
+                        {selectedCandidate.name || selectedCandidate.fileName || 'Candidate Profile'}
+                      </h2>
                       <p className="text-xs text-slate-500 font-medium mt-0.5">
                         {selectedCandidate.currentTitle || 'Candidate'} • <span className="text-slate-700 font-semibold">{selectedCandidate.currentCompany || 'Experience History'}</span>
                       </p>

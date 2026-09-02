@@ -117,13 +117,33 @@ export default function EvaluationsPage() {
                       : Boolean(evalObj.mandatoryRequirementFailed);
                     const decision = evalObj.recommendation || (score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
 
+                    const isInvalidComp = (name?: string | null) => {
+                      if (!name) return true;
+                      const s = name.trim().toLowerCase();
+                      return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
+                    };
+
+                    const resolvedCompany = (c.currentCompany && !isInvalidComp(c.currentCompany))
+                      ? c.currentCompany
+                      : (evalObj.candidateCompany && !isInvalidComp(evalObj.candidateCompany))
+                      ? evalObj.candidateCompany
+                      : (j.client && !isInvalidComp(j.client))
+                      ? j.client
+                      : 'Enterprise Organization';
+
+                    const resolvedRole = (c.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(c.currentTitle.trim().toLowerCase()))
+                      ? c.currentTitle
+                      : (evalObj.candidateRole && !['candidate profile', 'candidate', 'professional role'].includes(evalObj.candidateRole.trim().toLowerCase()))
+                      ? evalObj.candidateRole
+                      : (j.position || 'Software Professional');
+
                     allItems.push({
                       id: c.id,
                       candidate: evalObj.candidateName || c.name || 'Candidate',
-                      role: evalObj.candidateRole || c.currentTitle || j.position || 'Professional Role',
-                      job: evalObj.jobTitle || j.position || 'Job Position',
+                      role: resolvedRole,
+                      job: evalObj.jobTitle || j.position || resolvedRole,
                       jobId: j.id,
-                      company: evalObj.candidateCompany || c.currentCompany || j.client || 'Organization',
+                      company: resolvedCompany,
                       date: evalObj.evaluatedAt ? new Date(evalObj.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
                       score,
                       ats,
@@ -144,13 +164,29 @@ export default function EvaluationsPage() {
               const decision: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT' = score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT';
               const createdDate = c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent';
 
+              const isInvalidComp = (name?: string | null) => {
+                if (!name) return true;
+                const s = name.trim().toLowerCase();
+                return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
+              };
+
+              const resolvedCompany = (c.currentCompany && !isInvalidComp(c.currentCompany))
+                ? c.currentCompany
+                : (j.client && !isInvalidComp(j.client))
+                ? j.client
+                : 'Enterprise Organization';
+
+              const resolvedRole = (c.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(c.currentTitle.trim().toLowerCase()))
+                ? c.currentTitle
+                : (j.position || 'Software Professional');
+
               allItems.push({
                 id: c.id,
                 candidate: c.name || c.fileName || 'Candidate',
-                role: c.currentTitle || j.position || 'Professional Role',
-                job: j.position || 'Job Position',
+                role: resolvedRole,
+                job: j.position || resolvedRole,
                 jobId: j.id,
-                company: c.currentCompany || j.client || 'Organization',
+                company: resolvedCompany,
                 date: createdDate,
                 score,
                 ats,

@@ -1109,9 +1109,31 @@ export function extractStructuredCandidateFromText(
   let currentTitle: string | null = null;
   let currentCompany: string | null = null;
 
+  const isInvalidCompany = (c?: string | null): boolean => {
+    if (!c) return true;
+    const s = c.trim().toLowerCase();
+    return [
+      'company', 'the company', 'role', 'the role', 'this role', 'position', 'the position',
+      'organization', 'experience', 'present', 'employment', 'project', 'projects',
+      'self-employed', 'freelance', 'unknown', 'not specified', 'candidate profile', 'verified organization'
+    ].includes(s) || s.length < 2;
+  };
+
   if (experience.length > 0) {
     currentTitle = experience[0].title;
-    currentCompany = experience[0].company;
+    for (const exp of experience) {
+      if (exp.company && !isInvalidCompany(exp.company)) {
+        currentCompany = exp.company;
+        break;
+      }
+    }
+    if (!currentCompany) {
+      currentCompany = experience[0].company;
+    }
+  }
+
+  if (isInvalidCompany(currentCompany)) {
+    currentCompany = null;
   }
 
   if (!currentTitle || currentTitle === 'Software Engineer' || lines.length > 1) {
@@ -1136,15 +1158,17 @@ export function extractStructuredCandidateFromText(
   }
 
   // Check if company is mentioned in summary (e.g. "Founder of SJ Tech Works")
-  if (!currentCompany || currentCompany === 'Company') {
+  if (!currentCompany || isInvalidCompany(currentCompany)) {
     const founderMatch = cleanText.match(/(?:founder\s+of|co-founder\s+of|working\s+at|employed\s+at)\s+([A-Za-z0-9\s&]{2,35})/i);
-    if (founderMatch && founderMatch[1]) {
+    if (founderMatch && founderMatch[1] && !isInvalidCompany(founderMatch[1])) {
       currentCompany = founderMatch[1].trim().replace(/[,|.\n]+$/, '');
     }
   }
 
-  if (currentCompany) {
+  if (currentCompany && !isInvalidCompany(currentCompany)) {
     sourceEvidence['currentCompany'] = currentCompany;
+  } else {
+    currentCompany = null;
   }
 
   // 8. Total Experience Calculation (Comprehensive Multi-Pass Extractor)

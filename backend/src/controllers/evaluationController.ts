@@ -334,13 +334,25 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
 
       const score = Math.round(evalPayload.overallScore ?? evalPayload.overallMatch ?? 0);
 
+      const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
+
+      const comp = (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
+        ? candidate.currentCompany
+        : (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
+        ? jobContext.jobData.client
+        : 'Enterprise Organization';
+
+      const role = (candidate.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(candidate.currentTitle.trim().toLowerCase()))
+        ? candidate.currentTitle
+        : (jobContext.jobData.position || 'Software Professional');
+
       evaluationItems.push({
         id: candidate.id,
         candidate: candidate.name || candidate.fileName || 'Candidate',
-        role: candidate.currentTitle || jobContext.jobData.position || 'Professional Role',
-        job: jobContext.jobData.position || jobContext.jobData.title || 'Job Position',
+        role,
+        job: jobContext.jobData.position || jobContext.jobData.title || role,
         jobId: jobContext.jobData.id || app.job_id,
-        company: jobContext.jobData.client || candidate.currentCompany || 'Organization',
+        company: comp,
         date: dateStr,
         score,
         ats: Math.round(evalPayload.atsScore ?? score),
@@ -371,13 +383,25 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
 
       const score = Math.round(cachedEval.overallScore ?? cachedEval.overallMatch ?? 0);
 
+      const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
+
+      const comp = (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
+        ? candidate.currentCompany
+        : (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
+        ? jobContext.jobData.client
+        : 'Enterprise Organization';
+
+      const role = (candidate.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(candidate.currentTitle.trim().toLowerCase()))
+        ? candidate.currentTitle
+        : (jobContext.jobData.position || 'Software Professional');
+
       evaluationItems.push({
         id: candidate.id,
         candidate: candidate.name || candidate.fileName || 'Candidate',
-        role: candidate.currentTitle || jobContext.jobData.position || 'Professional Role',
-        job: jobContext.jobData.position || jobContext.jobData.title || 'Job Position',
+        role,
+        job: jobContext.jobData.position || jobContext.jobData.title || role,
         jobId: jobContext.jobData.id || jId,
-        company: jobContext.jobData.client || candidate.currentCompany || 'Organization',
+        company: comp,
         date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         score,
         ats: Math.round(cachedEval.atsScore ?? score),

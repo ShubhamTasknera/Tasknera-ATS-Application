@@ -371,11 +371,12 @@ const KNOWN_FIELD_LABELS = [
 ];
 
 const GENERIC_COMPANY_STOP_WORDS = [
-  'the company', 'our client', 'we', 'this role', 'the candidate', 'the team', 'not specified',
-  'confidential', 'leading company', 'top mnc', 'multinational company', 'client', 'company', 'unknown',
-  'job description', 'jd', 'job specification', 'role description', 'job summary', 'key responsibilities',
-  'mandatory skills', 'preferred skills', 'core competencies', 'company overview', 'recruitment information',
-  'location', 'locations', 'experience', 'education', 'compensation', 'ctc', 'salary', 'openings'
+  'the company', 'our client', 'we', 'this role', 'the role', 'role', 'the position', 'position', 'the job', 'job',
+  'the candidate', 'the team', 'not specified', 'confidential', 'leading company', 'top mnc', 'multinational company',
+  'client', 'company', 'organization', 'unknown', 'job description', 'jd', 'job specification', 'role description',
+  'job summary', 'key responsibilities', 'mandatory skills', 'preferred skills', 'core competencies', 'company overview',
+  'about the role', 'about the company', 'recruitment information', 'location', 'locations', 'experience',
+  'education', 'compensation', 'ctc', 'salary', 'openings', 'candidate profile', 'verified organization'
 ];
 
 export const cleanExtractedName = (raw: string | null, isCompany: boolean = false): string | null => {

@@ -117,12 +117,32 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
       if ((!totalExp || totalExp === '0 yrs' || totalExp === '0 Years') && parsed.totalExperience && parsed.totalExperience !== '0 yrs') {
         totalExp = parsed.totalExperience;
       }
-      if (!title && parsed.currentTitle) title = parsed.currentTitle;
-      if (!company && parsed.currentCompany) company = parsed.currentCompany;
+      if (!title && parsed.currentTitle && !['candidate profile', 'candidate', 'professional role'].includes(parsed.currentTitle.toLowerCase())) {
+        title = parsed.currentTitle;
+      }
+      if (!company && parsed.currentCompany && !['company', 'the role', 'role', 'the company', 'organization'].includes(parsed.currentCompany.toLowerCase())) {
+        company = parsed.currentCompany;
+      }
       if (!location && parsed.location) location = parsed.location;
       if (!summary && parsed.summary) summary = parsed.summary;
     } catch (parseErr) {
       console.warn('[DB Candidate Reparse Notice]:', parseErr);
+    }
+  }
+
+  // Fallback to experience records for real company and title
+  if ((!company || ['company', 'the role', 'role', 'the company', 'organization'].includes(company.toLowerCase())) && experience.length > 0) {
+    for (const exp of experience) {
+      if (exp.company && !['company', 'the role', 'role', 'the company', 'organization', 'position', 'experience', 'present'].includes(exp.company.toLowerCase())) {
+        company = exp.company;
+        break;
+      }
+    }
+  }
+
+  if ((!title || ['candidate profile', 'candidate', 'professional role', 'software engineer'].includes(title.toLowerCase())) && experience.length > 0) {
+    if (experience[0].title && !['role', 'position', 'candidate'].includes(experience[0].title.toLowerCase())) {
+      title = experience[0].title;
     }
   }
 
@@ -139,7 +159,7 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     location: location || 'Remote',
     totalExperience: totalExp || (experience.length ? `${experience.length * 2} yrs` : '3 yrs'),
     relevantExperience: totalExp || '3 yrs',
-    currentTitle: title || 'Candidate Profile',
+    currentTitle: title || 'Software Professional',
     currentCompany: company || '',
     summary: summary || '',
     professionalSummary: summary || '',
