@@ -37,32 +37,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
     setIsLoading(true);
     try {
+      let roleResult;
       if (mode === 'signin') {
-        await signin(email, password);
+        roleResult = await signin(email, password);
       } else {
-        await signup(name, email, password);
+        roleResult = await signup(name, email, password);
       }
       onClose();
-      router.push('/dashboard');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : `Failed to ${mode === 'signin' ? 'sign in' : 'sign up'}`);
+      if (roleResult === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-brand-charcoal/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-white border border-brand-border rounded-2xl shadow-lg overflow-hidden">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
 
         {/* Top accent bar */}
-        <div className="h-1 bg-brand-orange w-full" />
+        <div className="h-1.5 bg-brand-orange w-full" />
 
         <div className="p-7">
-          {/* Close */}
+          {/* Close button */}
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 text-brand-charcoal-3 hover:text-brand-charcoal p-1.5 rounded-lg hover:bg-brand-bg transition-colors"
+            className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -70,34 +75,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
 
           {/* Header */}
-          <div className="mb-6 pr-6">
-            <div className="w-11 h-11 mb-3 flex items-center justify-center">
+          <div className="mb-6">
+            <div className="w-10 h-10 mb-2.5 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/tasknera-logo-symbol.png" alt="TaskNera" className="w-full h-full object-contain" />
             </div>
-            <h2 className="text-xl font-bold text-slate-900">
-              {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+              {mode === 'signin' ? 'Sign In to TaskNera' : 'Create Account'}
             </h2>
-            <p className="text-brand-charcoal-3 text-sm mt-1">
-              {mode === 'signin'
-                ? 'Sign in to your TaskNera account'
-                : 'Start evaluating candidates with TaskNera'}
+            <p className="text-slate-500 text-xs mt-1">
+              Enter your credentials to access your workspace
             </p>
           </div>
 
           {error && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2.5">
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {error}
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{error}</span>
             </div>
           )}
 
+          {/* Standard Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
               <div>
-                <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Full Name
                 </label>
                 <input
@@ -105,14 +107,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   required
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="John Doe"
-                  className="w-full px-4 py-2.5 rounded-xl bg-brand-bg border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 text-sm transition-all"
+                  placeholder="e.g. Sarah Mitchell"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 text-xs font-medium"
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Email Address
               </label>
               <input
@@ -120,13 +122,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                className="w-full px-4 py-2.5 rounded-xl bg-brand-bg border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 text-sm transition-all"
+                placeholder="you@tasknera.com"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 text-xs font-medium"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -136,19 +138,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl bg-brand-bg border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 text-sm transition-all"
+                  className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 text-xs font-medium"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal-3 hover:text-brand-charcoal transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer p-1"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    {showPassword
-                      ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908a10.05 10.05 0 012.122-.163c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
-                      : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>
-                    }
-                  </svg>
+                  {showPassword ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908a10.05 10.05 0 012.122-.163c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
@@ -156,37 +162,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-brand-orange hover:bg-brand-orange-hover disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all shadow-orange flex items-center justify-center gap-2 mt-1"
+              className="w-full py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-extrabold rounded-xl transition-all shadow-orange flex items-center justify-center gap-2 cursor-pointer mt-3"
             >
               {isLoading ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Processing...</span>
-                </>
+                <span>Signing in...</span>
               ) : (
-                <span>{mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
+                <span>{mode === 'signin' ? 'Sign In →' : 'Create Account →'}</span>
               )}
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-brand-border text-center text-sm text-brand-charcoal-3">
+          {/* Toggle between Sign In & Sign Up */}
+          <div className="mt-4 text-center text-xs text-slate-500">
             {mode === 'signin' ? (
               <>
-                Don&apos;t have an account?{' '}
-                <button onClick={() => { setMode('signup'); setError(''); }}
-                  className="text-brand-orange hover:text-brand-orange-hover font-semibold transition-colors">
-                  Sign up free
+                New to TaskNera?{' '}
+                <button
+                  onClick={() => { setMode('signup'); setError(''); }}
+                  className="text-brand-orange font-bold hover:underline cursor-pointer"
+                >
+                  Sign up
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{' '}
-                <button onClick={() => { setMode('signin'); setError(''); }}
-                  className="text-brand-orange hover:text-brand-orange-hover font-semibold transition-colors">
-                  Sign in
+                <button
+                  onClick={() => { setMode('signin'); setError(''); }}
+                  className="text-brand-orange font-bold hover:underline cursor-pointer"
+                >
+                  Sign In
                 </button>
               </>
             )}

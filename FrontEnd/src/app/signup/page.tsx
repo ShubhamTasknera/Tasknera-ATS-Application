@@ -26,8 +26,12 @@ export default function SignUpPage() {
     }
     setIsLoading(true);
     try {
-      await signup(name, email, password);
-      router.push('/dashboard');
+      const roleResult = await signup(name, email, password);
+      if (roleResult === 'ADMIN') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to register account');
     } finally {
@@ -62,7 +66,7 @@ export default function SignUpPage() {
               Hire with confidence.<br />Every time.
             </h2>
             <p className="text-white/60 mt-3 text-sm leading-relaxed">
-              Join teams using TaskNera to evaluate candidates objectively and make better hiring decisions faster.
+              TaskNera evaluates every candidate against your job requirements — objectively, consistently, and at scale.
             </p>
           </div>
 
@@ -90,8 +94,8 @@ export default function SignUpPage() {
           <Image src="/assets/images/tasknera_logo.png" alt="TaskNera" width={130} height={36} className="h-8 w-auto object-contain" />
         </div>
 
-        <div className="w-full max-w-md">
-          <div className="mb-8">
+        <div className="w-full max-w-md bg-white p-8 rounded-3xl border border-slate-200 shadow-xl">
+          <div className="mb-6">
             <h1 className="text-2xl font-bold text-brand-charcoal">Create your account</h1>
             <p className="text-brand-charcoal-3 text-sm mt-1">Start evaluating candidates with TaskNera</p>
           </div>
@@ -105,9 +109,9 @@ export default function SignUpPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
                 Full Name
               </label>
               <input
@@ -115,13 +119,13 @@ export default function SignUpPage() {
                 required
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full px-4 py-3 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-sm"
+                placeholder="Sarah Mitchell"
+                className="w-full px-4 py-2.5 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
                 Email Address
               </label>
               <input
@@ -129,13 +133,13 @@ export default function SignUpPage() {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                className="w-full px-4 py-3 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-sm"
+                placeholder="you@tasknera.com"
+                className="w-full px-4 py-2.5 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-xs"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-brand-charcoal-2 uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -145,14 +149,14 @@ export default function SignUpPage() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="At least 6 characters"
-                  className="w-full px-4 py-3 pr-11 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-sm"
+                  className="w-full px-4 py-2.5 pr-11 rounded-xl bg-white border border-brand-border text-brand-charcoal placeholder-brand-charcoal-3 focus:outline-none focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/10 transition-all text-xs"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-charcoal-3 hover:text-brand-charcoal transition-colors"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     {showPassword
                       ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.908a10.05 10.05 0 012.122-.163c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21M3 3l18 18" />
                       : <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></>
@@ -160,29 +164,23 @@ export default function SignUpPage() {
                   </svg>
                 </button>
               </div>
-              <p className="text-xs text-brand-charcoal-3 mt-1.5">Minimum 6 characters</p>
+              <p className="text-[10px] text-brand-charcoal-3 mt-1">Minimum 6 characters</p>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-brand-orange hover:bg-brand-orange-hover disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-all shadow-orange flex items-center justify-center gap-2 mt-2"
+              className="w-full py-3 px-4 bg-brand-orange hover:bg-brand-orange-hover disabled:opacity-60 text-white text-xs font-bold rounded-xl transition-all shadow-orange flex items-center justify-center gap-2 mt-2 cursor-pointer"
             >
               {isLoading ? (
-                <>
-                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Creating Account...</span>
-                </>
+                <span>Creating Account...</span>
               ) : (
                 <span>Create Account</span>
               )}
             </button>
           </form>
 
-          <p className="mt-8 pt-6 border-t border-brand-border text-center text-sm text-brand-charcoal-3">
+          <p className="mt-8 pt-6 border-t border-brand-border text-center text-xs text-brand-charcoal-3">
             Already have an account?{' '}
             <Link href="/signin" className="text-brand-orange hover:text-brand-orange-hover font-semibold transition-colors">
               Sign in
