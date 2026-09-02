@@ -87,7 +87,7 @@ export default function CandidateEvaluationDetailPage() {
   const [showExplanationModal, setShowExplanationModal] = useState<boolean>(false);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('ALL');
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   const fetchEvaluation = useCallback(async () => {
     try {

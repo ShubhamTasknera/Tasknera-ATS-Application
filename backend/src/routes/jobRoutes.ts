@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { createJob, getAllJobs, getJobById, updateJob, deleteJob, parseJobDescriptionController } from '../controllers/jobController';
+import {
+  createJob,
+  getAllJobs,
+  getJobById,
+  updateJob,
+  deleteJob,
+  parseJobDescriptionController,
+  getAvailableJobsForEvaluation
+} from '../controllers/jobController';
 import { protect, authorize } from '../middleware/authMiddleware';
 
 const upload = multer({
@@ -25,8 +33,12 @@ import {
   uploadCandidateCVs,
   getCandidatesForJob,
   getCandidateById,
-  retryCandidateParsing
+  retryCandidateParsing,
+  deleteCandidate
 } from '../controllers/candidateController';
+
+// Available Jobs for Candidate Evaluation & Matching (Entry Point 2)
+router.get('/available-for-evaluation', getAvailableJobsForEvaluation);
 
 // Protect database routes with JWT authentication middleware
 router.post('/', protect, createJob);
@@ -51,5 +63,6 @@ router.get('/:jobId/candidates/:candidateId', getCandidateById);
 router.get('/:jobId/candidates/:candidateId/evaluation', getCandidateEvaluation);
 router.post('/:jobId/candidates/:candidateId/evaluate', protect, evaluateCandidateController);
 router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);
+router.delete('/:jobId/candidates/:candidateId', deleteCandidate);
 
 export default router;

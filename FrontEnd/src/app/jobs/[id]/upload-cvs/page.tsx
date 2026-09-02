@@ -95,7 +95,7 @@ export default function BatchCVUploadPage() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   // ── Fetch Job Details ────────────────────────────────────────────────────────
   useEffect(() => {

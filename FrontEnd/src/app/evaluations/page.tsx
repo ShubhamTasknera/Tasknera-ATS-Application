@@ -15,6 +15,7 @@ export interface EvaluationItem {
   date: string;
   score: number;
   ats: number;
+  matchLevel?: string;
   mandatory: string;
   mandatoryFailed: boolean;
   decision: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT';
@@ -55,7 +56,7 @@ export default function EvaluationsPage() {
   const [filter, setFilter] = useState<'All' | 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT'>('All');
   const [sort, setSort] = useState<'score' | 'date'>('score');
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   const fetchEvaluations = useCallback(async () => {
     try {
@@ -299,13 +300,12 @@ export default function EvaluationsPage() {
                     <th className="px-4 py-4 text-center">ATS Format</th>
                     <th className="px-4 py-4 text-center">Mandatory Met</th>
                     <th className="px-4 py-4 text-center">Decision</th>
-                    <th className="px-4 py-4 hidden md:table-cell">Evaluator</th>
                     <th className="px-6 py-4 text-right">Audit Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
-                  {filtered.map(e => (
-                    <tr key={e.id} className="hover:bg-slate-50/80 transition-colors group">
+                  {filtered.map((e, idx) => (
+                    <tr key={`${e.id}-${e.jobId}-${idx}`} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl font-extrabold text-sm flex items-center justify-center flex-shrink-0 ${avatarColor(e.candidate)} shadow-xs`}>
@@ -329,6 +329,11 @@ export default function EvaluationsPage() {
                             style={{ width: `${Math.min(100, Math.max(0, e.score))}%` }}
                           />
                         </div>
+                        {e.matchLevel && (
+                          <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight block mt-1">
+                            {e.matchLevel}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-center">
                         <span className="text-xs font-bold text-slate-700">{e.ats}%</span>
@@ -344,9 +349,6 @@ export default function EvaluationsPage() {
                         <span className={`inline-flex px-2.5 py-1 rounded-md text-[10px] font-extrabold border ${decisionStyle(e.decision)}`}>
                           {e.decision === 'DO NOT SUBMIT' ? 'REJECT' : e.decision}
                         </span>
-                      </td>
-                      <td className="px-4 py-4 hidden md:table-cell text-xs text-slate-500 font-medium">
-                        {e.by} • {e.date}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link

@@ -4,6 +4,7 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes';
 import jobRoutes from './routes/jobRoutes';
 import userRoutes from './routes/userRoutes';
+import candidateRoutes from './routes/candidateRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,10 +24,11 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 import { getCandidateEvaluation, getAllEvaluations } from './controllers/evaluationController';
 
-// Authentication, User, Job & Evaluation Routes
+// Authentication, User, Job, Candidate & Evaluation Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/candidates', candidateRoutes);
 app.get('/api/evaluations', getAllEvaluations);
 app.get('/api/evaluations/:id', getCandidateEvaluation);
 

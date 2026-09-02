@@ -883,7 +883,7 @@ function parseProjectsSection(projText: string, fullText: string): CandidateProj
 /**
  * Robust Skills Extractor from Technical Skills Section & Full Text
  */
-function parseSkillsFromText(cleanText: string, skillsSectionText?: string): string[] {
+export function parseSkillsFromText(cleanText: string, skillsSectionText?: string): string[] {
   const skillSet = new Set<string>();
 
   if (skillsSectionText) {
@@ -893,7 +893,7 @@ function parseSkillsFromText(cleanText: string, skillsSectionText?: string): str
       const tokens = cleaned.split(/[,|•*·;]\s*/).map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 40);
       for (const token of tokens) {
         const pureSkill = token.replace(/\s*\([^)]*\)/g, '').trim();
-        if (pureSkill.length >= 1) {
+        if (pureSkill.length >= 1 && !/^(skills|technical\s+skills|core\s+competencies)$/i.test(pureSkill)) {
           skillSet.add(pureSkill);
         }
       }
@@ -902,11 +902,15 @@ function parseSkillsFromText(cleanText: string, skillsSectionText?: string): str
 
   const knownSkillCatalog = [
     'React', 'React.js', 'Next.js', 'TypeScript', 'JavaScript', 'HTML5', 'HTML', 'CSS3', 'CSS', 'Tailwind CSS',
-    'Tailwind', 'ShadCN UI', 'Redux', 'Redux Toolkit', 'Node.js', 'Express', 'Express.js', 'Python', 'FastAPI',
-    'Django', 'Flask', 'Java', 'Spring Boot', 'Spring', 'C', 'C++', 'C#', '.NET', 'SQL', 'PostgreSQL',
-    'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Azure', 'GCP', 'Google Cloud', 'Docker',
-    'Kubernetes', 'CI/CD', 'Git', 'GitHub', 'REST APIs', 'REST API', 'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices',
-    'Postman', 'Vercel', 'Render', 'Neon', 'Figma', 'UI/UX', 'Bootstrap', 'Jest', 'Cypress', 'Webpack', 'Vite', 'Kafka', 'Linux'
+    'Tailwind', 'ShadCN UI', 'Redux', 'Redux Toolkit', 'Node.js', 'Express', 'Express.js', 'MERN', 'MERN Stack',
+    'MEAN Stack', 'Python', 'FastAPI', 'Django', 'Flask', 'Java', 'Spring Boot', 'Spring', 'C', 'C++', 'C#',
+    '.NET', 'SQL', 'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Supabase', 'Firebase', 'AWS', 'Azure', 'GCP',
+    'Google Cloud', 'Docker', 'Kubernetes', 'CI/CD', 'Git', 'GitHub', 'GitLab', 'REST APIs', 'REST API',
+    'Prisma ORM', 'Prisma', 'GraphQL', 'Microservices', 'Postman', 'Vercel', 'Render', 'Neon', 'Figma', 'UI/UX',
+    'Bootstrap', 'Jest', 'Cypress', 'Webpack', 'Vite', 'Kafka', 'RabbitMQ', 'Linux', 'Nginx', 'Artificial Intelligence',
+    'AI', 'Machine Learning', 'GenAI', 'LLM', 'Web Development', 'Full Stack', 'Frontend', 'Backend',
+    'Salesforce', 'Apex', 'LWC', 'Visualforce', 'Manufacturing Cloud', 'SAP CO', 'SAP FI', 'SAP MM', 'SAP SD',
+    'SAP HANA', 'S/4HANA', 'Excel'
   ];
 
   for (const skill of knownSkillCatalog) {
@@ -917,7 +921,20 @@ function parseSkillsFromText(cleanText: string, skillsSectionText?: string): str
     }
   }
 
-  return Array.from(skillSet);
+  // Deduplicate case-insensitively and normalize (e.g. keep "React" if "React.js" is present, or keep both clean)
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const s of skillSet) {
+    const norm = s.trim();
+    if (!norm) continue;
+    const lower = norm.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      result.push(norm);
+    }
+  }
+
+  return result;
 }
 
 /**

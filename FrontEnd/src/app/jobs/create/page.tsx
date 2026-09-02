@@ -76,7 +76,7 @@ export default function CreateJobPage() {
     setScanStep('Sending document to backend parsing pipeline...');
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const authToken = token || localStorage.getItem('tasknera_token');
 
       let response: Response;
@@ -264,7 +264,7 @@ export default function CreateJobPage() {
     setIsSubmitting(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const authToken = token || localStorage.getItem('tasknera_token');
 
       const response = await fetch(`${backendUrl}/jobs`, {

@@ -98,7 +98,7 @@ export default function RequirementsReviewPage() {
       try {
         setLoading(true);
         setErrorMsg('');
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
         const authToken = token || localStorage.getItem('tasknera_token');
 
         const headers = {
@@ -189,7 +189,7 @@ export default function RequirementsReviewPage() {
 
     // Optional API call to delete single item if exists on backend
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const authToken = token || localStorage.getItem('tasknera_token');
       await fetch(`${backendUrl}/jobs/${jobId}/requirements/${id}`, {
         method: 'DELETE',
@@ -270,7 +270,7 @@ export default function RequirementsReviewPage() {
     setIsSaving(true);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const authToken = token || localStorage.getItem('tasknera_token');
 
       const payload = {

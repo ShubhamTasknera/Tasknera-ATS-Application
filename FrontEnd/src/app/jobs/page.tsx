@@ -41,7 +41,7 @@ export default function JobsPage() {
   const fetchJobs = async () => {
     try {
       setIsLoading(true);
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
 
       let localCreatedJobs: any[] = [];
@@ -153,7 +153,7 @@ export default function JobsPage() {
     if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;
     try {
       setDeletingId(id);
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
 
       // Update local storage
