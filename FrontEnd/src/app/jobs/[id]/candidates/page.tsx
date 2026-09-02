@@ -555,48 +555,124 @@ export default function JobCandidatesPage() {
     try {
       setLoading(true);
       setErrorMsg('');
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
 
-      // 1. Fetch Job
+      // 1. Locate Job from local stores or sample mappings
+      let localJob: any = null;
+      if (typeof window !== 'undefined') {
+        try {
+          const allLocal = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+          localJob = allLocal.find((j: any) => String(j.id) === String(jobId));
+
+          if (!localJob) {
+            const createdJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+            localJob = createdJobs.find((j: any) => String(j.id) === String(jobId));
+          }
+
+          if (!localJob) {
+            const savedJobs = JSON.parse(localStorage.getItem('tasknera_jobs') || '[]');
+            localJob = savedJobs.find((j: any) => String(j.id) === String(jobId));
+          }
+        } catch {}
+      }
+
+      // Sample Fallback Presets if not found in localStorage
+      const samplePresets: Record<string, Partial<JobInfo>> = {
+        'job-sample-1': {
+          position: 'Full Stack Engineer-(Go and React)',
+          client: 'IBM',
+          location: 'Bangalore, Onsite (locals only)',
+          work_mode: 'Onsite',
+        },
+        'job-sample-2': {
+          position: 'Salesforce Manufacturing Cloud Developer',
+          client: 'Hexaware',
+          location: 'Noida (Onsite)',
+          work_mode: 'Onsite',
+        },
+        'job-sample-3': {
+          position: 'Full-Stack Developer (MERN + AI)',
+          client: 'the Role',
+          location: 'Mumbai, Maharashtra, India',
+          work_mode: 'Hybrid',
+        },
+        'job-sample-4': {
+          position: 'Salesforce Manufacturing Cloud Developer',
+          client: 'Hexaware',
+          location: 'Noida (Onsite)',
+          work_mode: 'Onsite',
+        },
+      };
+
+      const preset = samplePresets[jobId] || (
+        jobId.includes('react') || jobId.includes('fullstack') || jobId.includes('golang')
+          ? samplePresets['job-sample-1']
+          : jobId.includes('mern')
+          ? samplePresets['job-sample-3']
+          : jobId.includes('salesforce')
+          ? samplePresets['job-sample-2']
+          : undefined
+      );
+
+      const dynamicTitle = localJob?.title || localJob?.position || preset?.position || (
+        jobId.includes('-') && !jobId.startsWith('job-sample') && jobId.length > 20
+          ? 'Job Evaluation Pipeline'
+          : jobId.replace(/[_-]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+      );
+
       let jobInfo: JobInfo = {
         id: jobId,
-        position: 'Frontend Developer',
-        client: 'TechNova Solutions',
-        location: 'Pune, Maharashtra',
-        work_mode: 'Hybrid',
-        requirementsCount: 8,
-        jd_text: 'Frontend Developer',
-        requirements: [],
+        position: dynamicTitle,
+        client: localJob?.client || localJob?.company || preset?.client || 'Enterprise Client',
+        location: localJob?.location || preset?.location || 'Remote / Hybrid',
+        work_mode: localJob?.mode || localJob?.work_mode || localJob?.workMode || preset?.work_mode || 'Hybrid',
+        requirementsCount: localJob?.requirements?.length || 8,
+        jd_text: localJob?.jd_text || dynamicTitle,
+        requirements: localJob?.requirements || [],
       };
 
       try {
-        const jobRes = await fetch(`${backendUrl}/jobs/${jobId}`);
+        const jobRes = await fetch(`${backendUrl}/jobs/${jobId}`, {
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+          }
+        });
         if (jobRes.ok) {
           const jobData = await jobRes.json();
-          if (jobData.job) {
+          const j = jobData.job || jobData.data;
+          if (j) {
             jobInfo = {
-              id: jobData.job.id,
-              position: jobData.job.position || jobData.job.title || 'Frontend Developer',
-              client: jobData.job.client || jobData.job.company || 'TechNova Solutions',
-              location: jobData.job.location || 'Pune, Maharashtra',
-              work_mode: jobData.job.work_mode || 'Hybrid',
-              requirementsCount: jobData.job.requirements?.length || 8,
-              jd_text: jobData.job.jd_text || jobData.job.position,
-              requirements: jobData.job.requirements || [],
+              id: j.id || jobId,
+              position: j.position || j.title || jobInfo.position,
+              client: j.client || j.company || jobInfo.client,
+              location: j.location || jobInfo.location,
+              work_mode: j.work_mode || j.workMode || jobInfo.work_mode,
+              requirementsCount: j.requirements?.length || jobInfo.requirementsCount,
+              jd_text: j.jd_text || j.position || jobInfo.jd_text,
+              requirements: j.requirements || jobInfo.requirements,
             };
           }
         }
       } catch {
-        console.warn('Backend unavailable, using default job profile');
+        console.warn('Backend unavailable, using cached job profile');
       }
       setJob(jobInfo);
 
       // 2. Fetch Candidates
-      const candRes = await fetch(`${backendUrl}/jobs/${jobId}/candidates`);
-      if (candRes.ok) {
-        const candData = await candRes.json();
-        setCandidates(candData.candidates || []);
-      } else {
-        throw new Error('Failed to retrieve candidate directory from server');
+      try {
+        const candRes = await fetch(`${backendUrl}/jobs/${jobId}/candidates`, {
+          headers: {
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+          }
+        });
+        if (candRes.ok) {
+          const candData = await candRes.json();
+          setCandidates(candData.candidates || []);
+        } else {
+          setCandidates([]);
+        }
+      } catch {
+        setCandidates([]);
       }
     } catch (err: any) {
       console.error('Error loading candidates:', err);
@@ -604,7 +680,7 @@ export default function JobCandidatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [backendUrl, jobId]);
+  }, [backendUrl, jobId, token]);
 
   useEffect(() => {
     fetchJobAndCandidates();
@@ -864,7 +940,7 @@ export default function JobCandidatesPage() {
               ...q,
               status: isDup ? 'DUPLICATE' : matchedCandidate.parsingStatus,
               progress: 100,
-              error: matchedCandidate.errorMessage,
+              error: isDup ? (matchedCandidate.errorMessage || 'This CV is already uploaded to this JD.') : matchedCandidate.errorMessage,
               candidateId: matchedCandidate.id,
             };
           }
@@ -1013,7 +1089,7 @@ export default function JobCandidatesPage() {
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                {job?.position || 'Frontend Developer'}
+                {job?.position || 'Job Position'}
               </h1>
 
               <div className="flex items-center gap-3.5 text-xs text-slate-400 mt-2 flex-wrap font-medium">
