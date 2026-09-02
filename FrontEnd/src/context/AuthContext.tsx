@@ -28,23 +28,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
 
   useEffect(() => {
     const savedToken = localStorage.getItem('tasknera_token');
-    const savedRole = localStorage.getItem('tasknera_role') as UserRole | null;
-    const savedEmail = localStorage.getItem('tasknera_email') || 'sarah.m@tasknera.com';
-    const savedName = localStorage.getItem('tasknera_name') || 'Sarah Mitchell';
-    
-    if (savedToken) {
-      setToken(savedToken);
-      const computedRole: UserRole = savedRole || (savedEmail.toLowerCase().includes('admin') ? 'ADMIN' : 'RECRUITER_MEMBER');
-      setUser({
-        id: computedRole === 'ADMIN' ? 'admin-1' : 'rec-1',
-        email: savedEmail,
-        name: computedRole === 'ADMIN' ? 'Administrator' : savedName,
-        role: computedRole,
-      });
+    if (!savedToken) {
       setIsLoading(false);
-    } else {
-      setIsLoading(false);
+      return;
     }
+
+    const loadUser = async () => {
+      setToken(savedToken);
+      try {
+        const data = await fetchApi<{ user: User }>('/auth/me', {}, savedToken);
+        if (data && data.user) {
+          const userRole: UserRole = data.user.role === 'ADMIN' ? 'ADMIN' : 'RECRUITER_MEMBER';
+          setUser({ ...data.user, role: userRole });
+          localStorage.setItem('tasknera_role', userRole);
+          if (data.user.name) localStorage.setItem('tasknera_name', data.user.name);
+          if (data.user.email) localStorage.setItem('tasknera_email', data.user.email);
+        } else {
+          throw new Error('Invalid user response');
+        }
+      } catch (err) {
+        console.warn('Fallback to local stored session:', err);
+        const savedRole = localStorage.getItem('tasknera_role') as UserRole | null;
+        const savedEmail = localStorage.getItem('tasknera_email');
+        const savedName = localStorage.getItem('tasknera_name');
+        if (savedEmail) {
+          const computedRole: UserRole = savedRole || (savedEmail.toLowerCase().includes('admin') ? 'ADMIN' : 'RECRUITER_MEMBER');
+          setUser({
+            id: computedRole === 'ADMIN' ? 'admin-1' : 'rec-1',
+            email: savedEmail,
+            name: savedName || (computedRole === 'ADMIN' ? 'Administrator' : 'Team Member'),
+            role: computedRole,
+          });
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadUser();
   }, []);
 
   const setRole = (newRole: UserRole) => {
@@ -55,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
   const signin = async (email: string, password: string): Promise<UserRole> => {
     const cleanEmail = email.trim().toLowerCase();
     const isAdmin = cleanEmail === 'admin@tasknera.com' || cleanEmail === 'admin@ats.tasknera.com';
-    const role: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    const defaultRole: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
     const userName = isAdmin ? 'Administrator' : (email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Team Member');
     const dummyToken = 'tasknera_jwt_' + Date.now();
 
@@ -64,18 +85,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         method: 'POST',
         body: JSON.stringify({ email: cleanEmail, password }),
       });
-      const finalRole = isAdmin ? 'ADMIN' : (data.user.role || role);
+      const userRole: UserRole = (data.user?.role === 'ADMIN' || isAdmin) ? 'ADMIN' : 'RECRUITER_MEMBER';
       localStorage.setItem('tasknera_token', data.token);
-      localStorage.setItem('tasknera_role', finalRole);
-      localStorage.setItem('tasknera_email', cleanEmail);
-      localStorage.setItem('tasknera_name', data.user.name || userName);
+      localStorage.setItem('tasknera_role', userRole);
+      localStorage.setItem('tasknera_email', data.user?.email || cleanEmail);
+      localStorage.setItem('tasknera_name', data.user?.name || userName);
       setToken(data.token);
-      setUser({ ...data.user, role: finalRole });
-      return finalRole;
+      setUser({ ...data.user, role: userRole });
+      return userRole;
     } catch {
       // Standalone frontend fallback
       localStorage.setItem('tasknera_token', dummyToken);
-      localStorage.setItem('tasknera_role', role);
+      localStorage.setItem('tasknera_role', defaultRole);
       localStorage.setItem('tasknera_email', cleanEmail);
       localStorage.setItem('tasknera_name', userName);
       setToken(dummyToken);
@@ -83,16 +104,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         id: isAdmin ? 'admin-1' : 'rec-1',
         email: cleanEmail,
         name: userName,
-        role,
+        role: defaultRole,
       });
-      return role;
+      return defaultRole;
     }
   };
 
   const signup = async (name: string, email: string, password: string): Promise<UserRole> => {
     const cleanEmail = email.trim().toLowerCase();
     const isAdmin = cleanEmail === 'admin@tasknera.com';
-    const role: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    const defaultRole: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
     const dummyToken = 'tasknera_jwt_' + Date.now();
 
     try {
@@ -100,17 +121,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         method: 'POST',
         body: JSON.stringify({ name, email: cleanEmail, password }),
       });
+      const userRole: UserRole = (data.user?.role === 'ADMIN' || isAdmin) ? 'ADMIN' : 'RECRUITER_MEMBER';
       localStorage.setItem('tasknera_token', data.token);
-      localStorage.setItem('tasknera_role', role);
-      localStorage.setItem('tasknera_email', cleanEmail);
+      localStorage.setItem('tasknera_role', userRole);
+      localStorage.setItem('tasknera_email', data.user?.email || cleanEmail);
       localStorage.setItem('tasknera_name', name);
       setToken(data.token);
-      setUser({ ...data.user, role });
-      return role;
+      setUser({ ...data.user, role: userRole });
+      return userRole;
     } catch {
       // Standalone frontend fallback
       localStorage.setItem('tasknera_token', dummyToken);
-      localStorage.setItem('tasknera_role', role);
+      localStorage.setItem('tasknera_role', defaultRole);
       localStorage.setItem('tasknera_email', cleanEmail);
       localStorage.setItem('tasknera_name', name);
       setToken(dummyToken);
@@ -118,9 +140,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         id: isAdmin ? 'admin-1' : 'rec-1',
         email: cleanEmail,
         name,
-        role,
+        role: defaultRole,
       });
-      return role;
+      return defaultRole;
     }
   };
 

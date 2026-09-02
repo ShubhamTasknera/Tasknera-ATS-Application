@@ -35,8 +35,20 @@ const Header: React.FC = () => {
         { label: 'Evaluations', href: '/evaluations', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
       ];
 
-  const active = (href: string) =>
-    pathname === href || (href !== '/' && pathname?.startsWith(href + '/'));
+  const active = (href: string) => {
+    if (!pathname) return false;
+    if (pathname === href) return true;
+    if (href !== '/' && pathname.startsWith(href + '/')) {
+      const hasMoreSpecificMatch = nav.some(
+        other =>
+          other.href !== href &&
+          other.href.length > href.length &&
+          (pathname === other.href || pathname.startsWith(other.href + '/'))
+      );
+      return !hasMoreSpecificMatch;
+    }
+    return false;
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -94,16 +106,6 @@ const Header: React.FC = () => {
           <div className="hidden md:flex items-center gap-2.5 flex-shrink-0">
             {isAuth ? (
               <>
-                {/* Fixed User Role Badge */}
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap ${
-                  isAdmin
-                    ? 'bg-violet-50 text-violet-700 border-violet-200'
-                    : 'bg-blue-50 text-blue-700 border-blue-200'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isAdmin ? 'bg-violet-600' : 'bg-blue-600'}`} />
-                  <span>{isAdmin ? 'Administrator' : 'TA Team Member'}</span>
-                </div>
-
                 {/* Profile Dropdown */}
                 <div className="relative" onClick={e => e.stopPropagation()}>
                   <button

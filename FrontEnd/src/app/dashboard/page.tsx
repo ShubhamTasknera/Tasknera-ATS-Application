@@ -111,34 +111,13 @@ export default function DashboardPage() {
       <main className="max-w-screen-xl mx-auto px-6 pt-24 pb-16 flex-1 w-full">
 
         {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
-              <span className="w-2 h-2 rounded-full bg-brand-orange" />
-              Recruiter Command Center
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
-            <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and submission pipeline</p>
+        <div className="mb-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
+            <span className="w-2 h-2 rounded-full bg-brand-orange" />
+            Recruiter Command Center
           </div>
-          
-          {/* Quick Action Buttons */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/candidates"
-              className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs"
-            >
-              Search Talent Pool
-            </Link>
-            <Link
-              href="/jobs/create"
-              className="flex items-center gap-2 px-4 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-              </svg>
-              Create Job Evaluation
-            </Link>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and submission pipeline</p>
         </div>
 
         {/* KPI cards */}
