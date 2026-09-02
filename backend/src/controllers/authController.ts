@@ -6,7 +6,8 @@ import { AuthRequest, UserRole } from '../middleware/authMiddleware';
 
 const generateToken = (userId: string, email: string, role: UserRole): string => {
   const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-  return jwt.sign({ userId, email, role }, secret, { expiresIn: '24h' });
+  const expiresIn = process.env.JWT_EXPIRES_IN || '24h';
+  return jwt.sign({ userId, email, role }, secret, { expiresIn: expiresIn as any });
 };
 
 // @desc    Register a new user
