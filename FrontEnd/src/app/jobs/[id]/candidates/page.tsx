@@ -924,8 +924,12 @@ export default function JobCandidatesPage() {
         )
       );
 
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
       const res = await fetch(`${backendUrl}/jobs/${jobId}/candidates/upload`, {
         method: 'POST',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
         body: formData,
       });
 

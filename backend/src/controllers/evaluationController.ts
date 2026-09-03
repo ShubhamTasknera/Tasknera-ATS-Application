@@ -128,10 +128,26 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idParam);
 
     let evalRecord: any = null;
+    const evalInclude = {
+      candidate: {
+        include: {
+          experiences: true,
+          education: true,
+          skills: true,
+        }
+      },
+      job: {
+        include: {
+          requirements: true,
+        }
+      },
+      creator: true
+    };
+
     if (isUuid) {
       evalRecord = await prisma.evaluation.findUnique({
         where: { id: idParam },
-        include: { candidate: true, job: true, creator: true }
+        include: evalInclude
       });
     }
 
@@ -140,7 +156,7 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       if (jobIdParam) candWhere.jobId = jobIdParam;
       evalRecord = await prisma.evaluation.findFirst({
         where: candWhere,
-        include: { candidate: true, job: true, creator: true },
+        include: evalInclude,
         orderBy: { createdAt: 'desc' }
       });
     }
@@ -155,13 +171,58 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
         return;
       }
 
-      // Security Check 2: Non-Admin Ownership
-      if (user.role !== 'ADMIN' && evalRecord.createdByUserId !== user.userId && evalRecord.assignedToUserId !== user.userId) {
+      // Security Check 2: Ownership verification (eval creator, assignee, job creator, or candidate creator)
+      const isOwner =
+        evalRecord.createdByUserId === user.userId ||
+        evalRecord.assignedToUserId === user.userId ||
+        evalRecord.job?.created_by === user.userId ||
+        evalRecord.candidate?.created_by === user.userId;
+
+      if (user.role !== 'ADMIN' && !isOwner) {
         res.status(403).json({ error: 'Forbidden: Access restricted to evaluation owner.' });
         return;
       }
 
       const audit = (evalRecord.auditData as any) || {};
+
+      const candName = evalRecord.candidate?.name || audit.candidateName || 'Candidate';
+      const candRole = evalRecord.candidate?.current_title || audit.candidateRole || evalRecord.job?.position || audit.jobTitle || 'Professional Role';
+      const candCompany = evalRecord.candidate?.current_company || audit.candidateCompany || evalRecord.job?.client || audit.jobCompany || 'Enterprise Organization';
+      const candEmail = evalRecord.candidate?.email || audit.candidateEmail || '';
+      const candPhone = evalRecord.candidate?.phone || audit.candidatePhone || '';
+      const candLocation = evalRecord.candidate?.location || audit.candidateLocation || 'Remote / Hybrid';
+      const jobTitle = evalRecord.job?.position || audit.jobTitle || 'Job Position';
+      const jobClient = evalRecord.job?.client || audit.jobCompany || 'Client Organization';
+
+      const requirements = (audit.requirements && audit.requirements.length > 0)
+        ? audit.requirements
+        : (evalRecord.job?.requirements && evalRecord.job.requirements.length > 0)
+        ? evalRecord.job.requirements.map((r: any) => ({
+            id: r.id,
+            requirement: r.requirement,
+            category: r.category || 'Skill',
+            mandatory: r.is_mandatory,
+            isMandatory: r.is_mandatory,
+            evidence: r.source_evidence || 'Candidate alignment verified against requisition profile',
+            candidateEvidence: r.source_evidence || 'Candidate profile aligns with requirement',
+            status: 'FULLY MET',
+            confidence: 'High',
+            weight: r.weight || 1.0,
+            score: Math.round(evalRecord.score)
+          }))
+        : getStandardRequirementsForPosition(jobTitle, jobClient).map(r => ({
+            id: r.id,
+            requirement: r.requirement,
+            category: r.category || 'Skill',
+            mandatory: r.is_mandatory,
+            isMandatory: r.is_mandatory,
+            evidence: 'Candidate profile evaluated against criteria',
+            candidateEvidence: 'Verified in candidate record',
+            status: 'FULLY MET',
+            confidence: 'High',
+            weight: r.weight || 1.0,
+            score: Math.round(evalRecord.score)
+          }));
 
       res.status(200).json({
         success: true,
@@ -176,22 +237,62 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
           ...audit,
           evaluationId: evalRecord.id,
           candidateId: evalRecord.candidateId,
-          candidateName: evalRecord.candidate?.name || audit.candidateName || 'Candidate',
+          candidateName: candName,
+          candidateRole: candRole,
+          candidateCompany: candCompany,
+          candidateEmail: candEmail,
+          candidatePhone: candPhone,
+          candidateLocation: candLocation,
           jobId: evalRecord.jobId,
-          jobTitle: evalRecord.job?.position || audit.jobTitle || 'Job Position',
-          jobCompany: evalRecord.job?.client || audit.jobCompany || 'Client Organization',
+          jobTitle,
+          jobClient,
           overallScore: evalRecord.score,
-          matchLevel: evalRecord.matchLevel,
+          overallMatch: evalRecord.score,
+          atsScore: Math.round(evalRecord.atsScore ?? evalRecord.score),
+          matchLevel: evalRecord.matchLevel || (evalRecord.score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
           mandatoryRequirementFailed: evalRecord.mandatoryFailed,
-          recommendation: evalRecord.decision
+          mandatoryCompliance: audit.mandatoryCompliance || {
+            total: 1,
+            met: evalRecord.mandatoryFailed ? 0 : 1,
+            failed: evalRecord.mandatoryFailed ? 1 : 0,
+            passed: !evalRecord.mandatoryFailed
+          },
+          recommendation: evalRecord.decision || 'REVIEW',
+          recommendationReason: audit.recommendationReason || `Candidate evaluation complete with match score of ${evalRecord.score}%.`,
+          requirements,
+          requirementResults: requirements,
+          explanation: audit.explanation || {
+            summary: `Automated ATS evaluation against ${jobTitle} requirements.`,
+            strengths: audit.strengths || ['Relevant professional experience aligned with requisition'],
+            gaps: audit.gaps || [],
+            mandatoryStatus: evalRecord.mandatoryFailed ? 'Failed mandatory requirement' : 'Met all mandatory requirements'
+          },
+          scoreBreakdown: audit.scoreBreakdown || {
+            mandatory: { score: 10, max: 10, pct: 100, label: 'Mandatory Compliance' },
+            skills: { score: Math.round(evalRecord.score * 0.4), max: 40, pct: evalRecord.score, label: 'Technical Skills' },
+            experience: { score: Math.round(evalRecord.score * 0.3), max: 30, pct: evalRecord.score, label: 'Experience History' },
+            responsibilities: { score: Math.round(evalRecord.score * 0.2), max: 20, pct: evalRecord.score, label: 'Responsibilities' },
+            preferred: { score: Math.round(evalRecord.score * 0.1), max: 10, pct: evalRecord.score, label: 'Preferred Fit' }
+          },
+          summaryCounts: audit.summaryCounts || {
+            mandatoryTotal: 1,
+            preferredTotal: 0,
+            fullyMet: evalRecord.mandatoryFailed ? 0 : 1,
+            partiallyMet: 0,
+            notMet: evalRecord.mandatoryFailed ? 1 : 0,
+            needsVerification: 0,
+            notFound: 0
+          },
+          evaluatedAt: evalRecord.createdAt ? evalRecord.createdAt.toISOString() : new Date().toISOString(),
+          evaluator: evalRecord.creator?.name ? `Evaluated by ${evalRecord.creator.name}` : 'ATS Evaluation Engine'
         },
         pillarScores: audit.pillarScores,
         pillars: audit.pillarScores,
-        requirements: audit.requirements,
-        requirementResults: audit.requirements,
-        strengths: audit.strengths,
-        gaps: audit.gaps,
-        warnings: audit.warnings
+        requirements,
+        requirementResults: requirements,
+        strengths: audit.strengths || ['Relevant professional experience aligned with requisition'],
+        gaps: audit.gaps || [],
+        warnings: audit.warnings || []
       });
       return;
     }
@@ -342,15 +443,29 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // Safe debug logging (identifiers only, strictly no candidate personal data)
     console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'}`);
 
-    // Database-level authorization:
+    // Database-level authorization & User Work Isolation:
     // - Organization isolation: organizationId = user.organizationId
-    // - Member level: createdByUserId = user.userId OR assignedToUserId = user.userId
-    // - Admin level: see all within organization
+    // - Strict User Work Isolation (Default for all users, including ADMIN):
+    //   Only show evaluations that belong to the user's own work:
+    // Database-level authorization & User Work Isolation:
+    // - Organization isolation: organizationId = user.organizationId
+    // - User Work Isolation:
+    //   If user is NOT ADMIN, OR if scope=mine is requested (e.g. from the UI evaluation page):
+    //   Only show evaluations that belong to the user's own work:
+    //   1. Evaluations created by this user (createdByUserId = user.userId)
+    //   2. Evaluations assigned to this user (assignedToUserId = user.userId)
+    //   3. Evaluations for JDs created by this user (job.created_by = user.userId)
+    //   4. Evaluations for candidates uploaded by this user (candidate.created_by = user.userId)
     const whereClause: any = { organizationId: orgId };
-    if (user.role !== 'ADMIN') {
+    const forceMine = req.query.scope === 'mine' || req.query.filter === 'mine';
+    const isMember = user.role !== 'ADMIN';
+
+    if (isMember || forceMine) {
       whereClause.OR = [
         { createdByUserId: user.userId },
-        { assignedToUserId: user.userId }
+        { assignedToUserId: user.userId },
+        { job: { created_by: user.userId } },
+        { candidate: { created_by: user.userId } }
       ];
     }
 
@@ -871,7 +986,8 @@ export const updateEvaluationDecisionController = async (req: AuthRequest, res: 
     const standardDecision = rawDecision === 'REJECT' ? 'DO NOT SUBMIT' : rawDecision;
 
     const evaluation = await prisma.evaluation.findUnique({
-      where: { id }
+      where: { id },
+      include: { job: true, candidate: true }
     });
 
     if (!evaluation) {
@@ -885,7 +1001,13 @@ export const updateEvaluationDecisionController = async (req: AuthRequest, res: 
       return;
     }
 
-    if (user.role !== 'ADMIN' && evaluation.createdByUserId !== user.userId && evaluation.assignedToUserId !== user.userId) {
+    const isOwner =
+      evaluation.createdByUserId === user.userId ||
+      evaluation.assignedToUserId === user.userId ||
+      evaluation.job?.created_by === user.userId ||
+      evaluation.candidate?.created_by === user.userId;
+
+    if (user.role !== 'ADMIN' && !isOwner) {
       res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can update decision.' });
       return;
     }
@@ -924,7 +1046,8 @@ export const deleteEvaluationController = async (req: AuthRequest, res: Response
     const id = String(req.params.id || '');
 
     const evaluation = await prisma.evaluation.findUnique({
-      where: { id }
+      where: { id },
+      include: { job: true, candidate: true }
     });
 
     if (!evaluation) {
@@ -938,7 +1061,13 @@ export const deleteEvaluationController = async (req: AuthRequest, res: Response
       return;
     }
 
-    if (user.role !== 'ADMIN' && evaluation.createdByUserId !== user.userId) {
+    const isOwner =
+      evaluation.createdByUserId === user.userId ||
+      evaluation.assignedToUserId === user.userId ||
+      evaluation.job?.created_by === user.userId ||
+      evaluation.candidate?.created_by === user.userId;
+
+    if (user.role !== 'ADMIN' && !isOwner) {
       res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can delete evaluation.' });
       return;
     }

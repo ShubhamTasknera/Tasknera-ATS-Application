@@ -57,7 +57,7 @@ router.post('/:jobId/requirements/confirm', protect, confirmRequirements);
 import { getCandidateEvaluation, evaluateCandidateController } from '../controllers/evaluationController';
 
 // Candidate CV Upload, Extraction & Status Routes
-router.post('/:jobId/candidates/upload', upload.any(), uploadCandidateCVs);
+router.post('/:jobId/candidates/upload', optionalProtect, upload.any(), uploadCandidateCVs);
 router.get('/:jobId/candidates', optionalProtect, getCandidatesForJob);
 router.get('/:jobId/candidates/:candidateId', optionalProtect, getCandidateById);
 router.get('/:jobId/candidates/:candidateId/evaluation', optionalProtect, getCandidateEvaluation);
