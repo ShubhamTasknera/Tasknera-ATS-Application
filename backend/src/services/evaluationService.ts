@@ -1,23 +1,38 @@
 import prisma from '../config/prisma';
 import { CandidateRecord } from '../controllers/candidateController';
-import { calculateATSScore, ATSScoringResult, RequirementEvaluationStatus, EvidenceConfidence, MatchTier } from './atsScoringEngine';
+import {
+  calculateATSScore,
+  ATSScoringResult,
+  MatchStatus,
+  EvidenceConfidence,
+  MatchTier,
+  MandatoryFailureDetail,
+  PillarScores
+} from './atsScoringEngine';
 
 export type EvaluationStatus =
+  | 'MATCHED'
+  | 'PARTIAL'
+  | 'NOT_MATCHED'
+  | 'UNKNOWN'
   | 'FULLY MET'
   | 'PARTIALLY MET'
   | 'NOT MET'
-  | 'NOT FOUND'
-  | 'NEEDS VERIFICATION';
+  | 'NOT FOUND';
 
 export interface RequirementEvaluationResult {
   id: string;
   requirement: string;
   category: string;
+  mandatory: boolean;
   isMandatory: boolean;
   evidence: string;
-  status: EvaluationStatus;
+  candidateEvidence: string;
+  evidenceSource: string;
+  status: MatchStatus;
   confidence: 'High' | 'Medium' | 'Low';
   weight: number;
+  score: number;
   failureReason?: string;
   verificationNote?: string;
   evidenceType?: EvidenceConfidence;
@@ -37,10 +52,11 @@ export interface CandidateEvaluationPayload {
   jobClient: string;
   overallMatch: number;
   atsScore: number;
-  overallScore?: number;
-  matchLevel?: MatchTier;
-  mandatoryRequirementFailed?: boolean;
-  mandatoryComplianceScore?: number;
+  overallScore: number;
+  matchLevel: MatchTier;
+  mandatoryRequirementFailed: boolean;
+  mandatoryComplianceScore: number;
+  mandatoryFailures: MandatoryFailureDetail[];
   mandatoryCompliance: {
     total: number;
     met: number;
@@ -49,15 +65,8 @@ export interface CandidateEvaluationPayload {
   };
   recommendation: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT';
   recommendationReason: string;
-  pillars?: {
-    mandatoryCompliance: number;
-    technicalSkills: number;
-    relevantExperience: number;
-    responsibilities: number;
-    education: number;
-    semanticSimilarity: number;
-    domainFit: number;
-  };
+  pillarScores: PillarScores;
+  pillars: PillarScores;
   scoreBreakdown: {
     mandatory: { score: number; max: number; pct: number; label: string };
     skills: { score: number; max: number; pct: number; label: string };
@@ -68,6 +77,11 @@ export interface CandidateEvaluationPayload {
   summaryCounts: {
     mandatoryTotal: number;
     preferredTotal: number;
+    matched: number;
+    partial: number;
+    notMatched: number;
+    unknown: number;
+    // Compatibility fields
     fullyMet: number;
     partiallyMet: number;
     notMet: number;
@@ -75,24 +89,24 @@ export interface CandidateEvaluationPayload {
     notFound: number;
   };
   requirements: RequirementEvaluationResult[];
-  requirementResults?: any[];
+  requirementResults: RequirementEvaluationResult[];
   explanation: {
     summary: string;
     strengths: string[];
     gaps: string[];
     mandatoryStatus: string;
   };
-  strengths?: string[];
-  gaps?: string[];
-  warnings?: string[];
-  scoringConfigVersion?: string;
+  strengths: string[];
+  gaps: string[];
+  warnings: string[];
+  scoringConfigVersion: string;
   evaluatedAt: string;
   evaluator: string;
 }
 
 /**
  * Evaluates a single candidate against a job's confirmed requirements deterministically
- * Using the Task 5 7-Pillar ATS Engine
+ * Using the Evidence-Based ATS Engine
  */
 export function evaluateCandidateAgainstRequirements(
   candidate: CandidateRecord,
@@ -111,29 +125,34 @@ export function evaluateCandidateAgainstRequirements(
   // Execute deterministic engine
   const result: ATSScoringResult = calculateATSScore(candidate, job, requirements);
 
-  const mappedReqs: RequirementEvaluationResult[] = result.requirementResults.map(r => ({
+  const mappedReqs: RequirementEvaluationResult[] = result.requirements.map(r => ({
     id: r.id,
     requirement: r.requirement,
     category: r.category,
-    isMandatory: r.isMandatory,
-    evidence: r.evidence,
-    status: (r.status.replace('_', ' ') as EvaluationStatus),
+    mandatory: r.mandatory,
+    isMandatory: r.mandatory,
+    evidence: r.candidateEvidence,
+    candidateEvidence: r.candidateEvidence,
+    evidenceSource: r.evidenceSource,
+    status: r.status,
     confidence: r.confidence,
     weight: r.weight,
+    score: r.score,
     failureReason: r.failureReason,
     evidenceType: r.evidenceType
   }));
 
-  const mandatoryTotal = mappedReqs.filter(r => r.isMandatory).length;
-  const mandatoryMet = mappedReqs.filter(r => r.isMandatory && r.status === 'FULLY MET').length;
-  const mandatoryFailed = mappedReqs.filter(r => r.isMandatory && (r.status === 'NOT MET' || r.status === 'NOT FOUND')).length;
+  const mandatoryTotal = result.mandatoryCompliance.total;
+  const mandatoryMet = result.mandatoryCompliance.met;
+  const mandatoryFailed = result.mandatoryCompliance.failed;
 
   let recommendation: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT' = 'REVIEW';
   let recommendationReason = 'Candidate meets core qualifications and requires recruiter review.';
 
   if (result.mandatoryRequirementFailed) {
     recommendation = 'DO NOT SUBMIT';
-    recommendationReason = 'Critical mandatory requirement failed. Candidate does not satisfy mandatory prerequisite.';
+    const failedNames = result.mandatoryFailures.map(f => f.requirement).join(', ');
+    recommendationReason = `Critical mandatory requirement failed: ${failedNames || 'Mandatory prerequisite not satisfied'}.`;
   } else if (result.overallScore >= 75) {
     recommendation = 'SUBMIT';
     recommendationReason = 'Strong qualification alignment across mandatory requirements, technical stack, and verified experience.';
@@ -141,6 +160,11 @@ export function evaluateCandidateAgainstRequirements(
     recommendation = 'DO NOT SUBMIT';
     recommendationReason = 'Candidate overall fit is below threshold for this position.';
   }
+
+  const matchedCount = mappedReqs.filter(r => r.status === 'MATCHED').length;
+  const partialCount = mappedReqs.filter(r => r.status === 'PARTIAL').length;
+  const notMatchedCount = mappedReqs.filter(r => r.status === 'NOT_MATCHED').length;
+  const unknownCount = mappedReqs.filter(r => r.status === 'UNKNOWN').length;
 
   const payload: CandidateEvaluationPayload = {
     evaluationId: result.evaluationId,
@@ -160,6 +184,7 @@ export function evaluateCandidateAgainstRequirements(
     matchLevel: result.matchLevel,
     mandatoryRequirementFailed: result.mandatoryRequirementFailed,
     mandatoryComplianceScore: result.mandatoryComplianceScore,
+    mandatoryFailures: result.mandatoryFailures,
     mandatoryCompliance: {
       total: mandatoryTotal,
       met: mandatoryMet,
@@ -168,62 +193,68 @@ export function evaluateCandidateAgainstRequirements(
     },
     recommendation,
     recommendationReason,
-    pillars: result.pillars,
+    pillarScores: result.pillarScores,
+    pillars: result.pillarScores,
     scoreBreakdown: {
       mandatory: {
-        score: result.pillars.mandatoryCompliance,
+        score: result.mandatoryComplianceScore,
         max: 100,
-        pct: result.pillars.mandatoryCompliance,
-        label: 'Mandatory Compliance (30%)'
+        pct: result.mandatoryComplianceScore,
+        label: mandatoryTotal > 0 ? `Mandatory Compliance (${mandatoryMet}/${mandatoryTotal})` : 'Mandatory Compliance (N/A)'
       },
       skills: {
-        score: result.pillars.technicalSkills,
+        score: result.pillarScores.technicalSkills,
         max: 100,
-        pct: result.pillars.technicalSkills,
-        label: 'Technical Skills & Tools (25%)'
+        pct: result.pillarScores.technicalSkills,
+        label: 'Technical Skills'
       },
       experience: {
-        score: result.pillars.relevantExperience,
+        score: result.pillarScores.experience,
         max: 100,
-        pct: result.pillars.relevantExperience,
-        label: 'Relevant Experience (20%)'
+        pct: result.pillarScores.experience,
+        label: 'Experience'
       },
       responsibilities: {
-        score: result.pillars.responsibilities,
+        score: result.pillarScores.genAI,
         max: 100,
-        pct: result.pillars.responsibilities,
-        label: 'Responsibilities / Functional (10%)'
+        pct: result.pillarScores.genAI,
+        label: 'GenAI & Domain Fit'
       },
       preferred: {
-        score: result.pillars.education,
+        score: result.pillarScores.education,
         max: 100,
-        pct: result.pillars.education,
-        label: 'Education & Certifications (5%)'
+        pct: result.pillarScores.education,
+        label: 'Education'
       }
     },
     summaryCounts: {
       mandatoryTotal,
-      preferredTotal: mappedReqs.filter(r => !r.isMandatory).length,
-      fullyMet: mappedReqs.filter(r => r.status === 'FULLY MET').length,
-      partiallyMet: mappedReqs.filter(r => r.status === 'PARTIALLY MET').length,
-      notMet: mappedReqs.filter(r => r.status === 'NOT MET').length,
-      needsVerification: mappedReqs.filter(r => r.status === 'NEEDS VERIFICATION').length,
-      notFound: mappedReqs.filter(r => r.status === 'NOT FOUND').length
+      preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
+      matched: matchedCount,
+      partial: partialCount,
+      notMatched: notMatchedCount,
+      unknown: unknownCount,
+      // Compatibility fields
+      fullyMet: matchedCount,
+      partiallyMet: partialCount,
+      notMet: notMatchedCount,
+      needsVerification: unknownCount,
+      notFound: notMatchedCount
     },
     requirements: mappedReqs,
-    requirementResults: result.requirementResults,
+    requirementResults: mappedReqs,
     strengths: result.strengths,
     gaps: result.gaps,
     warnings: result.warnings,
     explanation: {
-      summary: `${result.matchLevel} (${result.overallScore}% Overall Score). Mandatory Compliance: ${result.mandatoryComplianceScore}%.`,
+      summary: `${result.matchLevel} (${result.overallScore}% Overall Score). ${mandatoryTotal > 0 ? `Mandatory: ${mandatoryMet}/${mandatoryTotal}` : 'No mandatory constraints'}.`,
       strengths: result.strengths,
       gaps: result.gaps,
       mandatoryStatus: result.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
     },
     scoringConfigVersion: result.scoringConfigVersion,
     evaluatedAt: result.evaluatedAt,
-    evaluator: 'Deterministic ATS Engine (v2.0)'
+    evaluator: 'Evidence-Based ATS Engine (v3.0)'
   };
 
   return payload;

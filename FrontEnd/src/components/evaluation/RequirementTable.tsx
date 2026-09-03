@@ -13,40 +13,42 @@ export default function RequirementTable({ evaluations, showEvidence = true }: R
     setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getStatusBadge = (status: RequirementStatus) => {
-    switch (status) {
-      case RequirementStatus.FULLY_MET:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
-            <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-            </svg>
-            Fully Met
-          </span>
-        );
-      case RequirementStatus.PARTIALLY_MET:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
-            Partially Met
-          </span>
-        );
-      case RequirementStatus.NOT_MET:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 text-rose-900 border border-rose-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
-            <svg className="w-4 h-4 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            Not Met
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-300 text-xs sm:text-sm font-bold whitespace-nowrap">
-            {status}
-          </span>
-        );
+  const getStatusBadge = (status: any) => {
+    const s = String(status || '').toUpperCase().replace(/\s+/g, '_');
+    if (s === 'MATCHED' || s === 'FULLY_MET') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+          <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+          MATCHED
+        </span>
+      );
     }
+    if (s === 'PARTIAL' || s === 'PARTIALLY_MET') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
+          PARTIAL
+        </span>
+      );
+    }
+    if (s === 'UNKNOWN') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+          <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
+          UNKNOWN
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 text-rose-900 border border-rose-300 text-xs sm:text-sm font-extrabold whitespace-nowrap shadow-2xs">
+        <svg className="w-4 h-4 text-rose-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        NOT MATCHED
+      </span>
+    );
   };
 
   const getConfidenceText = (confidence: ConfidenceLevel) => {
