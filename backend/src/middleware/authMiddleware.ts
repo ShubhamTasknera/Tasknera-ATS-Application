@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export type UserRole = 'ADMIN' | 'MEMBER';
+export type UserRole = 'ADMIN' | 'MEMBER' | 'TEAM_LEADER';
 
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
     email: string;
     role?: UserRole;
+    organizationId?: string;
   };
 }
 
@@ -23,7 +24,10 @@ export const protect = (req: AuthRequest, res: Response, next: NextFunction): vo
 
   try {
     const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-    const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole };
+    const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole; organizationId?: string };
+    if (!decoded.organizationId) {
+      decoded.organizationId = 'org-tasknera';
+    }
     req.user = decoded;
     next();
   } catch (error) {
@@ -38,7 +42,10 @@ export const optionalProtect = (req: AuthRequest, res: Response, next: NextFunct
     const token = authHeader.split(' ')[1];
     try {
       const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
-      const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole };
+      const decoded = jwt.verify(token, secret) as { userId: string; email: string; role?: UserRole; organizationId?: string };
+      if (!decoded.organizationId) {
+        decoded.organizationId = 'org-tasknera';
+      }
       req.user = decoded;
     } catch (error) {
       // Ignore token decode errors in optional mode

@@ -11,6 +11,7 @@ datasource db {
 enum UserRole {
   ADMIN
   MEMBER
+  TEAM_LEADER
 }
 
 model User {
@@ -18,14 +19,18 @@ model User {
   email      String      @unique
   password   String
   name       String?
-  role       UserRole    @default(MEMBER)
-  teamId     String?     @map("team_id") @db.Uuid
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  jobs       Job[]
-  candidates Candidate[]
+  role                UserRole     @default(MEMBER)
+  teamId              String?      @map("team_id") @db.Uuid
+  organizationId      String?      @default("org-tasknera") @map("organization_id")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  jobs                Job[]
+  candidates          Candidate[]
+  createdEvaluations  Evaluation[] @relation("CreatedEvaluations")
+  assignedEvaluations Evaluation[] @relation("AssignedEvaluations")
 
   @@index([role], map: "idx_users_role")
+  @@index([organizationId], map: "idx_users_organization_id")
   @@map("users")
 }
 
@@ -48,6 +53,7 @@ model Job {
   requirements Requirement[]
   candidates   Candidate[]
   applications CandidateApplication[]
+  evaluations  Evaluation[]
 
   @@index([created_by], map: "idx_jobs_created_by")
   @@index([status], map: "idx_jobs_status")
@@ -105,6 +111,7 @@ model Candidate {
   job            Job?                     @relation(fields: [job_id], references: [id], onDelete: Cascade)
   user           User                     @relation(fields: [created_by], references: [id], onDelete: Cascade)
   applications   CandidateApplication[]
+  evaluations    Evaluation[]
   experiences    CandidateExperience[]
   education      CandidateEducation[]
   skills         CandidateSkill[]
@@ -219,4 +226,37 @@ model CandidateProject {
 
   @@index([candidate_id], map: "idx_candidate_project_candidate_id")
   @@map("candidate_projects")
+}
+
+model Evaluation {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @default("org-tasknera") @map("organization_id")
+  candidateId         String   @map("candidate_id") @db.Uuid
+  jobId               String   @map("job_id") @db.Uuid
+  candidateJobId      String?  @map("candidate_job_id")
+  createdByUserId     String   @map("created_by_user_id") @db.Uuid
+  assignedToUserId    String?  @map("assigned_to_user_id") @db.Uuid
+  score               Float
+  atsScore            Float?   @map("ats_score")
+  matchLevel          String?  @map("match_level")
+  mandatoryCompliance String?  @map("mandatory_compliance")
+  mandatoryFailed     Boolean  @default(false) @map("mandatory_failed")
+  decision            String   @default("REVIEW")
+  status              String   @default("COMPLETED")
+  auditData           Json?    @map("audit_data")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  creator   User      @relation("CreatedEvaluations", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  assignee  User?     @relation("AssignedEvaluations", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId], map: "idx_evaluations_org_id")
+  @@index([createdByUserId], map: "idx_evaluations_creator")
+  @@index([assignedToUserId], map: "idx_evaluations_assignee")
+  @@index([jobId], map: "idx_evaluations_job_id")
+  @@index([candidateId], map: "idx_evaluations_candidate_id")
+  @@index([candidateId, jobId], map: "idx_evaluations_cand_job")
+  @@map("evaluations")
 }

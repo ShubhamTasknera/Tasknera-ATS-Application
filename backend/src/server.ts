@@ -22,16 +22,26 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
-import { optionalProtect } from './middleware/authMiddleware';
-import { getCandidateEvaluation, getAllEvaluations } from './controllers/evaluationController';
+import { protect, optionalProtect } from './middleware/authMiddleware';
+import {
+  getCandidateEvaluation,
+  getAllEvaluations,
+  updateEvaluationDecisionController,
+  deleteEvaluationController
+} from './controllers/evaluationController';
 
 // Authentication, User, Job, Candidate & Evaluation Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
-app.get('/api/evaluations', optionalProtect, getAllEvaluations);
-app.get('/api/evaluations/:id', optionalProtect, getCandidateEvaluation);
+
+// Evaluation Endpoints (Secured by database-level ownership)
+app.get('/api/evaluations', protect, getAllEvaluations);
+app.get('/api/evaluations/:id', protect, getCandidateEvaluation);
+app.post('/api/evaluations/:id/decision', protect, updateEvaluationDecisionController);
+app.patch('/api/evaluations/:id/decision', protect, updateEvaluationDecisionController);
+app.delete('/api/evaluations/:id', protect, deleteEvaluationController);
 
 app.listen(PORT, () => {
   console.log(`[Backend] Server listening on http://localhost:${PORT}`);

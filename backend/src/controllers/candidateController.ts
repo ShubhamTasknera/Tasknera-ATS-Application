@@ -212,10 +212,10 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
   try {
     let dbCandidates: CandidateRecord[] = [];
     try {
-      // Fetch all candidates uploaded by this user (or all if admin), across all jobs and pool
+      // Candidate pool is common to all team members across the organization
       const poolWhere: any = {};
-      if (req.user && req.user.role !== 'ADMIN') {
-        poolWhere.created_by = req.user.userId;
+      if (req.user?.organizationId) {
+        poolWhere.user = { organizationId: req.user.organizationId };
       }
       const candidatesFromDb = await prisma.candidate.findMany({
         where: poolWhere,
@@ -237,17 +237,15 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       console.warn('[Talent Pool Candidates] Database query error:', dbErr);
     }
 
-    // Combine memory candidates across all jobs and pool matching this user
+    // Combine memory candidates across all jobs and pool matching this workspace
     const combinedMap = new Map<string, CandidateRecord>();
     for (const c of dbCandidates) {
       combinedMap.set(c.id, c);
     }
     for (const [jId, list] of CANDIDATE_STORE.entries()) {
       for (const c of list) {
-        if (!req.user || req.user.role === 'ADMIN' || c.uploadedBy === req.user.userId || c.createdBy === req.user.userId) {
-          if (!combinedMap.has(c.id)) {
-            combinedMap.set(c.id, c);
-          }
+        if (!combinedMap.has(c.id)) {
+          combinedMap.set(c.id, c);
         }
       }
     }
