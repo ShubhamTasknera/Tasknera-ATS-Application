@@ -60,6 +60,8 @@ export default function EvaluationsPage() {
   const [filter, setFilter] = useState<'All' | 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT'>('All');
   const [sort, setSort] = useState<'score' | 'date'>('score');
 
+  const [scope, setScope] = useState<'mine' | 'all'>('mine');
+
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   const fetchEvaluations = useCallback(async () => {
@@ -70,7 +72,11 @@ export default function EvaluationsPage() {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
 
-      const evalRes = await fetch(`${backendUrl}/evaluations`, { headers });
+      const url = scope === 'all' && user?.role === 'ADMIN'
+        ? `${backendUrl}/evaluations?view=all`
+        : `${backendUrl}/evaluations?scope=mine`;
+
+      const evalRes = await fetch(url, { headers });
       if (evalRes.ok) {
         const evalData = await evalRes.json();
         if (Array.isArray(evalData.evaluations)) {
@@ -85,7 +91,7 @@ export default function EvaluationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [backendUrl, user]);
+  }, [backendUrl, user, scope]);
 
   useEffect(() => {
     fetchEvaluations();
@@ -127,15 +133,41 @@ export default function EvaluationsPage() {
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Evaluations & Citations</h1>
             <p className="text-sm text-slate-500 mt-1">Deterministic matching breakdown, candidate-to-JD evidence verification, and submission decisions</p>
           </div>
-          <Link
-            href="/jobs/create"
-            className="flex items-center gap-2 px-5 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            New Evaluation
-          </Link>
+          <div className="flex items-center gap-3">
+            {user?.role === 'ADMIN' && (
+              <div className="flex items-center p-1 bg-slate-200/80 rounded-xl border border-slate-300">
+                <button
+                  onClick={() => setScope('mine')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    scope === 'mine'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  My Work
+                </button>
+                <button
+                  onClick={() => setScope('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    scope === 'all'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All Team Work
+                </button>
+              </div>
+            )}
+            <Link
+              href="/jobs/create"
+              className="flex items-center gap-2 px-5 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange hover:shadow-orange-lg hover:-translate-y-0.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              New Evaluation
+            </Link>
+          </div>
         </div>
 
         {/* Stats */}
@@ -264,7 +296,7 @@ export default function EvaluationsPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
-                          href={`/evaluations/${e.id}?jobId=${e.jobId}`}
+                          href={`/evaluations/${e.evaluationId || e.id}?jobId=${e.jobId}`}
                           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer"
                         >
                           <span>Inspect Audit</span>

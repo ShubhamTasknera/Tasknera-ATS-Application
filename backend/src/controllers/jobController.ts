@@ -197,7 +197,7 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     // Optional Enum / Status Validation
-    const validStatuses = ['draft', 'published', 'closed', 'archived'];
+    const validStatuses = ['draft', 'active', 'published', 'closed', 'archived'];
     const jobStatus = status ? String(status).toLowerCase().trim() : 'draft';
     if (status && !validStatuses.includes(jobStatus)) {
       res.status(400).json({ error: `Invalid status. Allowed values: ${validStatuses.join(', ')}` });

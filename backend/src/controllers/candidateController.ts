@@ -10,6 +10,7 @@ import {
   calculateCareerGaps
 } from '../services/cvParsingService';
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
+import { getStandardRequirementsForPosition } from './evaluationController';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
@@ -482,6 +483,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
     const paramJobId = String(req.params.jobId || req.body?.jobId || '').trim();
     const isPoolUpload = !paramJobId || paramJobId.toLowerCase() === 'pool' || paramJobId === 'all';
     const jobId = isPoolUpload ? 'pool' : paramJobId;
+    const dbJobId = (!isPoolUpload && jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) ? jobId : null;
     
     // Support files from multer array, any fields, or single file fallback
     let files: Express.Multer.File[] = [];
@@ -518,10 +520,17 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
     const candidateIds: string[] = [];
 
     // Find default user or authenticated user for database attribution
+    // Order of priority: 1. Authenticated user from JWT -> 2. Job Creator from DB -> 3. Fallback user
     let defaultUserId: string | null = null;
     try {
       const authUser = (req as any).user;
       defaultUserId = authUser?.userId || authUser?.id || null;
+      if (!defaultUserId && dbJobId) {
+        const jobRecord = await prisma.job.findUnique({ where: { id: dbJobId }, select: { created_by: true } });
+        if (jobRecord?.created_by) {
+          defaultUserId = jobRecord.created_by;
+        }
+      }
       if (!defaultUserId) {
         const user = await prisma.user.findFirst();
         if (user) defaultUserId = user.id;
@@ -1165,9 +1174,13 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 include: { requirements: true, user: true }
               });
               if (targetJob) {
-                const reqs = (targetJob.requirements && targetJob.requirements.length > 0)
+                let reqs: any[] = (targetJob.requirements && targetJob.requirements.length > 0)
                   ? targetJob.requirements
                   : [];
+
+                if (reqs.length === 0) {
+                  reqs = getStandardRequirementsForPosition(targetJob.position, targetJob.client);
+                }
 
                 if (reqs.length > 0) {
                   const jobData = {
@@ -1186,7 +1199,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                     ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
                     : 'N/A';
                   const decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
-                  const evalOwner = defaultUserId || targetJob.created_by;
+                  const evalOwner = (req as any).user?.userId || targetJob.created_by || defaultUserId;
                   const orgId = targetJob.user?.organizationId || 'org-tasknera';
 
                   const existingCandidateEval = await prisma.evaluation.findFirst({
