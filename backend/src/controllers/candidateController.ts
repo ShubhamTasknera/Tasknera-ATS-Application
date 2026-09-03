@@ -212,8 +212,8 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
   try {
     let dbCandidates: CandidateRecord[] = [];
     try {
-      // ONLY fetch candidates from Talent Pool (job_id IS NULL) belonging to this user (unless admin)
-      const poolWhere: any = { job_id: null };
+      // Fetch all candidates uploaded by this user (or all if admin), across all jobs and pool
+      const poolWhere: any = {};
       if (req.user && req.user.role !== 'ADMIN') {
         poolWhere.created_by = req.user.userId;
       }
@@ -231,21 +231,24 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       });
 
       if (candidatesFromDb && candidatesFromDb.length > 0) {
-        dbCandidates = candidatesFromDb.map((c: any) => mapDbCandidateToRecord(c, 'pool'));
+        dbCandidates = candidatesFromDb.map((c: any) => mapDbCandidateToRecord(c, c.job_id || 'pool'));
       }
     } catch (dbErr) {
       console.warn('[Talent Pool Candidates] Database query error:', dbErr);
     }
 
-    // Combine pool memory candidates (jobId === 'pool')
-    const poolList = CANDIDATE_STORE.get('pool') || [];
+    // Combine memory candidates across all jobs and pool matching this user
     const combinedMap = new Map<string, CandidateRecord>();
     for (const c of dbCandidates) {
       combinedMap.set(c.id, c);
     }
-    for (const c of poolList) {
-      if (!combinedMap.has(c.id)) {
-        combinedMap.set(c.id, c);
+    for (const [jId, list] of CANDIDATE_STORE.entries()) {
+      for (const c of list) {
+        if (!req.user || req.user.role === 'ADMIN' || c.uploadedBy === req.user.userId || c.createdBy === req.user.userId) {
+          if (!combinedMap.has(c.id)) {
+            combinedMap.set(c.id, c);
+          }
+        }
       }
     }
 
@@ -1159,6 +1162,15 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
 
         existingCandidates.unshift(newRecord);
         processedCandidates.push(newRecord);
+
+        // Also ensure candidate is present in central candidate pool store
+        if (jobId !== 'pool') {
+          const poolStore = CANDIDATE_STORE.get('pool') || [];
+          if (!poolStore.some(c => c.id === newRecord.id || (c.fileHash && c.fileHash === newRecord.fileHash))) {
+            poolStore.unshift({ ...newRecord, jobId: 'pool' });
+            CANDIDATE_STORE.set('pool', poolStore);
+          }
+        }
       } catch (err: any) {
         console.error(`Error processing CV ${fileName}:`, err);
         const errRecord: CandidateRecord = {

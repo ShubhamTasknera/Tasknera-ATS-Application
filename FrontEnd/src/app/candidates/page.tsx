@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useAuth } from '@/context/AuthContext';
 
 export interface CandidateItem {
   id: string;
@@ -208,6 +209,7 @@ const avatarColor = (name: string) => {
 
 export default function CandidatesPage() {
   const router = useRouter();
+  const { user, token } = useAuth();
 
   // Central candidate pool states
   const [allCandidates, setAllCandidates] = useState<CandidateItem[]>([]);
@@ -273,6 +275,13 @@ export default function CandidatesPage() {
     setUploadFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const getHeaders = useCallback(() => {
+    const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+    return {
+      ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {})
+    };
+  }, [token]);
+
   const executeCvUpload = async () => {
     if (uploadFiles.length === 0) return;
     try {
@@ -289,6 +298,7 @@ export default function CandidatesPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const res = await fetch(`${backendUrl}/candidates/upload`, {
         method: 'POST',
+        headers: getHeaders(),
         body: formData,
       });
 
@@ -317,10 +327,11 @@ export default function CandidatesPage() {
     try {
       setIsLoading(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const headers = getHeaders();
 
-      let res = await fetch(`${backendUrl}/candidates`).catch(() => null);
+      let res = await fetch(`${backendUrl}/candidates`, { headers }).catch(() => null);
       if (!res || !res.ok) {
-        res = await fetch(`${backendUrl}/jobs/all/candidates`).catch(() => null);
+        res = await fetch(`${backendUrl}/jobs/all/candidates`, { headers }).catch(() => null);
       }
       if (!res || !res.ok) {
         res = await fetch(`${backendUrl}/jobs/jd-1/candidates`).catch(() => null);
@@ -398,7 +409,7 @@ export default function CandidatesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getHeaders]);
 
   useEffect(() => {
     fetchCandidates();
@@ -409,7 +420,7 @@ export default function CandidatesPage() {
     try {
       setIsLoadingHistory(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const res = await fetch(`${backendUrl}/candidates/${candidateId}/evaluations`);
+      const res = await fetch(`${backendUrl}/candidates/${candidateId}/evaluations`, { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setCandidateHistory(data.evaluations || []);
@@ -422,7 +433,7 @@ export default function CandidatesPage() {
     } finally {
       setIsLoadingHistory(false);
     }
-  }, []);
+  }, [getHeaders]);
 
   // When drawer opens, load history if history tab or default
   useEffect(() => {
@@ -447,11 +458,13 @@ export default function CandidatesPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const res = await fetch(`${backendUrl}/candidates/${candidateToDelete.id}`, {
         method: 'DELETE',
+        headers: getHeaders(),
       });
 
       if (!res.ok) {
         await fetch(`${backendUrl}/jobs/${candidateToDelete.jobId}/candidates/${candidateToDelete.id}`, {
           method: 'DELETE',
+          headers: getHeaders(),
         }).catch(() => null);
       }
 
@@ -481,12 +494,12 @@ export default function CandidatesPage() {
     try {
       setIsLoadingJobs(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      const res = await fetch(`${backendUrl}/jobs/available-for-evaluation`);
+      const res = await fetch(`${backendUrl}/jobs/available-for-evaluation`, { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
         setAvailableJobs(data.jobs || []);
       } else {
-        const fallbackRes = await fetch(`${backendUrl}/jobs`);
+        const fallbackRes = await fetch(`${backendUrl}/jobs`, { headers: getHeaders() });
         if (fallbackRes.ok) {
           const fbData = await fallbackRes.json();
           const mappedJobs: AvailableJob[] = (fbData.jobs || []).map((j: any) => ({
@@ -528,7 +541,7 @@ export default function CandidatesPage() {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
       const res = await fetch(`${backendUrl}/candidates/${matchingCandidate.id}/match-with-job`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({
           jobId: selectedJobId,
           reevaluate: forceReevaluate
