@@ -264,14 +264,20 @@ export default function JobsPage() {
         const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
 
         // Compute workers from DB or assigned recruiter
+        const currentUserName = user?.name || (user?.email ? user.email.split('@')[0] : 'Ram Charan');
+        const currentUserRole = user?.role || 'MEMBER';
+        const isCurrentAuthUser = (j.created_by && user?.id && j.created_by === user.id) ||
+                                  (j.createdBy && user?.id && j.createdBy === user.id) ||
+                                  (j.creatorEmail && user?.email && j.creatorEmail.toLowerCase() === user.email.toLowerCase());
+
         const rawWorkedBy: JobWorker[] = Array.isArray(j.workedBy) && j.workedBy.length > 0
           ? j.workedBy
           : (j.user
               ? [{
-                  id: j.user.id || 'usr-creator',
-                  name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : 'Administrator'),
-                  email: j.user.email,
-                  role: j.user.role || 'ADMIN',
+                  id: j.user.id || (isCurrentAuthUser ? user?.id : 'usr-creator'),
+                  name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : (isCurrentAuthUser ? currentUserName : 'Recruiter')),
+                  email: j.user.email || (isCurrentAuthUser ? user?.email : undefined),
+                  role: j.user.role || (isCurrentAuthUser ? currentUserRole : 'MEMBER'),
                   action: 'Created Requisition',
                   isCreator: true
                 }]
@@ -287,23 +293,30 @@ export default function JobsPage() {
                         isCreator: idx === 0
                       };
                     })
-                  : [{ id: 'usr-admin', name: 'Administrator', email: 'admin@tasknera.com', role: 'ADMIN', action: 'Requisition Owner', isCreator: true }]
+                  : [{
+                      id: isCurrentAuthUser ? (user?.id || 'usr-creator') : 'usr-owner',
+                      name: isCurrentAuthUser ? currentUserName : (user?.name || 'Requisition Owner'),
+                      email: isCurrentAuthUser ? user?.email : 'recruiter@tasknera.com',
+                      role: isCurrentAuthUser ? currentUserRole : 'MEMBER',
+                      action: 'Created Requisition',
+                      isCreator: true
+                    }]
                 )
             );
 
         const workedBy: JobWorker[] = rawWorkedBy.filter(w => !isExcludedWorker(w));
-        if (workedBy.length === 0 && j.user && !isExcludedWorker(j.user as any)) {
+        if (workedBy.length === 0) {
           workedBy.push({
-            id: j.user.id || 'usr-creator',
-            name: j.user.name || (j.user.email ? j.user.email.split('@')[0] : 'Administrator'),
-            email: j.user.email,
-            role: j.user.role || 'ADMIN',
+            id: user?.id || 'usr-creator',
+            name: user?.name || (user?.email ? user.email.split('@')[0] : 'Ram Charan'),
+            email: user?.email,
+            role: user?.role || 'MEMBER',
             action: 'Created Requisition',
             isCreator: true
           });
         }
 
-        const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || 'Administrator');
+        const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || user?.name || 'Requisition Owner');
 
         return {
           id: String(j.id),

@@ -311,6 +311,20 @@ export default function CreateJobPage() {
         created_by: user?.id,
         createdBy: user?.id,
         creatorEmail: user?.email,
+        user: user ? {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        } : undefined,
+        workedBy: user ? [{
+          id: user.id,
+          name: user.name || (user.email ? user.email.split('@')[0] : 'Ram Charan'),
+          email: user.email,
+          role: user.role || 'MEMBER',
+          action: 'Created Requisition',
+          isCreator: true
+        }] : [],
         requirements: requirements,
       };
 
