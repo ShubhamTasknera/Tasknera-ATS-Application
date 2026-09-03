@@ -116,16 +116,6 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       return;
     }
 
-    if (req.user && req.user.role !== 'ADMIN' && jobId && jobId !== 'jd-1') {
-      const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
-      if (isJobUuid) {
-        const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
-        if (checkJob && checkJob.created_by && checkJob.created_by !== req.user.userId) {
-          res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
-          return;
-        }
-      }
-    }
 
     // 1. Fetch Candidate Record from DB or Memory Store
     const candidateData = await findCandidateRecord(candidateId, jobId || undefined);
@@ -278,23 +268,18 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    // 1. Fetch candidate records uploaded by this user (or all if admin)
-    const allRecords = await getAllCandidateRecords(!isAdmin ? currentUserId : undefined);
+    // 1. Fetch candidate records across the workspace so any applicant can be evaluated
+    const allRecords = await getAllCandidateRecords();
     const candidateMap = new Map<string, CandidateRecord>();
     for (const r of allRecords) {
       candidateMap.set(r.candidate.id, r.candidate);
     }
 
-    // 2. Fetch jobs in DB to map positions/requirements (restricted to user unless admin)
+    // 2. Fetch jobs in DB to map positions/requirements
     const jobsMap = new Map<string, { jobData: any; requirements: any[]; created_by?: string | null }>();
-    const jobWhere: any = {};
-    if (!isAdmin) {
-      jobWhere.created_by = currentUserId;
-    }
 
     try {
       const dbJobs = await prisma.job.findMany({
-        where: jobWhere,
         include: { requirements: true }
       });
       for (const j of dbJobs) {
@@ -318,8 +303,8 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
       console.warn('[Evaluations] DB jobs fetch error:', dbErr);
     }
 
-    // If non-admin user has no jobs created, they have no evaluations
-    if (!isAdmin && jobsMap.size === 0) {
+    // If no jobs exist in DB, return empty evaluations
+    if (jobsMap.size === 0) {
       res.status(200).json({
         success: true,
         count: 0,
@@ -333,13 +318,8 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // 3. Fetch applications to capture multi-job evaluations
     let applications: any[] = [];
     try {
-      const appWhere: any = {};
-      if (!isAdmin) {
-        appWhere.job_id = { in: Array.from(allowedJobIds) };
-        appWhere.candidate = { created_by: currentUserId };
-      }
       applications = await prisma.candidateApplication.findMany({
-        where: appWhere,
+        where: allowedJobIds.size > 0 ? { job_id: { in: Array.from(allowedJobIds) } } : {},
         include: {
           job: { include: { requirements: true } },
           candidate: true
@@ -356,7 +336,6 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // Process from DB applications
     for (const app of applications) {
       if (!app.candidate_id || !app.job_id) continue;
-      if (!isAdmin && app.candidate && app.candidate.created_by && app.candidate.created_by !== currentUserId) continue;
 
       const pairKey = `${app.candidate_id}___${app.job_id}`;
       if (seenPairs.has(pairKey)) continue;
@@ -431,18 +410,12 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
       });
     }
 
-    // 2. Also process candidate records explicitly associated with jobs belonging to this user
+    // 2. Also process candidate records explicitly associated with jobs belonging to this workspace
     for (const item of allRecords) {
       const { candidate, jobId } = item;
       const targetJobId = jobId || candidate.jobId;
 
       if (!targetJobId || !allowedJobIds.has(targetJobId)) {
-        continue;
-      }
-      if (!isAdmin && candidate.uploadedBy && candidate.uploadedBy !== currentUserId) {
-        continue;
-      }
-      if (!isAdmin && candidate.createdBy && candidate.createdBy !== currentUserId) {
         continue;
       }
 

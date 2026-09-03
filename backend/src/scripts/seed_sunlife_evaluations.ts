@@ -264,8 +264,7 @@ async function seedSunLifeBenchmark() {
         client: 'SunLife',
         location: 'Gurugram (Hybrid)',
         work_mode: 'Hybrid',
-        salary_range: '18-20 LPA (MAX)',
-        experience_required: '4–6 Years',
+        salary: '18-20 LPA (MAX)',
         status: 'active',
         created_by: DEFAULT_USER_ID,
         jd_text: 'SunLife GenAI / AI-ML Engineer JD'

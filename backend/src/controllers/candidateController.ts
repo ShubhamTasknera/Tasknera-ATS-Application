@@ -310,10 +310,6 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       try {
         const appWhere: any = { job_id: jobId };
         const directWhere: any = { job_id: jobId };
-        if (req.user && req.user.role !== 'ADMIN') {
-          appWhere.candidate = { created_by: req.user.userId };
-          directWhere.created_by = req.user.userId;
-        }
 
         const apps = await (prisma as any).candidateApplication?.findMany({
           where: appWhere,
