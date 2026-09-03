@@ -283,6 +283,8 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
     // Administrators (ADMIN) can view all JDs across the organization.
     if (req.user && req.user.role !== 'ADMIN') {
       whereClause.created_by = req.user.userId;
+    } else if (!req.user) {
+      whereClause.created_by = '__unauthenticated__';
     }
 
     let jobs: any[] = [];
@@ -433,6 +435,8 @@ export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Respo
     // Non-admin members only see their own created jobs for matching
     if (req.user && req.user.role !== 'ADMIN') {
       whereClause.created_by = req.user.userId;
+    } else if (!req.user) {
+      whereClause.created_by = '__unauthenticated__';
     }
 
     let dbJobs: any[] = [];
@@ -452,22 +456,6 @@ export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Respo
       });
     } catch (dbErr) {
       console.error('[Available Jobs] Database query error:', dbErr);
-    }
-
-    // Fallback if no jobs exist in DB for demo
-    if (dbJobs.length === 0) {
-      dbJobs = await prisma.job.findMany({
-        orderBy: { created_at: 'desc' },
-        include: {
-          requirements: true,
-          _count: {
-            select: {
-              candidates: true,
-              applications: true
-            }
-          }
-        }
-      }).catch(() => []);
     }
 
     const availableJobs = dbJobs.map((job: any) => {

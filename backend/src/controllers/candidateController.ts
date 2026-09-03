@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import prisma from '../config/prisma';
 import { extractDocumentTextViaPython, PythonDocumentResponse } from '../services/pythonDocumentClient';
+import { AuthRequest } from '../middleware/authMiddleware';
 import {
   extractStructuredCandidateFromText,
   CandidateParsedProfile,
@@ -274,7 +275,7 @@ export const getAllCandidates = async (req: Request, res: Response): Promise<voi
  * Get all candidates associated with a specific Job
  * GET /api/jobs/:jobId/candidates
  */
-export const getCandidatesForJob = async (req: Request, res: Response): Promise<void> => {
+export const getCandidatesForJob = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const jobId = String(req.params.jobId || '');
     if (!jobId) {
@@ -286,9 +287,17 @@ export const getCandidatesForJob = async (req: Request, res: Response): Promise<
       return getAllCandidates(req, res);
     }
 
+    const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
+    if (req.user && req.user.role !== 'ADMIN' && isJobUuid) {
+      const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
+      if (checkJob && checkJob.created_by && checkJob.created_by !== req.user.userId) {
+        res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
+        return;
+      }
+    }
+
     // 1. Try fetching from Prisma DB if accessible and valid UUID
     let dbCandidates: CandidateRecord[] = [];
-    const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
     if (isJobUuid) {
       try {
         const apps = await (prisma as any).candidateApplication?.findMany({

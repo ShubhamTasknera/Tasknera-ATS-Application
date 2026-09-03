@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useAuth } from '@/context/AuthContext';
 
 export interface EvaluationItem {
   id: string;
@@ -50,6 +51,7 @@ const avatarColor = (name: string) => {
 };
 
 export default function EvaluationsPage() {
+  const { user } = useAuth();
   const [evaluations, setEvaluations] = useState<EvaluationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -216,7 +218,7 @@ export default function EvaluationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [backendUrl]);
+  }, [backendUrl, user]);
 
   useEffect(() => {
     fetchEvaluations();

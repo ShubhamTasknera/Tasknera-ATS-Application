@@ -38,7 +38,7 @@ import {
 } from '../controllers/candidateController';
 
 // Available Jobs for Candidate Evaluation & Matching (Entry Point 2)
-router.get('/available-for-evaluation', getAvailableJobsForEvaluation);
+router.get('/available-for-evaluation', optionalProtect, getAvailableJobsForEvaluation);
 
 // Database routes
 router.post('/', protect, createJob);
@@ -58,9 +58,9 @@ import { getCandidateEvaluation, evaluateCandidateController } from '../controll
 
 // Candidate CV Upload, Extraction & Status Routes
 router.post('/:jobId/candidates/upload', upload.any(), uploadCandidateCVs);
-router.get('/:jobId/candidates', getCandidatesForJob);
-router.get('/:jobId/candidates/:candidateId', getCandidateById);
-router.get('/:jobId/candidates/:candidateId/evaluation', getCandidateEvaluation);
+router.get('/:jobId/candidates', optionalProtect, getCandidatesForJob);
+router.get('/:jobId/candidates/:candidateId', optionalProtect, getCandidateById);
+router.get('/:jobId/candidates/:candidateId/evaluation', optionalProtect, getCandidateEvaluation);
 router.post('/:jobId/candidates/:candidateId/evaluate', protect, evaluateCandidateController);
 router.post('/:jobId/candidates/:candidateId/retry', retryCandidateParsing);
 router.delete('/:jobId/candidates/:candidateId', deleteCandidate);

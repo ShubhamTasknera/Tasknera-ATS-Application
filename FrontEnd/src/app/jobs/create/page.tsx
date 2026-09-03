@@ -32,7 +32,7 @@ interface DocumentMetrics {
 
 export default function CreateJobPage() {
   const router = useRouter();
-  const { isAuthenticated, token } = useAuth();
+  const { user, isAuthenticated, token } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   // Form State
@@ -298,7 +298,8 @@ export default function CreateJobPage() {
         console.warn('Response json parse error', e);
       }
 
-      const createdJob = resData?.job || resData?.data || {
+      const createdJob = {
+        ...(resData?.job || resData?.data || {}),
         id: resData?.job?.id || resData?.data?.id || `job-${Date.now()}`,
         client: client.trim(),
         position: position.trim(),
@@ -307,6 +308,9 @@ export default function CreateJobPage() {
         salary: salary.trim() || undefined,
         status: 'Active',
         created_at: new Date().toISOString(),
+        created_by: user?.id,
+        createdBy: user?.id,
+        creatorEmail: user?.email,
         requirements: requirements,
       };
 

@@ -190,8 +190,8 @@ const decisionStyle = (d: string) =>
   d === 'SUBMIT'
     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
     : d === 'REVIEW'
-    ? 'bg-amber-50 text-amber-700 border-amber-200'
-    : 'bg-rose-50 text-rose-700 border-rose-200';
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-rose-50 text-rose-700 border-rose-200';
 
 const avatarColor = (name: string) => {
   const colors = [
@@ -317,7 +317,7 @@ export default function CandidatesPage() {
     try {
       setIsLoading(true);
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-      
+
       let res = await fetch(`${backendUrl}/candidates`).catch(() => null);
       if (!res || !res.ok) {
         res = await fetch(`${backendUrl}/jobs/all/candidates`).catch(() => null);
@@ -329,30 +329,30 @@ export default function CandidatesPage() {
       if (res && res.ok) {
         const data = await res.json();
         const rawList = data.candidates || data.data || [];
-        
+
         const mapped: CandidateItem[] = rawList.map((c: any) => {
           const skillsList = Array.isArray(c.skills)
             ? c.skills.map((s: any) => (typeof s === 'string' ? s : s.skill_name || s.name || ''))
             : [];
-          
+
           const expList = Array.isArray(c.experiences || c.experience)
             ? (c.experiences || c.experience).map((e: any) => ({
-                title: e.title || e.role || 'Software Role',
-                company: e.company || 'Company',
-                duration: e.duration || (e.start_date ? `${e.start_date} - ${e.end_date || 'Present'}` : ''),
-                startDate: e.startDate || e.start_date || '',
-                endDate: e.endDate || e.end_date || '',
-                description: e.description || e.responsibilities || ''
-              }))
+              title: e.title || e.role || 'Software Role',
+              company: e.company || 'Company',
+              duration: e.duration || (e.start_date ? `${e.start_date} - ${e.end_date || 'Present'}` : ''),
+              startDate: e.startDate || e.start_date || '',
+              endDate: e.endDate || e.end_date || '',
+              description: e.description || e.responsibilities || ''
+            }))
             : [];
 
           const eduList = Array.isArray(c.education)
             ? c.education.map((ed: any) => ({
-                degree: ed.degree || 'Degree',
-                institution: ed.institution || ed.school || 'University',
-                field: ed.field || ed.major || '',
-                year: ed.year || (ed.graduation_date ? String(ed.graduation_date) : '')
-              }))
+              degree: ed.degree || 'Degree',
+              institution: ed.institution || ed.school || 'University',
+              field: ed.field || ed.major || '',
+              year: ed.year || (ed.graduation_date ? String(ed.graduation_date) : '')
+            }))
             : [];
 
           const uniqueCompanies = new Set(expList.map((e: any) => (e.company || '').trim().toLowerCase()).filter(Boolean));
@@ -599,7 +599,7 @@ export default function CandidatesPage() {
       <Header />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
-        
+
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
@@ -640,7 +640,7 @@ export default function CandidatesPage() {
         {/* Search & Filter Toolbar */}
         <div className="bg-white border border-slate-200/90 rounded-3xl p-4 md:p-5 mb-8 shadow-xs">
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            
+
             {/* Search Input */}
             <div className="relative flex-1">
               <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -667,9 +667,8 @@ export default function CandidatesPage() {
             <div className="flex items-center gap-1 bg-[#F8FAFC] p-1 rounded-2xl border border-slate-200 self-end md:self-auto">
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === 'table' ? 'bg-white text-brand-orange shadow-2xs' : 'text-slate-400 hover:text-slate-600'
-                }`}
+                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${viewMode === 'table' ? 'bg-white text-brand-orange shadow-2xs' : 'text-slate-400 hover:text-slate-600'
+                  }`}
                 title="Table View"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -678,9 +677,8 @@ export default function CandidatesPage() {
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-white text-brand-orange shadow-2xs' : 'text-slate-400 hover:text-slate-600'
-                }`}
+                className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${viewMode === 'grid' ? 'bg-white text-brand-orange shadow-2xs' : 'text-slate-400 hover:text-slate-600'
+                  }`}
                 title="Grid Cards View"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -919,7 +917,7 @@ export default function CandidatesPage() {
         {matchingCandidate && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]">
-              
+
               {/* Modal Header */}
               <div className="p-6 border-b border-slate-100 bg-[#F8FAFC] flex items-center justify-between">
                 <div>
@@ -1007,13 +1005,12 @@ export default function CandidatesPage() {
                             onClick={() => {
                               if (isConfirmed) setSelectedJobId(job.id);
                             }}
-                            className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${
-                              !isConfirmed
+                            className={`p-4 rounded-2xl border transition-all flex items-start justify-between gap-3 ${!isConfirmed
                                 ? 'bg-slate-50/70 border-slate-200 opacity-60 cursor-not-allowed'
                                 : isSelected
-                                ? 'bg-amber-50/60 border-brand-orange shadow-xs cursor-pointer ring-1 ring-brand-orange'
-                                : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 cursor-pointer'
-                            }`}
+                                  ? 'bg-amber-50/60 border-brand-orange shadow-xs cursor-pointer ring-1 ring-brand-orange'
+                                  : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 cursor-pointer'
+                              }`}
                           >
                             <div className="flex items-start gap-3">
                               <input
@@ -1206,7 +1203,7 @@ export default function CandidatesPage() {
                     >
                       Close
                     </button>
-                    
+
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -1322,9 +1319,8 @@ export default function CandidatesPage() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${
-                        activeTab === tab.id ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      className={`pb-3 text-xs font-bold transition-colors relative cursor-pointer ${activeTab === tab.id ? 'text-brand-orange' : 'text-slate-500 hover:text-slate-800'
+                        }`}
                     >
                       {tab.label}
                       {activeTab === tab.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-orange rounded-full" />}
@@ -1334,7 +1330,7 @@ export default function CandidatesPage() {
 
                 {/* Tab Content */}
                 <div className="p-6">
-                  
+
                   {/* Overview Tab */}
                   {activeTab === 'overview' && (
                     <div className="space-y-6">
@@ -1431,8 +1427,8 @@ export default function CandidatesPage() {
                               ? scoreVal >= 80
                                 ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
                                 : scoreVal >= 55
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-rose-100 text-rose-900 border-rose-300'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : 'bg-rose-100 text-rose-900 border-rose-300'
                               : 'bg-slate-100 text-slate-700 border-slate-200';
 
                             return (
@@ -1626,7 +1622,7 @@ export default function CandidatesPage() {
               </div>
 
               <h3 className="text-xl font-black text-slate-900 mb-2">Delete from Database?</h3>
-              
+
               <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                 Are you sure you want to permanently delete candidate profile <strong className="text-slate-900 font-bold">"{candidateToDelete.name}"</strong>?
               </p>
@@ -1676,7 +1672,7 @@ export default function CandidatesPage() {
         {isUploadModalOpen && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
             <div className="bg-white rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl border border-slate-100 animate-scaleUp">
-              
+
               <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100">
                 <div>
                   <h3 className="text-lg font-black text-slate-900">Add CVs to Candidate Pool</h3>

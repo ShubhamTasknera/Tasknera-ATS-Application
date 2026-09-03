@@ -165,6 +165,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     localStorage.removeItem('tasknera_role');
     localStorage.removeItem('tasknera_email');
     localStorage.removeItem('tasknera_name');
+    localStorage.removeItem('tasknera_created_jobs');
+    localStorage.removeItem('tasknera_all_jobs');
+    localStorage.removeItem('tasknera_jobs');
     setToken(null);
     setUser(null);
     if (typeof window !== 'undefined') {

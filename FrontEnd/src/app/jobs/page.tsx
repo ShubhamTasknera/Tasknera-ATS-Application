@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useAuth } from '@/context/AuthContext';
 
 interface JobWorker {
   id: string;
@@ -184,6 +185,7 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
 }
 
 export default function JobsPage() {
+  const { user } = useAuth();
   const [allJobs, setAllJobs] = useState<JobItem[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Draft' | 'Closed'>('All');
@@ -200,7 +202,18 @@ export default function JobsPage() {
       let localCreatedJobs: any[] = [];
       if (typeof window !== 'undefined') {
         try {
-          localCreatedJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+          const raw = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+          const currentUserId = user?.id;
+          const currentUserEmail = user?.email?.toLowerCase();
+          const isAdmin = user?.role === 'ADMIN';
+
+          localCreatedJobs = (Array.isArray(raw) ? raw : []).filter((j: any) => {
+            if (isAdmin) return true;
+            if (!currentUserId && !currentUserEmail) return false;
+            const jUserId = j.created_by || j.createdBy;
+            const jEmail = (j.creatorEmail || j.email || '').toLowerCase();
+            return (currentUserId && jUserId === currentUserId) || (currentUserEmail && jEmail === currentUserEmail);
+          });
         } catch (e) {}
       }
 
@@ -323,7 +336,7 @@ export default function JobsPage() {
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [user]);
 
   const handleDeleteJob = async (id: string, title: string) => {
     if (!window.confirm(`Are you sure you want to delete "${title}"?`)) return;

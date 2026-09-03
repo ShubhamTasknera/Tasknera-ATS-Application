@@ -22,6 +22,7 @@ app.get('/api/health', (req: Request, res: Response) => {
   });
 });
 
+import { optionalProtect } from './middleware/authMiddleware';
 import { getCandidateEvaluation, getAllEvaluations } from './controllers/evaluationController';
 
 // Authentication, User, Job, Candidate & Evaluation Routes
@@ -29,8 +30,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
-app.get('/api/evaluations', getAllEvaluations);
-app.get('/api/evaluations/:id', getCandidateEvaluation);
+app.get('/api/evaluations', optionalProtect, getAllEvaluations);
+app.get('/api/evaluations/:id', optionalProtect, getCandidateEvaluation);
 
 app.listen(PORT, () => {
   console.log(`[Backend] Server listening on http://localhost:${PORT}`);

@@ -106,7 +106,7 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
  * GET /api/evaluations/:id
  * GET /api/jobs/:jobId/candidates/:candidateId/evaluation
  */
-export const getCandidateEvaluation = async (req: Request, res: Response): Promise<void> => {
+export const getCandidateEvaluation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const candidateId = String(req.params.candidateId || req.params.id || req.query.candidateId || '');
     let jobId = String(req.params.jobId || req.query.jobId || '');
@@ -114,6 +114,17 @@ export const getCandidateEvaluation = async (req: Request, res: Response): Promi
     if (!candidateId) {
       res.status(400).json({ error: 'Candidate ID is required for evaluation' });
       return;
+    }
+
+    if (req.user && req.user.role !== 'ADMIN' && jobId && jobId !== 'jd-1') {
+      const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
+      if (isJobUuid) {
+        const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
+        if (checkJob && checkJob.created_by && checkJob.created_by !== req.user.userId) {
+          res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
+          return;
+        }
+      }
     }
 
     // 1. Fetch Candidate Record from DB or Memory Store
@@ -238,8 +249,17 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
  * Get all candidate evaluations across all jobs
  * GET /api/evaluations
  */
-export const getAllEvaluations = async (req: Request, res: Response): Promise<void> => {
+export const getAllEvaluations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // 0. RBAC Filtering
+    if (!req.user || !req.user.userId) {
+      res.status(200).json({ success: true, count: 0, evaluations: [] });
+      return;
+    }
+
+    const isAdmin = req.user.role === 'ADMIN';
+    const currentUserId = req.user.userId;
+
     // 1. Fetch all candidate records
     const allRecords = await getAllCandidateRecords();
     const candidateMap = new Map<string, CandidateRecord>();
@@ -247,10 +267,16 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
       candidateMap.set(r.candidate.id, r.candidate);
     }
 
-    // 2. Fetch all jobs in DB to map positions/requirements
-    const jobsMap = new Map<string, { jobData: any; requirements: any[] }>();
+    // 2. Fetch jobs in DB to map positions/requirements (restricted to user unless admin)
+    const jobsMap = new Map<string, { jobData: any; requirements: any[]; created_by?: string | null }>();
+    const jobWhere: any = {};
+    if (!isAdmin) {
+      jobWhere.created_by = currentUserId;
+    }
+
     try {
       const dbJobs = await prisma.job.findMany({
+        where: jobWhere,
         include: { requirements: true }
       });
       for (const j of dbJobs) {
@@ -262,20 +288,39 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
             client: j.client,
             company: j.client,
             jd_text: j.jd_text || undefined,
+            created_by: j.created_by
           },
           requirements: (j.requirements && j.requirements.length > 0)
             ? j.requirements
-            : getStandardRequirementsForPosition(j.position, j.client)
+            : getStandardRequirementsForPosition(j.position, j.client),
+          created_by: j.created_by
         });
       }
     } catch (dbErr) {
       console.warn('[Evaluations] DB jobs fetch error:', dbErr);
     }
 
+    // If non-admin user has no jobs created, they have no evaluations
+    if (!isAdmin && jobsMap.size === 0) {
+      res.status(200).json({
+        success: true,
+        count: 0,
+        evaluations: []
+      });
+      return;
+    }
+
+    const allowedJobIds = new Set(jobsMap.keys());
+
     // 3. Fetch applications to capture multi-job evaluations
     let applications: any[] = [];
     try {
+      const appWhere: any = {};
+      if (!isAdmin) {
+        appWhere.job_id = { in: Array.from(allowedJobIds) };
+      }
       applications = await prisma.candidateApplication.findMany({
+        where: appWhere,
         include: {
           job: { include: { requirements: true } },
           candidate: true
@@ -370,14 +415,18 @@ export const getAllEvaluations = async (req: Request, res: Response): Promise<vo
       const { candidate, jobId } = item;
       let targetJobId = jobId || candidate.jobId;
 
-      // If candidate has no explicit job, link to most recent job if available
+      // If candidate has no explicit job, only link to user's permitted jobs
       if (!targetJobId || targetJobId.toLowerCase() === 'pool' || targetJobId === 'jd-1') {
-        const firstJobId = Array.from(jobsMap.keys())[0];
+        const firstJobId = Array.from(allowedJobIds)[0];
         if (firstJobId) {
           targetJobId = firstJobId;
         } else {
           continue;
         }
+      }
+
+      if (!allowedJobIds.has(targetJobId)) {
+        continue;
       }
 
       const pairKey = `${candidate.id}___${targetJobId}`;
@@ -623,8 +672,12 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
     const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
     let applications: any[] = [];
     if (isCandUuid) {
+      const appWhere: any = { candidate_id: candidateId };
+      if (req.user && req.user.role !== 'ADMIN') {
+        appWhere.job = { created_by: req.user.userId };
+      }
       applications = await prisma.candidateApplication.findMany({
-        where: { candidate_id: candidateId },
+        where: appWhere,
         include: {
           job: {
             select: {
@@ -633,7 +686,8 @@ export const getCandidateEvaluationHistoryController = async (req: AuthRequest, 
               client: true,
               location: true,
               work_mode: true,
-              status: true
+              status: true,
+              created_by: true
             }
           }
         },
