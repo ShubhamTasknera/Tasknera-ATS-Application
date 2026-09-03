@@ -144,21 +144,24 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       creator: true
     };
 
-    if (isUuid) {
+    const isIdUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idParam);
+    const isJobUuid = jobIdParam ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobIdParam) : false;
+
+    if (isIdUuid) {
       evalRecord = await prisma.evaluation.findUnique({
         where: { id: idParam },
         include: evalInclude
-      });
+      }).catch(() => null);
     }
 
-    if (!evalRecord) {
+    if (!evalRecord && isIdUuid) {
       const candWhere: any = { candidateId: idParam };
-      if (jobIdParam) candWhere.jobId = jobIdParam;
+      if (isJobUuid) candWhere.jobId = jobIdParam;
       evalRecord = await prisma.evaluation.findFirst({
         where: candWhere,
         include: evalInclude,
         orderBy: { createdAt: 'desc' }
-      });
+      }).catch(() => null);
     }
 
     if (evalRecord) {
@@ -166,13 +169,14 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'} evalId=${evalRecord.id} evalOwner=${evalRecord.createdByUserId}`);
 
       // Security Check 1: Cross-Organization Isolation
-      if (evalRecord.organizationId && evalRecord.organizationId !== orgId) {
+      if (evalRecord.organizationId && evalRecord.organizationId !== orgId && user.role !== 'ADMIN') {
         res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
         return;
       }
 
-      // Security Check 2: Ownership verification (eval creator, assignee, job creator, or candidate creator)
+      // Security Check 2: Ownership verification (evaluator, creator, assignee, job creator, or candidate creator)
       const isOwner =
+        evalRecord.evaluatedBy === user.userId ||
         evalRecord.createdByUserId === user.userId ||
         evalRecord.assignedToUserId === user.userId ||
         evalRecord.job?.created_by === user.userId ||
@@ -354,6 +358,12 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
  */
 export const evaluateCandidateController = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required to evaluate candidate' });
+      return;
+    }
+
     const candidateId = String(req.params.candidateId || req.params.id || '');
     const jobId = String(req.params.jobId || '');
 
@@ -378,27 +388,135 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
     // Run deterministic evaluation
     const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
-    // Update application record match score if application exists in DB
-    try {
-      await prisma.candidateApplication.upsert({
+    // Ensure Candidate exists in PostgreSQL database with valid UUID
+    let dbCandidateId: string | null = null;
+    const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId);
+    if (isCandUuid) {
+      const dbCand = await prisma.candidate.findUnique({ where: { id: candidateId } }).catch(() => null);
+      if (dbCand) dbCandidateId = dbCand.id;
+    }
+    if (!dbCandidateId) {
+      const createdDbCand = await prisma.candidate.create({
+        data: {
+          name: candidateData.name || 'Candidate Profile',
+          email: candidateData.email || null,
+          phone: candidateData.phone || null,
+          location: candidateData.location || null,
+          current_title: candidateData.currentTitle || null,
+          current_company: candidateData.currentCompany || null,
+          summary: candidateData.summary || null,
+          raw_text: candidateData.rawText || '',
+          parsing_status: 'PARSED',
+          created_by: user.userId,
+        }
+      }).catch(() => null);
+      if (createdDbCand) dbCandidateId = createdDbCand.id;
+    }
+
+    // Ensure Job exists in PostgreSQL database with valid UUID
+    let dbJobId: string | null = null;
+    const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
+    if (isJobUuid) {
+      const dbJ = await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
+      if (dbJ) dbJobId = dbJ.id;
+    }
+    if (!dbJobId) {
+      let matchingJob = await prisma.job.findFirst({
         where: {
-          job_id_candidate_id: {
-            job_id: jobId,
-            candidate_id: candidateId
+          created_by: user.userId,
+          position: jobData.position
+        }
+      }).catch(() => null);
+      if (!matchingJob) {
+        matchingJob = await prisma.job.create({
+          data: {
+            client: jobData.client || 'Client Organization',
+            position: jobData.position || 'Position',
+            created_by: user.userId,
+            status: 'active'
           }
-        },
-        update: {
-          match_score: evaluation.overallScore
-        },
-        create: {
-          job_id: jobId,
-          candidate_id: candidateId,
-          match_score: evaluation.overallScore,
-          stage: 'SOURCED'
+        }).catch(() => null);
+      }
+      if (matchingJob) dbJobId = matchingJob.id;
+    }
+
+    // Permanently save/upsert Evaluation to database
+    if (dbCandidateId && dbJobId) {
+      const finalScore = evaluation.overallScore ?? evaluation.overallMatch ?? 0;
+      const complianceStr = evaluation.mandatoryCompliance
+        ? `${evaluation.mandatoryCompliance.met}/${evaluation.mandatoryCompliance.total}`
+        : 'N/A';
+      const decision = evaluation.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
+
+      const existingEval = await prisma.evaluation.findFirst({
+        where: {
+          candidateId: dbCandidateId,
+          jobId: dbJobId,
+          OR: [
+            { evaluatedBy: user.userId },
+            { createdByUserId: user.userId }
+          ]
         }
       });
-    } catch {
-      // Memory fallback if DB unavailable
+
+      if (existingEval) {
+        await prisma.evaluation.update({
+          where: { id: existingEval.id },
+          data: {
+            score: finalScore,
+            atsScore: evaluation.atsScore ?? finalScore,
+            matchLevel: evaluation.matchLevel,
+            mandatoryCompliance: complianceStr,
+            mandatoryFailed: Boolean(evaluation.mandatoryRequirementFailed),
+            decision,
+            auditData: evaluation as any,
+            evaluatedBy: user.userId,
+            updatedAt: new Date()
+          }
+        }).catch(() => null);
+      } else {
+        await prisma.evaluation.create({
+          data: {
+            candidateId: dbCandidateId,
+            jobId: dbJobId,
+            candidateJobId: jobId,
+            createdByUserId: user.userId,
+            evaluatedBy: user.userId,
+            organizationId: user.organizationId || 'org-tasknera',
+            score: finalScore,
+            atsScore: evaluation.atsScore ?? finalScore,
+            matchLevel: evaluation.matchLevel,
+            mandatoryCompliance: complianceStr,
+            mandatoryFailed: Boolean(evaluation.mandatoryRequirementFailed),
+            decision,
+            status: 'COMPLETED',
+            auditData: evaluation as any
+          }
+        }).catch(() => null);
+      }
+
+      // Update application record match score if application exists in DB
+      try {
+        await prisma.candidateApplication.upsert({
+          where: {
+            job_id_candidate_id: {
+              job_id: dbJobId,
+              candidate_id: dbCandidateId
+            }
+          },
+          update: {
+            match_score: evaluation.overallScore
+          },
+          create: {
+            job_id: dbJobId,
+            candidate_id: dbCandidateId,
+            match_score: evaluation.overallScore,
+            stage: 'SOURCED'
+          }
+        });
+      } catch {
+        // Application fallback
+      }
     }
 
     res.status(200).json({
@@ -443,31 +561,19 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // Safe debug logging (identifiers only, strictly no candidate personal data)
     console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'}`);
 
-    // Database-level authorization & User Work Isolation:
-    // - Organization isolation: organizationId = user.organizationId
-    // - Strict User Work Isolation (Default for all users, including ADMIN):
-    //   Only show evaluations that belong to the user's own work:
-    // Database-level authorization & User Work Isolation:
-    // - Organization isolation: organizationId = user.organizationId
-    // - User Work Isolation:
-    //   If user is NOT ADMIN, OR if scope=mine is requested (e.g. from the UI evaluation page):
-    //   Only show evaluations that belong to the user's own work:
-    //   1. Evaluations created by this user (createdByUserId = user.userId)
-    //   2. Evaluations assigned to this user (assignedToUserId = user.userId)
-    //   3. Evaluations for JDs created by this user (job.created_by = user.userId)
-    //   4. Evaluations for candidates uploaded by this user (candidate.created_by = user.userId)
-    const whereClause: any = { organizationId: orgId };
-    const forceMine = req.query.scope === 'mine' || req.query.filter === 'mine';
-    const isMember = user.role !== 'ADMIN';
-
-    if (isMember || forceMine) {
-      whereClause.OR = [
-        { createdByUserId: user.userId },
-        { assignedToUserId: user.userId },
-        { job: { created_by: user.userId } },
-        { candidate: { created_by: user.userId } }
-      ];
-    }
+    // STRICT PRIVACY RULE: Personal Evaluation History
+    // The only records returned to a logged-in user are evaluations performed by that user.
+    // User A evaluates CVs -> User A sees them.
+    // User B logs in -> User B does NOT see them.
+    // Even if User B created the JD, belongs to the same team, is admin/recruiter,
+    // or the candidate belongs to the same client.
+    const whereClause: any = {
+      organizationId: orgId,
+      OR: [
+        { evaluatedBy: user.userId },
+        { createdByUserId: user.userId }
+      ]
+    };
 
     const dbEvaluations = await prisma.evaluation.findMany({
       where: whereClause,
@@ -681,7 +787,10 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
       where: {
         candidateId,
         jobId,
-        createdByUserId
+        OR: [
+          { evaluatedBy: createdByUserId },
+          { createdByUserId }
+        ]
       }
     });
 
@@ -723,6 +832,7 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
           mandatoryCompliance: complianceStr,
           mandatoryFailed: Boolean(evaluation.mandatoryRequirementFailed),
           decision,
+          evaluatedBy: createdByUserId,
           auditData: evaluation as any,
           updatedAt: new Date()
         }
@@ -733,6 +843,7 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
           candidateId,
           jobId,
           createdByUserId,
+          evaluatedBy: createdByUserId,
           organizationId,
           score: finalScore,
           atsScore: evaluation.atsScore ?? finalScore,
@@ -1034,6 +1145,7 @@ export const updateEvaluationDecisionController = async (req: AuthRequest, res: 
     }
 
     const isOwner =
+      evaluation.evaluatedBy === user.userId ||
       evaluation.createdByUserId === user.userId ||
       evaluation.assignedToUserId === user.userId ||
       evaluation.job?.created_by === user.userId ||
@@ -1094,6 +1206,7 @@ export const deleteEvaluationController = async (req: AuthRequest, res: Response
     }
 
     const isOwner =
+      evaluation.evaluatedBy === user.userId ||
       evaluation.createdByUserId === user.userId ||
       evaluation.assignedToUserId === user.userId ||
       evaluation.job?.created_by === user.userId ||

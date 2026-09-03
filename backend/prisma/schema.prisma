@@ -29,6 +29,7 @@ model User {
   createdEvaluations  Evaluation[] @relation("CreatedEvaluations")
   evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
   assignedEvaluations Evaluation[] @relation("AssignedEvaluations")
+  evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
 
   @@index([role], map: "idx_users_role")
   @@index([organizationId], map: "idx_users_organization_id")
@@ -236,7 +237,7 @@ model Evaluation {
   jobId               String   @map("job_id") @db.Uuid
   candidateJobId      String?  @map("candidate_job_id")
   createdByUserId     String   @map("created_by_user_id") @db.Uuid
-  evaluatedByUserId   String?  @map("evaluated_by") @db.Uuid
+  evaluatedBy         String?  @map("evaluated_by") @db.Uuid
   assignedToUserId    String?  @map("assigned_to_user_id") @db.Uuid
   score               Float
   atsScore            Float?   @map("ats_score")
@@ -252,12 +253,12 @@ model Evaluation {
   candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   creator   User      @relation("CreatedEvaluations", fields: [createdByUserId], references: [id], onDelete: Cascade)
-  evaluator User?     @relation("EvaluatedEvaluations", fields: [evaluatedByUserId], references: [id], onDelete: SetNull)
+  evaluator User?     @relation("EvaluatedEvaluations", fields: [evaluatedBy], references: [id], onDelete: SetNull)
   assignee  User?     @relation("AssignedEvaluations", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId], map: "idx_evaluations_org_id")
   @@index([createdByUserId], map: "idx_evaluations_creator")
-  @@index([evaluatedByUserId], map: "idx_evaluations_evaluator")
+  @@index([evaluatedBy], map: "idx_evaluations_evaluated_by")
   @@index([assignedToUserId], map: "idx_evaluations_assignee")
   @@index([jobId], map: "idx_evaluations_job_id")
   @@index([candidateId], map: "idx_evaluations_candidate_id")

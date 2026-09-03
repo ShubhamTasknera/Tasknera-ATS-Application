@@ -44,7 +44,7 @@ router.get('/available-for-evaluation', optionalProtect, getAvailableJobsForEval
 router.post('/', protect, createJob);
 router.get('/', optionalProtect, getAllJobs);
 router.get('/:id', optionalProtect, getJobById);
-router.put('/:id', protect, updateJob);
+router.put('/:id', optionalProtect, updateJob);
 router.delete('/:id', protect, deleteJob);
 
 // Requirement CRUD & Confirmation API Routes

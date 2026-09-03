@@ -318,6 +318,29 @@ export default function JobsPage() {
 
         const validAssignedRecruiter = workedBy.map(w => w.name).join(', ') || (j.user?.name || user?.name || 'Requisition Owner');
 
+        let localCandCount = 0;
+        if (typeof window !== 'undefined') {
+          try {
+            const rawCount = localStorage.getItem(`tasknera_candidates_count_${j.id}`);
+            if (rawCount) localCandCount = parseInt(rawCount, 10) || 0;
+
+            const candList = JSON.parse(localStorage.getItem(`tasknera_candidates_${j.id}`) || '[]');
+            if (Array.isArray(candList) && candList.length > localCandCount) {
+              localCandCount = candList.length;
+            }
+
+            const createdList = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+            const foundJob = createdList.find((cj: any) => String(cj.id) === String(j.id));
+            if (foundJob) {
+              const cjCount = typeof foundJob.candidatesCount === 'number' ? foundJob.candidatesCount : (typeof foundJob.candidates === 'number' ? foundJob.candidates : 0);
+              if (cjCount > localCandCount) localCandCount = cjCount;
+            }
+          } catch {}
+        }
+
+        const apiCandCount = typeof j.candidatesCount === 'number' ? j.candidatesCount : (Array.isArray(j.candidates) ? j.candidates.length : (typeof j.candidates === 'number' ? j.candidates : 0));
+        const finalCandidateCount = Math.max(apiCandCount, localCandCount);
+
         return {
           id: String(j.id),
           title: j.position || j.title || 'Untitled Position',
@@ -325,7 +348,7 @@ export default function JobsPage() {
           location: j.location || 'Location Not Specified',
           mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
           salary: j.salary || 'Competitive',
-          candidates: typeof j.candidatesCount === 'number' ? j.candidatesCount : (Array.isArray(j.candidates) ? j.candidates.length : (typeof j.candidates === 'number' ? j.candidates : 0)),
+          candidates: finalCandidateCount,
           topScore: typeof j.topScore === 'number' ? j.topScore : (normalizedStatus === 'Active' ? 92 : null),
           status: normalizedStatus,
           created: j.created_at ? new Date(j.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
