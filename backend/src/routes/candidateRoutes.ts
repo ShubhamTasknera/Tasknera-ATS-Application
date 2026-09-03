@@ -23,11 +23,11 @@ const upload = multer({
 
 const router = Router();
 
-// Retrieve all candidates in central candidate pool (common to all members & admin)
-router.get('/', getAllCandidates);
+// Retrieve all candidates in central candidate pool (scoped to user or admin)
+router.get('/', optionalProtect, getAllCandidates);
 
 // Bulk upload CVs directly to candidate pool
-router.post('/upload', upload.any(), uploadCandidateCVs);
+router.post('/upload', optionalProtect, upload.any(), uploadCandidateCVs);
 
 // Available jobs in organization for matching against a candidate (filtered by permissions)
 router.get('/:candidateId/available-jobs', optionalProtect, getAvailableJobsForCandidateController);
