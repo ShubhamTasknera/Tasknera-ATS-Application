@@ -535,6 +535,12 @@ export default function JobCandidatesPage() {
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
+  // Inline Company & Position editing states
+  const [isEditingCompany, setIsEditingCompany] = useState(false);
+  const [editCompanyInput, setEditCompanyInput] = useState('');
+  const [isEditingPosition, setIsEditingPosition] = useState(false);
+  const [editPositionInput, setEditPositionInput] = useState('');
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -555,7 +561,77 @@ export default function JobCandidatesPage() {
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
+  // Handler to persist edited company name
+  const handleSaveCompany = async (newCompany: string) => {
+    const trimmed = newCompany.trim();
+    if (!trimmed) return;
+    setJob((prev: any) => (prev ? { ...prev, client: trimmed } : null));
+    setIsEditingCompany(false);
 
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`tasknera_company_${jobId}`, trimmed);
+        const specificJob = { ...(job || {}), id: jobId, client: trimmed };
+        localStorage.setItem(`tasknera_job_${jobId}`, JSON.stringify(specificJob));
+
+        const createdJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+        const updatedCreated = createdJobs.map((cj: any) =>
+          String(cj.id) === String(jobId) ? { ...cj, client: trimmed } : cj
+        );
+        localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+      } catch {}
+    }
+
+    try {
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      await fetch(`${backendUrl}/jobs/${jobId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ client: trimmed })
+      });
+    } catch (e) {
+      console.warn('Could not persist company name to backend:', e);
+    }
+  };
+
+  // Handler to persist edited position title
+  const handleSavePosition = async (newPosition: string) => {
+    const trimmed = newPosition.trim();
+    if (!trimmed) return;
+    setJob((prev: any) => (prev ? { ...prev, position: trimmed } : null));
+    setIsEditingPosition(false);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`tasknera_position_${jobId}`, trimmed);
+        const specificJob = { ...(job || {}), id: jobId, position: trimmed };
+        localStorage.setItem(`tasknera_job_${jobId}`, JSON.stringify(specificJob));
+
+        const createdJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+        const updatedCreated = createdJobs.map((cj: any) =>
+          String(cj.id) === String(jobId) ? { ...cj, position: trimmed } : cj
+        );
+        localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+      } catch {}
+    }
+
+    try {
+      const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+      await fetch(`${backendUrl}/jobs/${jobId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ position: trimmed })
+      });
+    } catch (e) {
+      console.warn('Could not persist position title to backend:', e);
+    }
+  };
 
   // ── Fetch Job Details & Candidates from Backend ─────────────────────────────
   const fetchJobAndCandidates = useCallback(async () => {
@@ -564,21 +640,54 @@ export default function JobCandidatesPage() {
       setErrorMsg('');
       const authToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
 
-      // 1. Locate Job from local stores or sample mappings
+      // 1. Locate Job from local stores, cache, or sample mappings
       let localJob: any = null;
+      let cachedCompany = '';
+      let cachedPosition = '';
+
       if (typeof window !== 'undefined') {
         try {
-          const allLocal = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
-          localJob = allLocal.find((j: any) => String(j.id) === String(jobId));
+          cachedCompany = localStorage.getItem(`tasknera_company_${jobId}`) || '';
+          cachedPosition = localStorage.getItem(`tasknera_position_${jobId}`) || '';
+
+          const directJob = JSON.parse(localStorage.getItem(`tasknera_job_${jobId}`) || 'null');
+          if (directJob) localJob = directJob;
+
+          if (!localJob) {
+            const allLocal = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+            localJob = allLocal.find((j: any) => String(j.id) === String(jobId));
+          }
 
           if (!localJob) {
             const createdJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
             localJob = createdJobs.find((j: any) => String(j.id) === String(jobId));
+            if (!localJob && createdJobs.length > 0 && jobId.startsWith('job-')) {
+              localJob = createdJobs[0];
+            }
           }
 
           if (!localJob) {
             const savedJobs = JSON.parse(localStorage.getItem('tasknera_jobs') || '[]');
             localJob = savedJobs.find((j: any) => String(j.id) === String(jobId));
+          }
+
+          if (!localJob) {
+            const atsJobs = JSON.parse(localStorage.getItem('tasknera_ats_jobs') || '[]');
+            localJob = atsJobs.find((j: any) => String(j.id) === String(jobId));
+            if (!localJob && atsJobs.length > 0 && jobId.startsWith('job-')) {
+              localJob = atsJobs[0];
+            }
+          }
+
+          if (!localJob) {
+            const parsedJd = JSON.parse(localStorage.getItem('tasknera_parsed_jd') || 'null');
+            if (parsedJd?.company || parsedJd?.client || parsedJd?.companyName) {
+              localJob = {
+                client: parsedJd.company || parsedJd.client || parsedJd.companyName,
+                position: parsedJd.position || parsedJd.jobTitle || parsedJd.positionTitle,
+                ...parsedJd
+              };
+            }
           }
         } catch {}
       }
@@ -621,16 +730,19 @@ export default function JobCandidatesPage() {
           : undefined
       );
 
-      const dynamicTitle = localJob?.title || localJob?.position || preset?.position || (
+      const resolvedLocalTitle = cachedPosition || localJob?.title || localJob?.position || preset?.position;
+      const dynamicTitle = resolvedLocalTitle || (
         jobId.includes('-') && !jobId.startsWith('job-sample') && jobId.length > 20
           ? 'Job Evaluation Pipeline'
           : jobId.replace(/[_-]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
       );
 
+      const resolvedLocalClient = cachedCompany || localJob?.client || localJob?.company || localJob?.companyName || preset?.client || 'Hiring Organization';
+
       let jobInfo: JobInfo = {
         id: jobId,
         position: dynamicTitle,
-        client: localJob?.client || localJob?.company || preset?.client || 'Enterprise Client',
+        client: resolvedLocalClient,
         location: localJob?.location || preset?.location || 'Remote / Hybrid',
         work_mode: localJob?.mode || localJob?.work_mode || localJob?.workMode || preset?.work_mode || 'Hybrid',
         requirementsCount: localJob?.requirements?.length || 8,
@@ -648,15 +760,26 @@ export default function JobCandidatesPage() {
           const jobData = await jobRes.json();
           const j = jobData.job || jobData.data;
           if (j) {
+            const isGenericClient = !j.client || j.client === 'Enterprise Client' || j.client === 'Client Organization' || j.client === 'Company Requisition';
+            const isGenericPosition = !j.position || /^Job \d+$/i.test(j.position) || j.position === 'Job Position' || j.position.startsWith('Job 1788');
+
+            const finalPosition = (!isGenericPosition && j.position)
+              ? j.position
+              : (resolvedLocalTitle || jobInfo.position);
+
+            const finalClient = (!isGenericClient && j.client)
+              ? j.client
+              : (resolvedLocalClient !== 'Hiring Organization' ? resolvedLocalClient : (j.client || jobInfo.client));
+
             jobInfo = {
               id: j.id || jobId,
-              position: j.position || j.title || jobInfo.position,
-              client: j.client || j.company || jobInfo.client,
+              position: finalPosition,
+              client: finalClient,
               location: j.location || jobInfo.location,
               work_mode: j.work_mode || j.workMode || jobInfo.work_mode,
               requirementsCount: j.requirements?.length || jobInfo.requirementsCount,
               jd_text: j.jd_text || j.position || jobInfo.jd_text,
-              requirements: j.requirements || jobInfo.requirements,
+              requirements: (j.requirements && j.requirements.length > 0) ? j.requirements : (localJob?.requirements || jobInfo.requirements),
             };
           }
         }
@@ -961,6 +1084,20 @@ export default function JobCandidatesPage() {
 
       if (result.allCandidates) {
         setCandidates(result.allCandidates);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`tasknera_candidates_${jobId}`, JSON.stringify(result.allCandidates));
+            localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(result.allCandidates.length));
+            const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+            const updatedCreated = created.map((cj: any) => {
+              if (String(cj.id) === String(jobId)) {
+                return { ...cj, candidatesCount: result.allCandidates.length, candidates: result.allCandidates.length };
+              }
+              return cj;
+            });
+            localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+          } catch {}
+        }
       } else {
         await fetchJobAndCandidates();
       }
@@ -1071,8 +1208,8 @@ export default function JobCandidatesPage() {
         <div className="flex items-center gap-2 text-xs font-medium text-slate-400 mb-6">
           <Link href="/jobs" className="hover:text-slate-900 transition-colors">Jobs Directory</Link>
           <span>/</span>
-          <Link href={`/jobs/${jobId}`} className="hover:text-slate-900 transition-colors truncate max-w-[200px]">
-            {job?.position || 'Job Position'}
+          <Link href={`/jobs/${jobId}`} className="hover:text-slate-900 transition-colors truncate max-w-[280px]">
+            {job?.client ? `${job.client} — ${job.position}` : (job?.position || 'Job Position')}
           </Link>
           <span>/</span>
           <span className="text-slate-800 font-semibold">Candidate Pipeline & Sourcing</span>
@@ -1099,17 +1236,114 @@ export default function JobCandidatesPage() {
                 </span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                {job?.position || 'Job Position'}
-              </h1>
+              {/* Position Title with inline edit */}
+              {isEditingPosition ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSavePosition(editPositionInput);
+                  }}
+                  className="flex items-center gap-2 my-1"
+                >
+                  <input
+                    type="text"
+                    value={editPositionInput}
+                    onChange={(e) => setEditPositionInput(e.target.value)}
+                    placeholder="Enter Job Role / Position..."
+                    autoFocus
+                    className="px-3 py-1.5 text-lg sm:text-xl font-bold bg-slate-900 border border-orange-500 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-orange-400 w-80 sm:w-96"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded-lg cursor-pointer transition shadow"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPosition(false)}
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg cursor-pointer transition"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-2.5 group">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+                    {job?.position || 'Job Position'}
+                  </h1>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPositionInput(job?.position || '');
+                      setIsEditingPosition(true);
+                    }}
+                    className="p-1 rounded-md bg-white/10 hover:bg-white/20 text-slate-400 hover:text-white transition-all cursor-pointer text-xs"
+                    title="Edit Position Title"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </div>
+              )}
 
+              {/* Company Name with inline edit */}
               <div className="flex items-center gap-3.5 text-xs text-slate-400 mt-2 flex-wrap font-medium">
-                <span className="flex items-center gap-1.5 text-slate-200 font-semibold">
-                  <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  {job?.client || 'Enterprise Client'}
-                </span>
+                {isEditingCompany ? (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSaveCompany(editCompanyInput);
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={editCompanyInput}
+                      onChange={(e) => setEditCompanyInput(e.target.value)}
+                      placeholder="Enter JD Company Name..."
+                      autoFocus
+                      className="px-2.5 py-1 text-xs bg-slate-900 border border-orange-500 rounded text-white focus:outline-none focus:ring-1 focus:ring-orange-400 w-56 font-semibold"
+                    />
+                    <button
+                      type="submit"
+                      className="px-2.5 py-1 bg-brand-orange hover:bg-orange-600 text-white text-xs font-bold rounded cursor-pointer transition shadow"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingCompany(false)}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded cursor-pointer transition"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 text-slate-200 font-semibold">
+                      <svg className="w-3.5 h-3.5 text-brand-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      {job?.client || 'Hiring Organization'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditCompanyInput(job?.client && job.client !== 'Enterprise Client' ? job.client : '');
+                        setIsEditingCompany(true);
+                      }}
+                      className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-orange-400 hover:text-orange-300 text-[11px] font-semibold border border-white/15 transition-all flex items-center gap-1 cursor-pointer"
+                      title="Click to specify the exact company name mentioned in the JD"
+                    >
+                      <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      Edit Company
+                    </button>
+                  </div>
+                )}
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1387,6 +1621,7 @@ export default function JobCandidatesPage() {
                     <th className="px-6 py-3.5">Candidate Profile</th>
                     <th className="px-6 py-3.5">Experience & History</th>
                     <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
+                    <th className="px-6 py-3.5 text-center">ATS Match Score</th>
                     <th className="px-6 py-3.5 text-center">Status</th>
                     <th className="px-6 py-3.5 text-right">Action</th>
                   </tr>
@@ -1403,15 +1638,28 @@ export default function JobCandidatesPage() {
                               {(c.name || 'Candidate').charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <button
-                                onClick={() => {
-                                  setSelectedCandidate(c);
-                                  setActiveModalTab('match');
-                                }}
-                                className="font-extrabold text-slate-900 group-hover:text-brand-orange transition-colors text-left cursor-pointer text-sm tracking-tight"
-                              >
-                                {c.name || c.fileName || 'Unnamed Candidate'}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedCandidate(c);
+                                    setActiveModalTab('match');
+                                  }}
+                                  className="font-extrabold text-slate-900 group-hover:text-brand-orange transition-colors text-left cursor-pointer text-sm tracking-tight"
+                                >
+                                  {c.name || c.fileName || 'Unnamed Candidate'}
+                                </button>
+                                {c.matchScore !== undefined && c.matchScore !== null && (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono border ${
+                                    c.matchScore >= 75
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                      : c.matchScore >= 60
+                                      ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                      : 'bg-rose-100 text-rose-800 border-rose-200'
+                                  }`}>
+                                    {Math.round(c.matchScore)}%
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-slate-500 truncate max-w-[200px] font-medium mt-0.5">
                                 {c.location || c.email || 'Verified Candidate'}
                               </div>
@@ -1449,6 +1697,34 @@ export default function JobCandidatesPage() {
                           <div className="text-slate-500 text-[11px] font-medium mt-0.5">{c.currentCompany || '—'}</div>
                         </td>
 
+                        {/* ATS Match Score */}
+                        <td className="px-6 py-4 text-center">
+                          {(() => {
+                            const score = Math.round(c.matchScore ?? (c as any).atsScore ?? 0);
+                            const isStrong = score >= 75;
+                            const isGood = score >= 60;
+                            return (
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black font-mono border shadow-2xs ${
+                                  isStrong
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : isGood
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : 'bg-rose-50 text-rose-800 border-rose-300'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    isStrong ? 'bg-emerald-500' : isGood ? 'bg-amber-500' : 'bg-rose-500'
+                                  }`} />
+                                  ⚡ {score}% ATS
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                                  {c.matchLevel || (isStrong ? 'Strong Fit' : isGood ? 'Good Fit' : 'Low Fit')}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </td>
+
                         {/* Parsing Status */}
                         <td className="px-6 py-4 text-center">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-bold border ${badge.bg}`}>
@@ -1459,16 +1735,28 @@ export default function JobCandidatesPage() {
 
                         {/* Actions */}
                         <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={() => {
-                              setSelectedCandidate(c);
-                              setActiveModalTab('match');
-                            }}
-                            className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
-                          >
-                            <span>Inspect Rubric</span>
-                            <span className="text-slate-400">→</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedCandidate(c);
+                                setActiveModalTab('match');
+                              }}
+                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                            >
+                              <span>Inspect Rubric</span>
+                              <span className="text-slate-400">→</span>
+                            </button>
+                            {c.id && (
+                              <Link
+                                href={`/evaluations/${c.id}?jobId=${jobId}`}
+                                className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer hidden xl:inline-flex items-center gap-1"
+                                title="Open Full Candidate Evaluation Scorecard"
+                              >
+                                <span>Scorecard</span>
+                                <span>↗</span>
+                              </Link>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1546,7 +1834,16 @@ export default function JobCandidatesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-xs">
+                      <span className="text-xs text-slate-400 font-medium">ATS Match:</span>
+                      <span className={`text-sm font-black font-mono ${
+                        (selectedCandidate.matchScore ?? 0) >= 75 ? 'text-emerald-400' : (selectedCandidate.matchScore ?? 0) >= 60 ? 'text-amber-400' : 'text-rose-400'
+                      }`}>
+                        {Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0)}%
+                      </span>
+                    </div>
+
                     <button
                       onClick={() => setShowCandidateMeta(prev => !prev)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${

@@ -9,6 +9,9 @@ import { CANDIDATE_STORE } from './candidateController';
 // Standard 36-character UUID format regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// In-memory store for client-created or non-UUID jobs
+export const GLOBAL_JOB_STORE = new Map<string, any>();
+
 // @desc    Parse Job Description from PDF / DOCX file or raw text
 // @route   POST /api/jobs/parse
 // @access  Private (Authenticated Recruiter)
@@ -418,6 +421,30 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       };
     });
 
+    // Merge non-UUID custom jobs from GLOBAL_JOB_STORE
+    for (const [gId, gJob] of GLOBAL_JOB_STORE.entries()) {
+      if (!formattedJobs.some(fj => fj.id === gId)) {
+        const memCount = CANDIDATE_STORE.get(gId)?.length || 0;
+        const totalCount = Math.max(gJob.candidatesCount || 0, gJob.candidates || 0, memCount);
+        formattedJobs.unshift({
+          id: gId,
+          position: gJob.position || gJob.title || 'Untitled Position',
+          title: gJob.position || gJob.title || 'Untitled Position',
+          client: gJob.client || 'Client Organization',
+          location: gJob.location || 'Remote / Hybrid',
+          work_mode: gJob.work_mode || 'Hybrid',
+          salary: gJob.salary || 'Competitive',
+          status: gJob.status || 'Active',
+          candidatesCount: totalCount,
+          candidates: totalCount,
+          topScore: gJob.topScore || 92,
+          workedBy: gJob.workedBy || [],
+          assignedRecruiter: gJob.assignedRecruiter || 'Requisition Lead',
+          creator: null
+        });
+      }
+    }
+
     res.status(200).json({
       count: formattedJobs.length,
       jobs: formattedJobs
@@ -513,7 +540,13 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    // 1. Try finding in database if valid UUID
+    // 1. Check in-memory store first
+    if (GLOBAL_JOB_STORE.has(jobId)) {
+      res.status(200).json({ job: GLOBAL_JOB_STORE.get(jobId) });
+      return;
+    }
+
+    // 2. Try finding in database if valid UUID
     if (UUID_REGEX.test(jobId)) {
       const job = await prisma.job.findUnique({
         where: { id: jobId },
@@ -551,6 +584,7 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
       });
 
       if (job) {
+        GLOBAL_JOB_STORE.set(job.id, job);
         // Enforce RBAC: Non-admin recruiters can only access their own jobs
         if (req.user && req.user.role !== 'ADMIN' && job.created_by !== req.user.userId) {
           res.status(403).json({ error: 'Forbidden: You do not have permission to view this requisition.' });
@@ -589,29 +623,27 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
                 name: cand.user.name || (cand.user.email ? cand.user.email.split('@')[0] : 'Recruiter'),
                 email: cand.user.email,
                 role: cand.user.role || 'MEMBER',
-                action: 'Processed Candidates',
-                isCreator: cand.user.id === job.created_by
+                action: 'Processed Candidate',
+                isCreator: false
               });
             }
           }
         }
-        const workedBy = Array.from(workedByMap.values());
-        const assignedRecruiter = workedBy.length > 0
-          ? workedBy.map(u => u.name).join(', ')
-          : (job.user?.name || 'Administrator');
 
         res.status(200).json({
           job: {
             ...job,
-            workedBy,
-            assignedRecruiter
+            workedBy: Array.from(workedByMap.values()),
+            requirementsCount: job.requirements?.length || 0,
+            candidatesCount: job._count?.candidates || 0,
+            applicationsCount: job._count?.applications || 0
           }
         });
         return;
       }
     }
 
-    // 2. Check sample jobs if not found in database
+    // 3. Check sample jobs if not found in database
     const sampleJobs: Record<string, any> = {
       'job-sample-1': {
         id: 'job-sample-1',
@@ -664,29 +696,35 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
     );
 
     if (matchedSample) {
+      GLOBAL_JOB_STORE.set(jobId, matchedSample);
       res.status(200).json({ job: matchedSample });
       return;
     }
 
-    // 3. Dynamic formatting fallback from ID
+    // 4. Candidate store hint: check if candidates under this job have currentCompany or role hint
+    const memCandidates = CANDIDATE_STORE.get(jobId) || [];
+    const candidateCompanyHint = memCandidates.find(c => c.currentCompany)?.currentCompany || null;
+
+    // 5. Dynamic formatting fallback from ID
     const formattedTitle = jobId
       .replace(/^job-sample-\d+/i, 'Software Professional')
       .replace(/[_-]/g, ' ')
       .replace(/\b\w/g, l => l.toUpperCase());
 
-    res.status(200).json({
-      job: {
-        id: jobId,
-        position: formattedTitle || 'Job Position',
-        title: formattedTitle || 'Job Position',
-        client: 'Enterprise Client',
-        location: 'Remote / Hybrid',
-        work_mode: 'Hybrid',
-        salary: 'Competitive',
-        status: 'Active',
-        requirements: []
-      }
-    });
+    const fallbackJob = {
+      id: jobId,
+      position: formattedTitle || 'Job Position',
+      title: formattedTitle || 'Job Position',
+      client: candidateCompanyHint || 'Company Requisition',
+      location: 'Remote / Hybrid',
+      work_mode: 'Hybrid',
+      salary: 'Competitive',
+      status: 'Active',
+      requirements: []
+    };
+    GLOBAL_JOB_STORE.set(jobId, fallbackJob);
+
+    res.status(200).json({ job: fallbackJob });
   } catch (error: any) {
     console.error('Get Job By ID Error:', error);
     res.status(500).json({ error: 'Server error while fetching job' });
@@ -698,26 +736,10 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
 // @access  Private (Authenticated Recruiter)
 export const updateJob = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const jobId = String(req.params.id || '');
+    const jobId = String(req.params.id || '').trim();
 
-    if (!jobId || !UUID_REGEX.test(jobId)) {
-      res.status(400).json({ error: 'Invalid Job ID format. Must be a valid UUID.' });
-      return;
-    }
-
-    // Check if job exists
-    const existingJob = await prisma.job.findUnique({
-      where: { id: jobId }
-    });
-
-    if (!existingJob) {
-      res.status(404).json({ error: `Job with ID "${jobId}" not found` });
-      return;
-    }
-
-    // Enforce RBAC: Non-admin members can only update their own created JDs
-    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
-      res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
+    if (!jobId) {
+      res.status(400).json({ error: 'Job ID is required.' });
       return;
     }
 
@@ -730,6 +752,62 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
         res.status(400).json({ error: `Invalid status. Allowed values: ${validStatuses.join(', ')}` });
         return;
       }
+    }
+
+    // If not a UUID or if not in database, update memory store directly
+    if (!UUID_REGEX.test(jobId)) {
+      const current = GLOBAL_JOB_STORE.get(jobId) || {
+        id: jobId,
+        position: position || 'Job Position',
+        title: position || 'Job Position',
+        client: client || 'Company Requisition',
+        location: location || 'Remote / Hybrid',
+        work_mode: work_mode || 'Hybrid',
+        status: status || 'Active',
+        requirements: []
+      };
+
+      const updated = {
+        ...current,
+        ...(client !== undefined ? { client: String(client).trim() } : {}),
+        ...(position !== undefined ? { position: String(position).trim(), title: String(position).trim() } : {}),
+        ...(location !== undefined ? { location: String(location).trim() } : {}),
+        ...(work_mode !== undefined ? { work_mode: String(work_mode).trim() } : {}),
+        ...(salary !== undefined ? { salary: String(salary).trim() } : {}),
+        ...(jd_text !== undefined ? { jd_text: String(jd_text).trim() } : {}),
+        ...(jd_file_url !== undefined ? { jd_file_url: String(jd_file_url).trim() } : {}),
+        ...(status !== undefined ? { status: String(status).toLowerCase().trim() } : {}),
+      };
+      GLOBAL_JOB_STORE.set(jobId, updated);
+
+      res.status(200).json({
+        message: 'Job updated successfully',
+        job: updated
+      });
+      return;
+    }
+
+    // Check if job exists in database
+    const existingJob = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+
+    if (!existingJob) {
+      const current = GLOBAL_JOB_STORE.get(jobId) || { id: jobId };
+      const updated = {
+        ...current,
+        ...(client !== undefined ? { client: String(client).trim() } : {}),
+        ...(position !== undefined ? { position: String(position).trim(), title: String(position).trim() } : {}),
+      };
+      GLOBAL_JOB_STORE.set(jobId, updated);
+      res.status(200).json({ message: 'Job updated successfully', job: updated });
+      return;
+    }
+
+    // Enforce RBAC: Non-admin members can only update their own created JDs
+    if (req.user && req.user.role !== 'ADMIN' && existingJob.created_by !== req.user.userId) {
+      res.status(403).json({ error: 'Forbidden: You can only edit requisitions created by you.' });
+      return;
     }
 
     const updateData: any = {};
@@ -749,6 +827,8 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
         requirements: true
       }
     });
+
+    GLOBAL_JOB_STORE.set(jobId, updatedJob);
 
     res.status(200).json({
       message: 'Job updated successfully',

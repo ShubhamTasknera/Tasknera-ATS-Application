@@ -1,4 +1,13 @@
-const pdfParse = require('pdf-parse');
+let PDFParseClass: any = null;
+let pdfParseFn: any = null;
+try {
+  const pkg = require('pdf-parse');
+  if (pkg && pkg.PDFParse) {
+    PDFParseClass = pkg.PDFParse;
+  } else if (typeof pkg === 'function') {
+    pdfParseFn = pkg;
+  }
+} catch {}
 import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 
@@ -123,9 +132,18 @@ export interface JobSection {
 }
 
 /**
- * Perform Optical Character Recognition (OCR) fallback for scanned image PDFs/documents
+ * Perform Optical Character Recognition (OCR) fallback for scanned images
  */
 export const performOcrFallback = async (buffer: Buffer): Promise<string> => {
+  // Only attempt Tesseract OCR if the buffer is an image (PNG / JPEG magic bytes).
+  // Passing raw PDF binary data to Tesseract causes "Pdf reading is not supported" fatal error.
+  const isImage = buffer && buffer.length > 4 && (
+    (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) || // PNG: 0x89 'P' 'N' 'G'
+    (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) // JPEG: 0xFF 0xD8 0xFF
+  );
+  if (!isImage) {
+    return '';
+  }
   try {
     console.log('[OCR Fallback] Initializing Tesseract OCR engine worker...');
     const worker = await createWorker('eng');
@@ -184,10 +202,19 @@ export const extractTextFromBuffer = async (
   if (mimeType === 'application/pdf' || lowerName.endsWith('.pdf')) {
     method = 'pdf-parse';
     try {
-      const data = await pdfParse(buffer);
-      if (data) {
-        pageCount = data.numpages || 1;
-        extractedText = data.text || '';
+      if (PDFParseClass) {
+        const parser = new PDFParseClass({ data: buffer });
+        const result = await parser.getText();
+        if (result) {
+          extractedText = result.text || '';
+          pageCount = result.total || 1;
+        }
+      } else if (pdfParseFn) {
+        const data = await pdfParseFn(buffer);
+        if (data) {
+          pageCount = data.numpages || 1;
+          extractedText = data.text || '';
+        }
       }
     } catch (err: any) {
       console.warn('[PDF Extractor] pdf-parse warning, attempting stream text extraction:', err.message || String(err));

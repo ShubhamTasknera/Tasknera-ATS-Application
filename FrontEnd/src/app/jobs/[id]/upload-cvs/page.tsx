@@ -26,6 +26,10 @@ export interface BatchFileItem {
     title?: string;
     experience?: string;
     matchScore?: number;
+    atsScore?: number;
+    recommendation?: string;
+    decision?: string;
+    compliance?: string;
   };
 }
 
@@ -103,6 +107,26 @@ export default function BatchCVUploadPage() {
       if (!jobId) return;
       try {
         setLoadingJob(true);
+        let localClient = '';
+        let localPosition = '';
+        if (typeof window !== 'undefined') {
+          try {
+            localClient = localStorage.getItem(`tasknera_company_${jobId}`) || '';
+            localPosition = localStorage.getItem(`tasknera_position_${jobId}`) || '';
+
+            const direct = JSON.parse(localStorage.getItem(`tasknera_job_${jobId}`) || 'null');
+            if (direct?.client) localClient = direct.client;
+            if (direct?.position) localPosition = direct.position;
+
+            if (!localClient) {
+              const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+              const found = created.find((c: any) => String(c.id) === String(jobId)) || (jobId.startsWith('job-') ? created[0] : null);
+              if (found?.client) localClient = found.client;
+              if (found?.position) localPosition = found.position;
+            }
+          } catch {}
+        }
+
         const res = await fetch(`${backendUrl}/jobs/${jobId}`, {
           headers: {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -112,10 +136,13 @@ export default function BatchCVUploadPage() {
         if (res.ok) {
           const data = await res.json();
           const jobObj = data.job || data;
+          const isGenericClient = !jobObj.client || jobObj.client === 'Enterprise Client' || jobObj.client === 'Client Organization' || jobObj.client === 'Company Requisition';
+          const isGenericPos = !jobObj.position || /^Job \d+$/i.test(jobObj.position) || jobObj.position.startsWith('Job 1788');
+
           setJob({
             id: jobObj.id || jobId,
-            position: jobObj.position || jobObj.title || 'Untitled Position',
-            client: jobObj.client || jobObj.company || 'Enterprise Client',
+            position: (!isGenericPos && jobObj.position) ? jobObj.position : (localPosition || 'Job Candidate Sourcing'),
+            client: (!isGenericClient && jobObj.client) ? jobObj.client : (localClient || 'Hiring Organization'),
             location: jobObj.location || 'Hybrid / Remote',
             work_mode: jobObj.work_mode || 'Full-time',
             salary: jobObj.salary,
@@ -125,8 +152,8 @@ export default function BatchCVUploadPage() {
         } else {
           setJob({
             id: jobId,
-            position: 'Job Candidate Sourcing',
-            client: 'Active Requisition',
+            position: localPosition || 'Job Candidate Sourcing',
+            client: localClient || 'Hiring Organization',
             location: 'Multiple Locations',
             work_mode: 'Full-time',
             requirementsCount: 5,
@@ -377,7 +404,11 @@ export default function BatchCVUploadPage() {
                     email: matchedCandidate.email || '',
                     title: matchedCandidate.currentTitle || 'Applicant',
                     experience: matchedCandidate.totalExperience || '',
-                    matchScore: matchedCandidate.matchScore,
+                    matchScore: matchedCandidate.matchScore ?? matchedCandidate.atsScore,
+                    atsScore: matchedCandidate.atsScore ?? matchedCandidate.matchScore,
+                    recommendation: matchedCandidate.recommendation || matchedCandidate.decision,
+                    decision: matchedCandidate.decision || matchedCandidate.recommendation,
+                    compliance: matchedCandidate.mandatoryCompliance,
                   }
                 : undefined,
             };
@@ -410,12 +441,35 @@ export default function BatchCVUploadPage() {
                   email: matchedCandidate.email || '',
                   title: matchedCandidate.currentTitle || 'Applicant',
                   experience: matchedCandidate.totalExperience || '',
-                  matchScore: matchedCandidate.matchScore,
+                  matchScore: matchedCandidate.matchScore ?? matchedCandidate.atsScore,
+                  atsScore: matchedCandidate.atsScore ?? matchedCandidate.matchScore,
+                  recommendation: matchedCandidate.recommendation || matchedCandidate.decision,
+                  decision: matchedCandidate.decision || matchedCandidate.recommendation,
+                  compliance: matchedCandidate.mandatoryCompliance,
                 }
               : undefined,
           };
         })
       );
+
+      // Increment applicant count for this job in localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          const currentCount = parseInt(localStorage.getItem(`tasknera_candidates_count_${jobId}`) || '0', 10);
+          const newCount = currentCount + 1;
+          localStorage.setItem(`tasknera_candidates_count_${jobId}`, String(newCount));
+
+          const created = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+          const updatedCreated = created.map((cj: any) => {
+            if (String(cj.id) === String(jobId)) {
+              const prev = typeof cj.candidatesCount === 'number' ? cj.candidatesCount : (typeof cj.candidates === 'number' ? cj.candidates : 0);
+              return { ...cj, candidatesCount: prev + 1, candidates: prev + 1 };
+            }
+            return cj;
+          });
+          localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedCreated));
+        } catch {}
+      }
     } catch (err: any) {
       console.error(`Upload failed for ${item.name}:`, err);
       setFileQueue(prev =>
@@ -770,6 +824,66 @@ export default function BatchCVUploadPage() {
           </div>
         )}
 
+        {/* ── ATS Evaluation Results Hero Card ────────────────────────────── */}
+        {completedCount > 0 && inProgressCount === 0 && (
+          <div className="bg-gradient-to-r from-slate-950 via-[#0B1528] to-slate-950 text-white rounded-3xl p-6 sm:p-8 border border-indigo-500/40 shadow-2xl mb-8 relative overflow-hidden">
+            <div className="absolute -right-16 -top-16 w-80 h-80 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-extrabold mb-3">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Automated ATS Evaluation Ready
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  CV Parsing & ATS Evaluation Results Ready!
+                </h2>
+                <p className="text-sm text-slate-300 mt-1 max-w-2xl">
+                  {successCount} candidate {successCount === 1 ? 'resume has' : 'resumes have'} been parsed, verified against this requisition&apos;s criteria, and assigned ATS match scores.
+                </p>
+
+                {/* Quick summary stats */}
+                <div className="flex flex-wrap items-center gap-3 mt-4 text-xs font-semibold">
+                  <div className="px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                    <span className="text-slate-400">Total Uploaded: </span>
+                    <span className="text-white font-bold">{completedCount}</span>
+                  </div>
+                  <div className="px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                    <span className="text-slate-400">Successfully Evaluated: </span>
+                    <span className="text-emerald-400 font-bold">{successCount}</span>
+                  </div>
+                  {duplicateCount > 0 && (
+                    <div className="px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/10">
+                      <span className="text-slate-400">Existing Reused: </span>
+                      <span className="text-purple-300 font-bold">{duplicateCount}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 flex-shrink-0">
+                <Link
+                  href={`/jobs/${jobId}/candidates`}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm shadow-lg shadow-orange-500/25 transition-all hover:scale-105 text-center"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  View Candidate ATS Rankings
+                </Link>
+
+                {fileQueue.find(f => f.candidateInfo?.id)?.candidateInfo?.id && (
+                  <Link
+                    href={`/evaluations/${fileQueue.find(f => f.candidateInfo?.id)!.candidateInfo!.id}?jobId=${jobId}`}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs border border-white/20 transition-colors text-center"
+                  >
+                    Open Candidate Scorecard ➔
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── File Queue Preview List ─────────────────────────────────────── */}
         {fileQueue.length > 0 ? (
           <div className="bg-white rounded-2xl border border-brand-border shadow-xs overflow-hidden mb-8">
@@ -829,24 +943,45 @@ export default function BatchCVUploadPage() {
                           </span>
                         </div>
 
-                        {/* Extracted Candidate Information Preview */}
+                        {/* Extracted Candidate Information Preview & ATS Score */}
                         {item.status === 'Success' && item.candidateInfo && (
-                          <div className="mt-2 text-xs bg-emerald-50/80 border border-emerald-200 rounded-lg p-2.5 text-emerald-900 flex flex-wrap items-center gap-3">
-                            <span className="font-bold flex items-center gap-1.5">
-                              <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                              </svg>
-                              {item.candidateInfo.name}
-                            </span>
-                            {item.candidateInfo.title && (
-                              <span>• Role: <strong>{item.candidateInfo.title}</strong></span>
-                            )}
-                            {item.candidateInfo.experience && (
-                              <span>• Exp: <strong>{item.candidateInfo.experience}</strong></span>
-                            )}
-                            {item.candidateInfo.email && (
-                              <span>• Email: {item.candidateInfo.email}</span>
-                            )}
+                          <div className="mt-2 text-xs bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 text-emerald-950 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="font-bold flex items-center gap-1.5 text-sm text-emerald-900">
+                                <svg className="w-4 h-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                                </svg>
+                                {item.candidateInfo.name}
+                              </span>
+                              {item.candidateInfo.title && (
+                                <span>• Role: <strong>{item.candidateInfo.title}</strong></span>
+                              )}
+                              {item.candidateInfo.experience && (
+                                <span>• Exp: <strong>{item.candidateInfo.experience}</strong></span>
+                              )}
+                              {item.candidateInfo.email && (
+                                <span>• {item.candidateInfo.email}</span>
+                              )}
+                              {item.candidateInfo.matchScore !== undefined && item.candidateInfo.matchScore !== null && (
+                                <span className={`px-2.5 py-0.5 rounded-full font-black text-xs border ${
+                                  item.candidateInfo.matchScore >= 80
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                    : item.candidateInfo.matchScore >= 60
+                                    ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                    : 'bg-rose-100 text-rose-800 border-rose-300'
+                                }`}>
+                                  ⚡ ATS Match: {Math.round(item.candidateInfo.matchScore)}%
+                                  {item.candidateInfo.recommendation ? ` • ${item.candidateInfo.recommendation}` : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            <Link
+                              href={item.candidateInfo.id ? `/evaluations/${item.candidateInfo.id}?jobId=${jobId}` : `/jobs/${jobId}/candidates`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105"
+                            >
+                              View ATS Evaluation ➔
+                            </Link>
                           </div>
                         )}
 
