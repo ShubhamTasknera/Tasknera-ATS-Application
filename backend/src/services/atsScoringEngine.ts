@@ -167,6 +167,10 @@ const EXACT_SYNONYM_GROUPS: string[][] = [
   ['prompt engineering', 'prompt-engineering'],
   ['vector database', 'vector databases', 'vector db', 'vector store', 'vector stores'],
   ['fine-tuning', 'finetuning', 'fine tuning', 'model fine-tuning', 'model tuning', 'lora', 'qlora', 'peft'],
+  ['ptc windchill', 'windchill', 'ptc windchill pdmlink', 'windchill pdmlink', 'ptc plm'],
+  ['windchill customization', 'windchill development', 'windchill client architecture', 'wca', 'form processors', 'action models', 'data utilities'],
+  ['java', 'j2ee', 'core java', 'java/j2ee', 'jee'],
+  ['info*engine', 'infoengine', 'info engine', 'info*engine tasks'],
 ];
 
 // Map of canonical term -> all synonymous forms
@@ -297,9 +301,10 @@ export function matchSkillRequirement(
   const candProjects = candidate.projects || [];
   const candCerts = candidate.certifications || [];
 
-  // Extract core keywords by stripping filler words
+  // Extract core keywords by stripping filler words with proper word boundaries
   const cleanReq = requirementText
-    .replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|familiarity|with|in|and|or|required|preferred|must have|working knowledge of|expertise in)/gi, ' ')
+    .replace(/\b(proficient|proficiency|experience|hands-on|strong|deep|knowledge|familiarity|with|in|and|or|required|preferred|must have|working knowledge of|expertise in)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
   const reqLower = cleanReq.toLowerCase();
@@ -335,6 +340,21 @@ export function matchSkillRequirement(
   for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
     if (reqLower.includes(canonical) || Array.from(synSet).some(s => reqLower.includes(s))) {
       for (const syn of synSet) searchTerms.add(syn);
+    }
+  }
+
+  // Decompose compound phrases (split by &, /, +, commas, or 'and')
+  const compoundSubParts = reqLower.split(/[\&,\/\+]|\b(?:and)\b/).map(p => p.trim()).filter(p => p.length >= 2);
+  for (const part of compoundSubParts) {
+    searchTerms.add(part);
+    const subSyns = SYNONYM_MAP.get(part);
+    if (subSyns) {
+      for (const s of subSyns) searchTerms.add(s);
+    }
+    for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
+      if (part.includes(canonical) || Array.from(synSet).some(s => part.includes(s))) {
+        for (const syn of synSet) searchTerms.add(syn);
+      }
     }
   }
 
