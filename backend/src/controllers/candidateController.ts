@@ -558,10 +558,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         try {
           existingDbCandidate = await prisma.candidate.findFirst({
             where: {
+              ...(defaultUserId ? { created_by: defaultUserId } : {}),
               OR: [
                 { file_hash: fileHash },
                 { file_hash: fileMd5 },
-                ...(defaultUserId ? [{ created_by: defaultUserId, resume_file_url: fileName }] : [])
+                { resume_file_url: fileName }
               ]
             },
             include: {
@@ -576,7 +577,11 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         }
       }
 
-      const existingProfile = existingInJob || GLOBAL_CANDIDATES.get(fileHash) || GLOBAL_CANDIDATES.get(fileMd5) || (existingDbCandidate ? {
+      const existingMemProfile = GLOBAL_CANDIDATES.get(fileHash) || GLOBAL_CANDIDATES.get(fileMd5);
+      const isMemOwner = !existingMemProfile || !defaultUserId || existingMemProfile.uploadedBy === defaultUserId || existingMemProfile.createdBy === defaultUserId;
+      const validMemProfile = isMemOwner ? existingMemProfile : null;
+
+      const existingProfile = existingInJob || validMemProfile || (existingDbCandidate ? {
         id: existingDbCandidate.id,
         jobId,
         name: existingDbCandidate.name,
