@@ -725,7 +725,7 @@ export const updateJob = async (req: AuthRequest, res: Response): Promise<void> 
 
     // Optional Status Validation if provided
     if (status) {
-      const validStatuses = ['draft', 'published', 'closed', 'archived'];
+      const validStatuses = ['draft', 'active', 'published', 'closed', 'archived'];
       if (!validStatuses.includes(String(status).toLowerCase().trim())) {
         res.status(400).json({ error: `Invalid status. Allowed values: ${validStatuses.join(', ')}` });
         return;
