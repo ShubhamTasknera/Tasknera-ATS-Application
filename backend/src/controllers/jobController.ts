@@ -279,12 +279,16 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     // Role-Based Access Control:
+    // If not authenticated, return empty set
+    if (!req.user || !req.user.userId) {
+      res.status(200).json({ success: true, count: 0, jobs: [] });
+      return;
+    }
+
     // If authenticated user is NOT an ADMIN, only return JDs created by this user.
     // Administrators (ADMIN) can view all JDs across the organization.
-    if (req.user && req.user.role !== 'ADMIN') {
+    if (req.user.role !== 'ADMIN') {
       whereClause.created_by = req.user.userId;
-    } else if (!req.user) {
-      whereClause.created_by = '__unauthenticated__';
     }
 
     let jobs: any[] = [];
@@ -429,14 +433,17 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
 // @access  Private / Authenticated Recruiter
 export const getAvailableJobsForEvaluation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user || !req.user.userId) {
+      res.status(200).json({ success: true, count: 0, jobs: [] });
+      return;
+    }
+
     const whereClause: any = {
       status: { not: 'archived' }
     };
     // Non-admin members only see their own created jobs for matching
-    if (req.user && req.user.role !== 'ADMIN') {
+    if (req.user.role !== 'ADMIN') {
       whereClause.created_by = req.user.userId;
-    } else if (!req.user) {
-      whereClause.created_by = '__unauthenticated__';
     }
 
     let dbJobs: any[] = [];
