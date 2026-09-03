@@ -4,17 +4,17 @@ import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
 
-const generateToken = (userId: string, email: string, role: UserRole): string => {
+const generateToken = (userId: string, email: string, role: UserRole, organizationId: string = 'org-tasknera'): string => {
   const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
   const expiresIn = process.env.JWT_EXPIRES_IN || '24h';
-  return jwt.sign({ userId, email, role }, secret, { expiresIn: expiresIn as any });
+  return jwt.sign({ userId, email, role, organizationId }, secret, { expiresIn: expiresIn as any });
 };
 
 // @desc    Register a new user
 // @route   POST /api/auth/signup
 export const signup = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, organizationId } = req.body;
 
     // Validation
     if (!email || !password) {
@@ -51,9 +51,11 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     const userCount = await prisma.user.count();
     let assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
 
-    if (role && ['ADMIN', 'MEMBER'].includes(role.toUpperCase())) {
+    if (role && ['ADMIN', 'MEMBER', 'TEAM_LEADER'].includes(role.toUpperCase())) {
       assignedRole = role.toUpperCase() as UserRole;
     }
+
+    const resolvedOrgId = organizationId ? String(organizationId).trim() : 'org-tasknera';
 
     // Create user in Supabase DB via Prisma
     const user = await prisma.user.create({
@@ -61,12 +63,13 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         name: name ? name.trim() : null,
         email: email.toLowerCase().trim(),
         password: hashedPassword,
-        role: assignedRole
+        role: assignedRole,
+        organizationId: resolvedOrgId
       }
     });
 
-    // Generate token
-    const token = generateToken(user.id, user.email, user.role as UserRole);
+    // Generate token with organizationId
+    const token = generateToken(user.id, user.email, user.role as UserRole, user.organizationId || 'org-tasknera');
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -76,6 +79,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         name: user.name,
         email: user.email,
         role: user.role,
+        organizationId: user.organizationId || 'org-tasknera',
         createdAt: user.createdAt
       }
     });
@@ -115,9 +119,10 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
     }
 
     const userRole = (user.role as UserRole) || 'MEMBER';
+    const orgId = user.organizationId || 'org-tasknera';
 
-    // Generate token
-    const token = generateToken(user.id, user.email, userRole);
+    // Generate token with organizationId
+    const token = generateToken(user.id, user.email, userRole, orgId);
 
     res.status(200).json({
       message: 'Signed in successfully',
@@ -128,6 +133,7 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         role: userRole,
         teamId: user.teamId,
+        organizationId: orgId,
         createdAt: user.createdAt
       }
     });
@@ -154,6 +160,7 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
         email: true,
         role: true,
         teamId: true,
+        organizationId: true,
         createdAt: true,
         updatedAt: true
       }

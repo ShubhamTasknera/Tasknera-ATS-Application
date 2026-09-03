@@ -8,6 +8,8 @@ import { useAuth } from '@/context/AuthContext';
 
 export interface EvaluationItem {
   id: string;
+  evaluationId?: string;
+  candidateId?: string;
   candidate: string;
   role: string;
   job: string;
@@ -68,152 +70,17 @@ export default function EvaluationsPage() {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       };
 
-      // 1. Fetch real computed evaluations directly from backend
-      try {
-        const evalRes = await fetch(`${backendUrl}/evaluations`, { headers });
-        if (evalRes.ok) {
-          const evalData = await evalRes.json();
-          if (Array.isArray(evalData.evaluations)) {
-            setEvaluations(evalData.evaluations);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Direct evaluations fetch error, trying candidate routes:', err);
-      }
-
-      // 2. Fallback: Iterate jobs and candidates to pull evaluations dynamically
-      let jobsList: any[] = [];
-      try {
-        const jobsRes = await fetch(`${backendUrl}/jobs`, { headers });
-        if (jobsRes.ok) {
-          const jobsData = await jobsRes.json();
-          if (Array.isArray(jobsData.jobs)) {
-            jobsList = jobsData.jobs;
-          } else if (Array.isArray(jobsData.data)) {
-            jobsList = jobsData.data;
-          }
-        }
-      } catch (err) {
-        console.warn('Fallback jobs fetch error:', err);
-      }
-
-      if (jobsList.length === 0) {
-        setEvaluations([]);
-        return;
-      }
-
-      const allItems: EvaluationItem[] = [];
-
-      for (const j of jobsList) {
-        try {
-          const candRes = await fetch(`${backendUrl}/jobs/${j.id}/candidates`, { headers });
-          if (candRes.ok) {
-            const candData = await candRes.json();
-            const candList = Array.isArray(candData.candidates) ? candData.candidates : [];
-
-            for (const c of candList) {
-              try {
-                // Fetch candidate's real evaluation payload
-                const singleEvalRes = await fetch(`${backendUrl}/evaluations/${c.id}?jobId=${j.id}`, { headers });
-                if (singleEvalRes.ok) {
-                  const singleEvalData = await singleEvalRes.json();
-                  const evalObj = singleEvalData.evaluation;
-                  if (evalObj) {
-                    const score = typeof evalObj.overallMatch === 'number' ? evalObj.overallMatch : (typeof evalObj.overallScore === 'number' ? Math.round(evalObj.overallScore) : 0);
-                    const ats = typeof evalObj.atsScore === 'number' ? evalObj.atsScore : score;
-                    const mandatoryStr = evalObj.mandatoryCompliance 
-                      ? `${evalObj.mandatoryCompliance.met ?? 0}/${evalObj.mandatoryCompliance.total ?? 0}`
-                      : (evalObj.mandatory || '0/0');
-                    const mandatoryFailed = evalObj.mandatoryCompliance 
-                      ? !evalObj.mandatoryCompliance.passed 
-                      : Boolean(evalObj.mandatoryRequirementFailed);
-                    const decision = evalObj.recommendation || (score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
-
-                    const isInvalidComp = (name?: string | null) => {
-                      if (!name) return true;
-                      const s = name.trim().toLowerCase();
-                      return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
-                    };
-
-                    const resolvedCompany = (j.client && !isInvalidComp(j.client))
-                      ? j.client
-                      : (evalObj.jobCompany && !isInvalidComp(evalObj.jobCompany))
-                      ? evalObj.jobCompany
-                      : (evalObj.company && !isInvalidComp(evalObj.company))
-                      ? evalObj.company
-                      : 'Client Organization';
-
-                    const resolvedJob = (j.position && !['candidate profile', 'candidate', 'professional role'].includes(j.position.trim().toLowerCase()))
-                      ? j.position
-                      : (evalObj.jobTitle || evalObj.job || 'Target Position');
-
-                    allItems.push({
-                      id: c.id,
-                      candidate: evalObj.candidateName || c.name || 'Candidate',
-                      role: resolvedJob,
-                      job: resolvedJob,
-                      jobId: j.id,
-                      company: resolvedCompany,
-                      date: evalObj.evaluatedAt ? new Date(evalObj.evaluatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
-                      score,
-                      ats,
-                      mandatory: mandatoryStr,
-                      mandatoryFailed,
-                      decision,
-                      by: evalObj.evaluator || 'Deterministic ATS Engine'
-                    });
-                    continue;
-                  }
-                }
-              } catch {
-                // Fallback to parsed candidate attributes if single evaluation request fails
-              }
-
-              const score = typeof c.matchScore === 'number' ? Math.round(c.matchScore) : (typeof c.score === 'number' ? Math.round(c.score) : 0);
-              const ats = typeof c.atsScore === 'number' ? Math.round(c.atsScore) : score;
-              const decision: 'SUBMIT' | 'REVIEW' | 'DO NOT SUBMIT' = score >= 80 ? 'SUBMIT' : score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT';
-              const createdDate = c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent';
-
-              const isInvalidComp = (name?: string | null) => {
-                if (!name) return true;
-                const s = name.trim().toLowerCase();
-                return ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s) || s.length < 2;
-              };
-
-              const resolvedCompany = (j.client && !isInvalidComp(j.client))
-                ? j.client
-                : 'Client Organization';
-
-              const resolvedJob = (j.position && !['candidate profile', 'candidate', 'professional role'].includes(j.position.trim().toLowerCase()))
-                ? j.position
-                : 'Target Position';
-
-              allItems.push({
-                id: c.id,
-                candidate: c.name || c.fileName || 'Candidate',
-                role: resolvedJob,
-                job: resolvedJob,
-                jobId: j.id,
-                company: resolvedCompany,
-                date: createdDate,
-                score,
-                ats,
-                mandatory: c.mandatoryCount || '0/0',
-                mandatoryFailed: decision === 'DO NOT SUBMIT',
-                decision,
-                by: 'Deterministic ATS Engine'
-              });
-            }
-          }
-        } catch (err) {
-          console.warn(`Error fetching candidates for job ${j.id}:`, err);
+      const evalRes = await fetch(`${backendUrl}/evaluations`, { headers });
+      if (evalRes.ok) {
+        const evalData = await evalRes.json();
+        if (Array.isArray(evalData.evaluations)) {
+          setEvaluations(evalData.evaluations);
+          return;
         }
       }
-
-      setEvaluations(allItems);
-    } catch (error) {
-      console.error('Error loading evaluations:', error);
+      setEvaluations([]);
+    } catch (err) {
+      console.warn('Evaluations fetch error:', err);
       setEvaluations([]);
     } finally {
       setLoading(false);

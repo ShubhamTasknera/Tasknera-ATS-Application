@@ -14,7 +14,7 @@ import {
   evaluateCandidateJobController
 } from '../controllers/evaluationController';
 
-import { optionalProtect } from '../middleware/authMiddleware';
+import { protect, optionalProtect } from '../middleware/authMiddleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -23,26 +23,26 @@ const upload = multer({
 
 const router = Router();
 
-// Retrieve all candidates in central candidate pool (scoped to user or admin)
+// Retrieve all candidates in central candidate pool (scoped to organization)
 router.get('/', optionalProtect, getAllCandidates);
 
 // Bulk upload CVs directly to candidate pool
 router.post('/upload', optionalProtect, upload.any(), uploadCandidateCVs);
 
 // Available jobs in organization for matching against a candidate (filtered by permissions)
-router.get('/:candidateId/available-jobs', optionalProtect, getAvailableJobsForCandidateController);
+router.get('/:candidateId/available-jobs', protect, getAvailableJobsForCandidateController);
 
 // Attach candidate to a job (create/reuse CandidateJob)
-router.post('/:candidateId/jobs', attachCandidateToJobController);
+router.post('/:candidateId/jobs', protect, attachCandidateToJobController);
 
 // Evaluate candidate against a specific job
-router.post('/:candidateId/jobs/:jobId/evaluate', evaluateCandidateJobController);
+router.post('/:candidateId/jobs/:jobId/evaluate', protect, evaluateCandidateJobController);
 
 // Match candidate from pool with a specific Job Description (Entry Point 2)
-router.post('/:candidateId/match-with-job', matchCandidateWithJobController);
+router.post('/:candidateId/match-with-job', protect, matchCandidateWithJobController);
 
 // Candidate evaluation history across multiple jobs
-router.get('/:candidateId/evaluations', getCandidateEvaluationHistoryController);
+router.get('/:candidateId/evaluations', protect, getCandidateEvaluationHistoryController);
 
 // Single candidate lookup & delete
 router.get('/:candidateId', getCandidateById);

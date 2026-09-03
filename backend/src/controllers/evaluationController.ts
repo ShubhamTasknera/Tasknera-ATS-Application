@@ -102,46 +102,130 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
 }
 
 /**
- * Get detailed evaluation for a single candidate against a job
+/**
+ * Get detailed evaluation for a single candidate against a job (or by evaluation ID)
  * GET /api/evaluations/:id
  * GET /api/jobs/:jobId/candidates/:candidateId/evaluation
  */
 export const getCandidateEvaluation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const candidateId = String(req.params.candidateId || req.params.id || req.query.candidateId || '');
-    let jobId = String(req.params.jobId || req.query.jobId || '');
-
-    if (!candidateId) {
-      res.status(400).json({ error: 'Candidate ID is required for evaluation' });
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required' });
       return;
     }
 
+    const orgId = user.organizationId || 'org-tasknera';
+    const idParam = String(req.params.candidateId || req.params.id || req.query.candidateId || '');
+    const jobIdParam = String(req.params.jobId || req.query.jobId || '');
 
-    // 1. Fetch Candidate Record from DB or Memory Store
-    const candidateData = await findCandidateRecord(candidateId, jobId || undefined);
+    if (!idParam) {
+      res.status(400).json({ error: 'Evaluation or Candidate ID is required' });
+      return;
+    }
 
+    // 1. Try to find evaluation in prisma.evaluation table
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idParam);
+
+    let evalRecord: any = null;
+    if (isUuid) {
+      evalRecord = await prisma.evaluation.findUnique({
+        where: { id: idParam },
+        include: { candidate: true, job: true, creator: true }
+      });
+    }
+
+    if (!evalRecord) {
+      const candWhere: any = { candidateId: idParam };
+      if (jobIdParam) candWhere.jobId = jobIdParam;
+      evalRecord = await prisma.evaluation.findFirst({
+        where: candWhere,
+        include: { candidate: true, job: true, creator: true },
+        orderBy: { createdAt: 'desc' }
+      });
+    }
+
+    if (evalRecord) {
+      // Safe audit debug log
+      console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'} evalId=${evalRecord.id} evalOwner=${evalRecord.createdByUserId}`);
+
+      // Security Check 1: Cross-Organization Isolation
+      if (evalRecord.organizationId && evalRecord.organizationId !== orgId) {
+        res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
+        return;
+      }
+
+      // Security Check 2: Non-Admin Ownership
+      if (user.role !== 'ADMIN' && evalRecord.createdByUserId !== user.userId && evalRecord.assignedToUserId !== user.userId) {
+        res.status(403).json({ error: 'Forbidden: Access restricted to evaluation owner.' });
+        return;
+      }
+
+      const audit = (evalRecord.auditData as any) || {};
+
+      res.status(200).json({
+        success: true,
+        evaluationId: evalRecord.id,
+        candidateId: evalRecord.candidateId,
+        jobId: evalRecord.jobId,
+        overallScore: evalRecord.score,
+        matchLevel: evalRecord.matchLevel,
+        mandatoryRequirementFailed: evalRecord.mandatoryFailed,
+        decision: evalRecord.decision,
+        evaluation: {
+          ...audit,
+          evaluationId: evalRecord.id,
+          candidateId: evalRecord.candidateId,
+          candidateName: evalRecord.candidate?.name || audit.candidateName || 'Candidate',
+          jobId: evalRecord.jobId,
+          jobTitle: evalRecord.job?.position || audit.jobTitle || 'Job Position',
+          jobCompany: evalRecord.job?.client || audit.jobCompany || 'Client Organization',
+          overallScore: evalRecord.score,
+          matchLevel: evalRecord.matchLevel,
+          mandatoryRequirementFailed: evalRecord.mandatoryFailed,
+          recommendation: evalRecord.decision
+        },
+        pillarScores: audit.pillarScores,
+        pillars: audit.pillarScores,
+        requirements: audit.requirements,
+        requirementResults: audit.requirements,
+        strengths: audit.strengths,
+        gaps: audit.gaps,
+        warnings: audit.warnings
+      });
+      return;
+    }
+
+    // 2. Fallback: Candidate + Job validation for on-the-fly evaluation within authorized scope
+    const candidateData = await findCandidateRecord(idParam, jobIdParam || undefined);
     if (!candidateData) {
-      res.status(404).json({ error: `Candidate with ID "${candidateId}" not found in database or upload session.` });
+      res.status(404).json({ error: `Candidate with ID "${idParam}" not found.` });
       return;
     }
 
-    // Resolve target jobId
-    const targetJobId = jobId || candidateData.jobId || 'jd-1';
+    const targetJobId = jobIdParam || candidateData.jobId;
+    if (!targetJobId) {
+      res.status(404).json({ error: 'Job ID is required for evaluation.' });
+      return;
+    }
 
-    // 2. Fetch Job and Requirements
     const { jobData, requirements } = await getJobAndRequirements(
       targetJobId,
       candidateData.currentTitle || undefined,
       candidateData.currentCompany || undefined
     );
 
-    // 4. Compute deterministic requirement-by-requirement evaluation
+    // If job belongs to someone else in non-admin mode
+    if (user.role !== 'ADMIN' && jobData.created_by && jobData.created_by !== user.userId) {
+      res.status(403).json({ error: 'Forbidden: Access restricted to job owner.' });
+      return;
+    }
+
     const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
     res.status(200).json({
       success: true,
       evaluation,
-      // Task 5 specific root-level response fields
       evaluationId: evaluation.evaluationId,
       candidateId: evaluation.candidateId,
       jobId: evaluation.jobId,
@@ -158,8 +242,8 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       warnings: evaluation.warnings
     });
   } catch (error: any) {
-    console.error('Error generating candidate evaluation:', error);
-    res.status(500).json({ error: error.message || 'Failed to evaluate candidate against job requirements' });
+    console.error('Error in getCandidateEvaluation:', error);
+    res.status(500).json({ error: error.message || 'Failed to retrieve candidate evaluation' });
   }
 };
 
@@ -247,229 +331,98 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
  */
 export const getAllEvaluations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // 0. User Resolution (RBAC with active user fallback)
-    let currentUserId = req.user?.userId;
-    const isAdmin = req.user?.role === 'ADMIN';
-
-    if (!currentUserId && !isAdmin) {
-      const activeJob = await prisma.job.findFirst({
-        where: { id: '4cb34f70-bb54-4bee-a6ea-d256dbc1f850' }
-      });
-      if (activeJob && activeJob.created_by) {
-        currentUserId = activeJob.created_by;
-      } else {
-        const firstUser = await prisma.user.findFirst();
-        if (firstUser) currentUserId = firstUser.id;
-      }
-    }
-
-    if (!currentUserId && !isAdmin) {
-      res.status(200).json({ success: true, count: 0, evaluations: [] });
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required to access evaluations' });
       return;
     }
 
-    // 1. Fetch candidate records across the workspace so any applicant can be evaluated
-    const allRecords = await getAllCandidateRecords();
-    const candidateMap = new Map<string, CandidateRecord>();
-    for (const r of allRecords) {
-      candidateMap.set(r.candidate.id, r.candidate);
+    const orgId = user.organizationId || 'org-tasknera';
+
+    // Safe debug logging (identifiers only, strictly no candidate personal data)
+    console.log(`[Evaluation Access] userId=${user.userId} organizationId=${orgId} role=${user.role || 'MEMBER'}`);
+
+    // Database-level authorization:
+    // - Organization isolation: organizationId = user.organizationId
+    // - Member level: createdByUserId = user.userId OR assignedToUserId = user.userId
+    // - Admin level: see all within organization
+    const whereClause: any = { organizationId: orgId };
+    if (user.role !== 'ADMIN') {
+      whereClause.OR = [
+        { createdByUserId: user.userId },
+        { assignedToUserId: user.userId }
+      ];
     }
 
-    // 2. Fetch jobs in DB to map positions/requirements
-    const jobsMap = new Map<string, { jobData: any; requirements: any[]; created_by?: string | null }>();
-
-    try {
-      const dbJobs = await prisma.job.findMany({
-        include: { requirements: true }
-      });
-      for (const j of dbJobs) {
-        jobsMap.set(j.id, {
-          jobData: {
-            id: j.id,
-            position: j.position,
-            title: j.position,
-            client: j.client,
-            company: j.client,
-            jd_text: j.jd_text || undefined,
-            created_by: j.created_by
-          },
-          requirements: (j.requirements && j.requirements.length > 0)
-            ? j.requirements
-            : getStandardRequirementsForPosition(j.position, j.client),
-          created_by: j.created_by
-        });
-      }
-    } catch (dbErr) {
-      console.warn('[Evaluations] DB jobs fetch error:', dbErr);
-    }
-
-    // If no jobs exist in DB, return empty evaluations
-    if (jobsMap.size === 0) {
-      res.status(200).json({
-        success: true,
-        count: 0,
-        evaluations: []
-      });
-      return;
-    }
-
-    const allowedJobIds = new Set(jobsMap.keys());
-
-    // 3. Fetch applications to capture multi-job evaluations
-    let applications: any[] = [];
-    try {
-      applications = await prisma.candidateApplication.findMany({
-        where: allowedJobIds.size > 0 ? { job_id: { in: Array.from(allowedJobIds) } } : {},
-        include: {
-          job: { include: { requirements: true } },
-          candidate: true
+    const dbEvaluations = await prisma.evaluation.findMany({
+      where: whereClause,
+      include: {
+        candidate: {
+          select: {
+            id: true,
+            name: true,
+            current_title: true,
+            current_company: true,
+            resume_file_url: true,
+            location: true
+          }
         },
-        orderBy: { updated_at: 'desc' }
-      });
-    } catch (appErr) {
-      console.warn('[Evaluations] Applications fetch error:', appErr);
-    }
+        job: {
+          select: {
+            id: true,
+            position: true,
+            client: true,
+            location: true,
+            status: true
+          }
+        },
+        creator: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
-    const evaluationItems: any[] = [];
-    const seenPairs = new Set<string>();
-
-    // Process from DB applications
-    for (const app of applications) {
-      if (!app.candidate_id || !app.job_id) continue;
-
-      const pairKey = `${app.candidate_id}___${app.job_id}`;
-      if (seenPairs.has(pairKey)) continue;
-      seenPairs.add(pairKey);
-
-      const candidate = candidateMap.get(app.candidate_id) || (app.candidate ? mapDbCandidateToRecord(app.candidate, app.job_id) : null);
-      if (!candidate) continue;
-
-      let jobContext = jobsMap.get(app.job_id);
-      if (!jobContext && app.job) {
-        jobContext = {
-          jobData: {
-            id: app.job.id,
-            position: app.job.position,
-            title: app.job.position,
-            client: app.job.client,
-            company: app.job.client,
-            jd_text: app.job.jd_text || undefined,
-          },
-          requirements: (app.job.requirements && app.job.requirements.length > 0)
-            ? app.job.requirements
-            : getStandardRequirementsForPosition(app.job.position, app.job.client)
-        };
-        jobsMap.set(app.job.id, jobContext);
-      }
-
-      if (!jobContext) {
-        const { jobData, requirements } = await getJobAndRequirements(app.job_id, candidate.currentTitle || undefined, candidate.currentCompany || undefined);
-        jobContext = { jobData, requirements };
-        jobsMap.set(app.job_id, jobContext);
-      }
-
-      // Check cache or compute using the deterministic matching engine
-      const cached = EVALUATION_CACHE.get(pairKey);
-      const evalPayload = cached || evaluateCandidateAgainstRequirements(candidate, jobContext.jobData, jobContext.requirements);
-      if (!cached) EVALUATION_CACHE.set(pairKey, evalPayload);
-
-      const dateStr = app.updated_at
-        ? new Date(app.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        : (candidate.uploadedAt ? new Date(candidate.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent');
-
-      const score = Math.round(evalPayload.overallScore ?? evalPayload.overallMatch ?? 0);
+    const evaluationItems = dbEvaluations.map(ev => {
+      const score = Math.round(ev.score);
+      const audit = (ev.auditData as any) || {};
 
       const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
 
-      const comp = (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
-        ? jobContext.jobData.client
-        : (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
-        ? candidate.currentCompany
+      const comp = (ev.job?.client && !isInvalidComp(ev.job.client))
+        ? ev.job.client
+        : (audit.jobCompany && !isInvalidComp(audit.jobCompany))
+        ? audit.jobCompany
         : 'Client Organization';
 
-      const role = (jobContext.jobData.position && !['candidate profile', 'candidate', 'professional role'].includes(jobContext.jobData.position.trim().toLowerCase()))
-        ? jobContext.jobData.position
-        : (candidate.currentTitle || 'Software Engineer');
+      const role = (ev.job?.position && !['candidate profile', 'candidate', 'professional role'].includes(ev.job.position.trim().toLowerCase()))
+        ? ev.job.position
+        : (ev.candidate?.current_title || audit.jobTitle || 'Software Engineer');
 
-      evaluationItems.push({
-        id: candidate.id,
-        candidate: candidate.name || candidate.fileName || 'Candidate',
+      return {
+        id: ev.candidateId,
+        evaluationId: ev.id,
+        candidate: ev.candidate?.name || audit.candidateName || 'Candidate',
+        candidateId: ev.candidateId,
         role,
-        job: jobContext.jobData.position || jobContext.jobData.title || role,
-        jobId: jobContext.jobData.id || app.job_id,
+        job: role,
+        jobId: ev.jobId,
         company: comp,
-        date: dateStr,
+        date: new Date(ev.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         score,
-        ats: Math.round(evalPayload.atsScore ?? score),
+        ats: Math.round(ev.atsScore ?? score),
         overallScore: score,
-        matchLevel: evalPayload.matchLevel || (score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
-        mandatory: `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`,
-        mandatoryFailed: evalPayload.mandatoryRequirementFailed,
-        decision: evalPayload.recommendation,
-        by: 'Evidence-Based ATS Engine'
-      });
-    }
-
-    // 2. Also process candidate records explicitly associated with jobs belonging to this workspace
-    for (const item of allRecords) {
-      const { candidate, jobId } = item;
-      const targetJobId = jobId || candidate.jobId;
-
-      if (!targetJobId || !allowedJobIds.has(targetJobId)) {
-        continue;
-      }
-
-      const pairKey = `${candidate.id}___${targetJobId}`;
-      if (seenPairs.has(pairKey)) continue;
-      seenPairs.add(pairKey);
-
-      let jobContext = jobsMap.get(targetJobId);
-      if (!jobContext) {
-        const { jobData, requirements } = await getJobAndRequirements(
-          targetJobId,
-          candidate.currentTitle || undefined,
-          candidate.currentCompany || undefined
-        );
-        jobContext = { jobData, requirements };
-        jobsMap.set(targetJobId, jobContext);
-      }
-
-      const evalPayload = evaluateCandidateAgainstRequirements(candidate, jobContext.jobData, jobContext.requirements);
-      const score = Math.round(evalPayload.overallScore ?? evalPayload.overallMatch ?? 0);
-      const createdDate = candidate.uploadedAt
-        ? new Date(candidate.uploadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        : 'Recent';
-
-      const isInvalidComp = (s?: string | null) => !s || ['the role', 'role', 'the company', 'company', 'organization', 'position', 'the position', 'candidate profile', 'unknown', 'not specified', 'verified organization', 'enterprise client'].includes(s.trim().toLowerCase()) || s.length < 2;
-
-      const comp = (jobContext.jobData.client && !isInvalidComp(jobContext.jobData.client))
-        ? jobContext.jobData.client
-        : (candidate.currentCompany && !isInvalidComp(candidate.currentCompany))
-        ? candidate.currentCompany
-        : 'Client Organization';
-
-      const role = (jobContext.jobData.position && !['candidate profile', 'candidate', 'professional role'].includes(jobContext.jobData.position.trim().toLowerCase()))
-        ? jobContext.jobData.position
-        : (candidate.currentTitle || 'Software Engineer');
-
-      evaluationItems.push({
-        id: candidate.id,
-        candidate: candidate.name || candidate.fileName || 'Candidate',
-        role,
-        job: jobContext.jobData.position || jobContext.jobData.title || role,
-        jobId: jobContext.jobData.id || targetJobId,
-        company: comp,
-        date: createdDate,
-        score,
-        ats: Math.round(evalPayload.atsScore ?? score),
-        overallScore: score,
-        matchLevel: evalPayload.matchLevel || (score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
-        mandatory: `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`,
-        mandatoryFailed: evalPayload.mandatoryRequirementFailed,
-        decision: evalPayload.recommendation,
-        by: 'Deterministic ATS Engine (v2.0)'
-      });
-    }
+        matchLevel: ev.matchLevel || (score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
+        mandatory: ev.mandatoryCompliance || 'N/A',
+        mandatoryFailed: ev.mandatoryFailed,
+        decision: ev.decision || 'REVIEW',
+        by: ev.creator?.name ? `Evaluated by ${ev.creator.name}` : 'Deterministic ATS Engine (v2.0)'
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -567,22 +520,37 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
       return;
     }
 
-    // 3. Check if Candidate has already been evaluated for this Job
-    const cacheKey = `${candidateId}___${jobId}`;
-    const existingEvaluation = EVALUATION_CACHE.get(cacheKey);
+    // 3. Check if Candidate has already been evaluated for this Job by THIS user
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required to evaluate candidate.' });
+      return;
+    }
 
-    if (existingEvaluation && !reevaluate) {
+    const createdByUserId = user.userId;
+    const organizationId = user.organizationId || 'org-tasknera';
+
+    const existingEvalRecord = await prisma.evaluation.findFirst({
+      where: {
+        candidateId,
+        jobId,
+        createdByUserId
+      }
+    });
+
+    if (existingEvalRecord && !reevaluate) {
       res.status(200).json({
         success: true,
-        evaluationId: existingEvaluation.evaluationId,
+        evaluationId: existingEvalRecord.id,
         candidateId: candidateId,
         jobId: jobId,
         status: 'COMPLETED',
         alreadyEvaluated: true,
-        overallScore: existingEvaluation.overallScore,
-        matchLevel: existingEvaluation.matchLevel,
-        mandatoryRequirementFailed: existingEvaluation.mandatoryRequirementFailed,
-        evaluation: existingEvaluation
+        overallScore: existingEvalRecord.score,
+        matchLevel: existingEvalRecord.matchLevel,
+        mandatoryRequirementFailed: existingEvalRecord.mandatoryFailed,
+        decision: existingEvalRecord.decision,
+        evaluation: (existingEvalRecord.auditData as any) || {}
       });
       return;
     }
@@ -590,13 +558,54 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
     // 4. Run Existing Requirement Matching & Deterministic Scoring Engine (DO NOT REPARSE)
     const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
-    // 5. Store in Fast-Lookup Evaluation Cache
+    const finalScore = evaluation.overallScore ?? evaluation.overallMatch ?? 0;
+    const complianceStr = evaluation.mandatoryCompliance
+      ? `${evaluation.mandatoryCompliance.met}/${evaluation.mandatoryCompliance.total}`
+      : 'N/A';
+    const decision = evaluation.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
+
+    // 5. Store / Upsert in PostgreSQL Evaluation Table (Enforcing Authenticated User Ownership)
+    let savedEvalRecord;
+    if (existingEvalRecord) {
+      savedEvalRecord = await prisma.evaluation.update({
+        where: { id: existingEvalRecord.id },
+        data: {
+          score: finalScore,
+          atsScore: evaluation.atsScore ?? finalScore,
+          matchLevel: evaluation.matchLevel,
+          mandatoryCompliance: complianceStr,
+          mandatoryFailed: Boolean(evaluation.mandatoryRequirementFailed),
+          decision,
+          auditData: evaluation as any,
+          updatedAt: new Date()
+        }
+      });
+    } else {
+      savedEvalRecord = await prisma.evaluation.create({
+        data: {
+          candidateId,
+          jobId,
+          createdByUserId,
+          organizationId,
+          score: finalScore,
+          atsScore: evaluation.atsScore ?? finalScore,
+          matchLevel: evaluation.matchLevel,
+          mandatoryCompliance: complianceStr,
+          mandatoryFailed: Boolean(evaluation.mandatoryRequirementFailed),
+          decision,
+          status: 'COMPLETED',
+          auditData: evaluation as any
+        }
+      });
+    }
+
+    // Also update fast cache
+    const cacheKey = `${candidateId}___${jobId}`;
     EVALUATION_CACHE.set(cacheKey, evaluation);
 
     // 6. Record/Upsert Candidate + Job association in PostgreSQL without duplicating Candidate
     const isCandUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId);
     if (isUuid && isCandUuid) {
-      const finalScore = evaluation.overallScore ?? evaluation.overallMatch ?? 0;
       const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
       await prisma.candidateApplication.upsert({
         where: {
@@ -625,14 +634,15 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
     // 7. Successful Response
     res.status(200).json({
       success: true,
-      evaluationId: evaluation.evaluationId,
+      evaluationId: savedEvalRecord.id,
       candidateId: candidateId,
       jobId: jobId,
       status: 'COMPLETED',
       alreadyEvaluated: false,
-      overallScore: evaluation.overallScore,
-      matchLevel: evaluation.matchLevel,
-      mandatoryRequirementFailed: evaluation.mandatoryRequirementFailed,
+      overallScore: savedEvalRecord.score,
+      matchLevel: savedEvalRecord.matchLevel,
+      mandatoryRequirementFailed: savedEvalRecord.mandatoryFailed,
+      decision: savedEvalRecord.decision,
       evaluation: evaluation
     });
   } catch (error: any) {
@@ -788,14 +798,21 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
       orderBy: { created_at: 'desc' }
     });
 
+    // Query evaluations created by this user for this candidate across these jobs
+    const userEvals = await prisma.evaluation.findMany({
+      where: {
+        candidateId,
+        jobId: { in: dbJobs.map(j => j.id) },
+        createdByUserId: req.user?.userId || ''
+      }
+    });
+    const userEvalMap = new Map(userEvals.map(ev => [ev.jobId, ev]));
+
     const jobs = dbJobs.map(j => {
       const app = (j.applications as any)?.[0];
-      const cacheKey = `${candidateId}___${j.id}`;
-      const cached = EVALUATION_CACHE.get(cacheKey);
-      const isEvaluated = Boolean(cached || (app && app.match_score !== null));
-      const score = app?.match_score !== null && app?.match_score !== undefined
-        ? Math.round(app.match_score)
-        : (cached?.overallScore || null);
+      const userEval = userEvalMap.get(j.id);
+      const isEvaluated = Boolean(userEval);
+      const score = userEval ? Math.round(userEval.score) : (app?.match_score !== null && app?.match_score !== undefined ? Math.round(app.match_score) : null);
 
       return {
         id: j.id,
@@ -812,7 +829,7 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
         isAlreadyMatched: Boolean(app),
         isAlreadyEvaluated: isEvaluated,
         matchScore: score,
-        stage: app?.stage || (isEvaluated ? (score && score >= 80 ? 'SHORTLISTED' : 'REVIEW') : 'SOURCED'),
+        stage: userEval ? (score && score >= 80 ? 'SHORTLISTED' : 'REVIEW') : (app?.stage || 'SOURCED'),
         createdAt: j.created_at
       };
     });
@@ -827,6 +844,116 @@ export const getAvailableJobsForCandidateController = async (req: AuthRequest, r
   } catch (error: any) {
     console.error('Error getting available jobs for candidate:', error);
     res.status(500).json({ error: 'Failed to retrieve available jobs for candidate' });
+  }
+};
+
+/**
+ * Update evaluation decision (SUBMIT, REVIEW, DO NOT SUBMIT)
+ * POST /api/evaluations/:id/decision
+ * PATCH /api/evaluations/:id/decision
+ */
+export const updateEvaluationDecisionController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const id = String(req.params.id || '');
+    const rawDecision = String(req.body.decision || '').trim().toUpperCase();
+
+    if (!rawDecision || !['SUBMIT', 'REVIEW', 'DO NOT SUBMIT', 'REJECT'].includes(rawDecision)) {
+      res.status(400).json({ error: 'Invalid decision. Must be SUBMIT, REVIEW, or DO NOT SUBMIT' });
+      return;
+    }
+
+    const standardDecision = rawDecision === 'REJECT' ? 'DO NOT SUBMIT' : rawDecision;
+
+    const evaluation = await prisma.evaluation.findUnique({
+      where: { id }
+    });
+
+    if (!evaluation) {
+      res.status(404).json({ error: 'Evaluation not found' });
+      return;
+    }
+
+    const orgId = user.organizationId || 'org-tasknera';
+    if (evaluation.organizationId && evaluation.organizationId !== orgId) {
+      res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
+      return;
+    }
+
+    if (user.role !== 'ADMIN' && evaluation.createdByUserId !== user.userId && evaluation.assignedToUserId !== user.userId) {
+      res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can update decision.' });
+      return;
+    }
+
+    const updated = await prisma.evaluation.update({
+      where: { id },
+      data: {
+        decision: standardDecision,
+        updatedAt: new Date()
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Evaluation decision updated to ${standardDecision}`,
+      evaluation: updated
+    });
+  } catch (error: any) {
+    console.error('Error updating evaluation decision:', error);
+    res.status(500).json({ error: error.message || 'Failed to update evaluation decision' });
+  }
+};
+
+/**
+ * Delete evaluation
+ * DELETE /api/evaluations/:id
+ */
+export const deleteEvaluationController = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+    if (!user || !user.userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const id = String(req.params.id || '');
+
+    const evaluation = await prisma.evaluation.findUnique({
+      where: { id }
+    });
+
+    if (!evaluation) {
+      res.status(404).json({ error: 'Evaluation not found' });
+      return;
+    }
+
+    const orgId = user.organizationId || 'org-tasknera';
+    if (evaluation.organizationId && evaluation.organizationId !== orgId) {
+      res.status(403).json({ error: 'Forbidden: Access restricted to organization members.' });
+      return;
+    }
+
+    if (user.role !== 'ADMIN' && evaluation.createdByUserId !== user.userId) {
+      res.status(403).json({ error: 'Forbidden: Only evaluation owner or admin can delete evaluation.' });
+      return;
+    }
+
+    await prisma.evaluation.delete({
+      where: { id }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Evaluation deleted successfully'
+    });
+  } catch (error: any) {
+    console.error('Error deleting evaluation:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete evaluation' });
   }
 };
 

@@ -9,6 +9,7 @@ import {
   validateCvTextQuality,
   calculateCareerGaps
 } from '../services/cvParsingService';
+import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
@@ -212,10 +213,10 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
   try {
     let dbCandidates: CandidateRecord[] = [];
     try {
-      // Fetch all candidates uploaded by this user (or all if admin), across all jobs and pool
+      // Candidate pool is common to all team members across the organization
       const poolWhere: any = {};
-      if (req.user && req.user.role !== 'ADMIN') {
-        poolWhere.created_by = req.user.userId;
+      if (req.user?.organizationId) {
+        poolWhere.user = { organizationId: req.user.organizationId };
       }
       const candidatesFromDb = await prisma.candidate.findMany({
         where: poolWhere,
@@ -237,17 +238,15 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       console.warn('[Talent Pool Candidates] Database query error:', dbErr);
     }
 
-    // Combine memory candidates across all jobs and pool matching this user
+    // Combine memory candidates across all jobs and pool matching this workspace
     const combinedMap = new Map<string, CandidateRecord>();
     for (const c of dbCandidates) {
       combinedMap.set(c.id, c);
     }
     for (const [jId, list] of CANDIDATE_STORE.entries()) {
       for (const c of list) {
-        if (!req.user || req.user.role === 'ADMIN' || c.uploadedBy === req.user.userId || c.createdBy === req.user.userId) {
-          if (!combinedMap.has(c.id)) {
-            combinedMap.set(c.id, c);
-          }
+        if (!combinedMap.has(c.id)) {
+          combinedMap.set(c.id, c);
         }
       }
     }
@@ -1155,6 +1154,97 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                 })),
                 skipDuplicates: true,
               }).catch(() => null);
+            }
+          }
+
+          // Automatically evaluate candidate against job requirements upon upload to requisition
+          if (jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+            try {
+              const targetJob = await prisma.job.findUnique({
+                where: { id: jobId },
+                include: { requirements: true, user: true }
+              });
+              if (targetJob) {
+                const reqs = (targetJob.requirements && targetJob.requirements.length > 0)
+                  ? targetJob.requirements
+                  : [];
+
+                if (reqs.length > 0) {
+                  const jobData = {
+                    id: targetJob.id,
+                    position: targetJob.position,
+                    title: targetJob.position,
+                    client: targetJob.client,
+                    company: targetJob.client,
+                    jd_text: targetJob.jd_text || undefined,
+                    created_by: targetJob.created_by
+                  };
+
+                  const evalPayload = evaluateCandidateAgainstRequirements(newRecord, jobData, reqs);
+                  const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
+                  const complianceStr = evalPayload.mandatoryCompliance
+                    ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
+                    : 'N/A';
+                  const decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
+                  const evalOwner = defaultUserId || targetJob.created_by;
+                  const orgId = targetJob.user?.organizationId || 'org-tasknera';
+
+                  const existingCandidateEval = await prisma.evaluation.findFirst({
+                    where: {
+                      candidateId: targetId,
+                      jobId: targetJob.id,
+                      createdByUserId: evalOwner
+                    }
+                  });
+
+                  if (existingCandidateEval) {
+                    await prisma.evaluation.update({
+                      where: { id: existingCandidateEval.id },
+                      data: {
+                        score: finalScore,
+                        atsScore: evalPayload.atsScore ?? finalScore,
+                        matchLevel: evalPayload.matchLevel,
+                        mandatoryCompliance: complianceStr,
+                        mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
+                        decision,
+                        auditData: evalPayload as any,
+                        updatedAt: new Date()
+                      }
+                    }).catch(() => null);
+                  } else {
+                    await prisma.evaluation.create({
+                      data: {
+                        candidateId: targetId,
+                        jobId: targetJob.id,
+                        createdByUserId: evalOwner,
+                        organizationId: orgId,
+                        score: finalScore,
+                        atsScore: evalPayload.atsScore ?? finalScore,
+                        matchLevel: evalPayload.matchLevel,
+                        mandatoryCompliance: complianceStr,
+                        mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
+                        decision,
+                        status: 'COMPLETED',
+                        auditData: evalPayload as any
+                      }
+                    }).catch(() => null);
+                  }
+
+                  const stage = finalScore >= 80 ? 'SHORTLISTED' : (finalScore >= 55 ? 'REVIEW' : 'REJECTED');
+                  await prisma.candidateApplication.upsert({
+                    where: {
+                      job_id_candidate_id: {
+                        job_id: targetJob.id,
+                        candidate_id: targetId
+                      }
+                    },
+                    update: { match_score: finalScore, stage, updated_at: new Date() },
+                    create: { job_id: targetJob.id, candidate_id: targetId, match_score: finalScore, stage, status: 'active' }
+                  }).catch(() => null);
+                }
+              }
+            } catch (autoEvalErr) {
+              console.warn('[Auto-Evaluation on Upload Notice]:', autoEvalErr);
             }
           }
         } catch (dbSaveErr) {
