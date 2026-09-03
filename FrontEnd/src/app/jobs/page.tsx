@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useAuth } from '@/context/AuthContext';
+import { atsStore } from '@/lib/atsStore';
 
 interface JobWorker {
   id: string;
@@ -378,6 +379,45 @@ export default function JobsPage() {
     }
   };
 
+  const handleStatusChange = async (id: string, newStatus: 'Active' | 'Draft' | 'Closed') => {
+    // 1. Optimistic UI update
+    setAllJobs(prev => prev.map(j => j.id === id ? { ...j, status: newStatus } : j));
+
+    // 2. LocalStorage sync
+    if (typeof window !== 'undefined') {
+      try {
+        const existing = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+        const updated = existing.map((x: any) => String(x.id) === String(id) ? { ...x, status: newStatus } : x);
+        localStorage.setItem('tasknera_created_jobs', JSON.stringify(updated));
+
+        const allSaved = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+        const updatedAll = allSaved.map((x: any) => String(x.id) === String(id) ? { ...x, status: newStatus } : x);
+        localStorage.setItem('tasknera_all_jobs', JSON.stringify(updatedAll));
+      } catch (e) {}
+    }
+
+    // 3. atsStore sync
+    try {
+      atsStore.updateJobStatus(id, newStatus, 'Recruiter Member', 'MEMBER');
+    } catch (e) {}
+
+    // 4. Backend PUT sync
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null;
+      await fetch(`${backendUrl}/jobs/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ status: newStatus.toLowerCase() })
+      });
+    } catch (e) {
+      console.warn('Backend status update warning:', e);
+    }
+  };
+
   const filtered = allJobs.filter(j => {
     const q = search.toLowerCase();
     const matchesSearch =
@@ -557,9 +597,26 @@ export default function JobsPage() {
                         )}
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status] || statusColors.Draft}`}>
-                          {j.status}
-                        </span>
+                        <div className="relative inline-block">
+                          <select
+                            value={j.status}
+                            onChange={(e) => handleStatusChange(j.id, e.target.value as 'Active' | 'Draft' | 'Closed')}
+                            className={`text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer appearance-none pr-6 transition-all focus:outline-none focus:ring-2 focus:ring-brand-orange/30 shadow-2xs ${
+                              j.status === 'Active'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                : j.status === 'Draft'
+                                ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                            }`}
+                          >
+                            <option value="Active">● Active</option>
+                            <option value="Draft">● Draft</option>
+                            <option value="Closed">● Closed</option>
+                          </select>
+                          <svg className="w-3 h-3 text-current absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -582,9 +639,26 @@ export default function JobsPage() {
               <div key={j.id} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col relative group">
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusColors[j.status] || statusColors.Draft}`}>
-                      {j.status}
-                    </span>
+                    <div className="relative inline-block">
+                      <select
+                        value={j.status}
+                        onChange={(e) => handleStatusChange(j.id, e.target.value as 'Active' | 'Draft' | 'Closed')}
+                        className={`text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer appearance-none pr-6 transition-all focus:outline-none focus:ring-2 focus:ring-brand-orange/30 shadow-2xs ${
+                          j.status === 'Active'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                            : j.status === 'Draft'
+                            ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+                            : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        <option value="Active">● Active</option>
+                        <option value="Draft">● Draft</option>
+                        <option value="Closed">● Closed</option>
+                      </select>
+                      <svg className="w-3 h-3 text-current absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                     <button onClick={() => handleDeleteJob(j.id, j.title)} className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition-colors"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                   </div>
 

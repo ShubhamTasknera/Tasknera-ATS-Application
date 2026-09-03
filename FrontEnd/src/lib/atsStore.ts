@@ -733,8 +733,8 @@ class ATSStore {
 
   public getScoreTierDistribution() {
     return [
-      { name: 'High Fit (≥85%)', value: 45, color: '#10B981', label: 'Direct Submit' },
-      { name: 'Moderate Fit (65-84%)', value: 38, color: '#F59E0B', label: 'Screening Review' },
+      { name: 'High Fit (≥85%)', value: 45, color: '#10B981', label: 'Direct Shortlist' },
+      { name: 'Moderate Fit (65-84%)', value: 38, color: '#F59E0B', label: 'Review For Shortlist' },
       { name: 'Low Fit (<65%)', value: 17, color: '#EF4444', label: 'Rejected' },
     ];
   }
@@ -777,6 +777,21 @@ class ATSStore {
       userRole: 'TEAM_LEAD',
       target: `Job ${job.title}`,
       detail: `Reassigned requisition from ${prevRecruiter} to ${newRecruiterName}.`
+    });
+    this.saveToStorage();
+  }
+
+  public updateJobStatus(jobId: string, status: 'Active' | 'Draft' | 'Closed', updaterName: string = 'Team Member', updaterRole: string = 'MEMBER') {
+    const job = this.jobs.find(j => j.id === jobId);
+    if (!job) return;
+    const prevStatus = job.status;
+    job.status = status;
+    this.logAudit({
+      action: 'JOB_CREATED',
+      user: `${updaterName} (${updaterRole === 'ADMIN' ? 'Admin' : updaterRole === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'})`,
+      userRole: updaterRole,
+      target: `Job ${job.title}`,
+      detail: `Changed requisition status from ${prevStatus} to ${status}.`
     });
     this.saveToStorage();
   }

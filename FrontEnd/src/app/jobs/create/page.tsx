@@ -281,7 +281,7 @@ export default function CreateJobPage() {
           salary: salary.trim() || undefined,
           jd_text: jdText.trim() || undefined,
           jd_file_url: uploadedFile ? uploadedFile.name : undefined,
-          status: 'draft',
+          status: 'active',
           requirements: requirements.map(r => ({
             requirement: r.requirement,
             category: r.category,
