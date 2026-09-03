@@ -27,6 +27,7 @@ model User {
   jobs                Job[]
   candidates          Candidate[]
   createdEvaluations  Evaluation[] @relation("CreatedEvaluations")
+  evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
   assignedEvaluations Evaluation[] @relation("AssignedEvaluations")
   evaluatedEvaluations Evaluation[] @relation("EvaluatedEvaluations")
 

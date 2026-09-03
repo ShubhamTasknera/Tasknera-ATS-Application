@@ -125,34 +125,34 @@ export interface ATSScoringResult {
 // 1. TECHNOLOGY SYNONYMS & STRICT DIFFERENTIATION RULES
 // ============================================================================
 
-// Exact synonym groups where terms are 100% interchangeable
+// Exact synonym groups where terms are 100% interchangeable aliases
 const EXACT_SYNONYM_GROUPS: string[][] = [
   ['javascript', 'js', 'ecmascript'],
   ['typescript', 'ts'],
-  ['postgresql', 'postgres', 'pgsql'],
+  ['react', 'reactjs', 'react.js'],
+  ['node.js', 'nodejs', 'node'],
   ['kubernetes', 'k8s'],
+  ['postgresql', 'postgres', 'pgsql'],
+  ['mongodb', 'mongo', 'mongo db'],
   ['amazon web services', 'aws'],
   ['google cloud platform', 'gcp', 'google cloud'],
   ['microsoft azure', 'azure'],
-  ['machine learning', 'ml'],
-  ['natural language processing', 'nlp'],
-  ['large language models', 'large language model', 'llm', 'llms'],
-  ['generative ai', 'genai', 'gen ai', 'gen-ai'],
-  ['retrieval augmented generation', 'retrieval-augmented generation', 'rag'],
-  ['react.js', 'reactjs', 'react'],
-  ['node.js', 'nodejs', 'node'],
-  ['vue.js', 'vuejs', 'vue'],
   ['golang', 'go'],
   ['c++', 'cpp'],
   ['c#', 'csharp', 'c sharp'],
   ['.net', 'dotnet', 'asp.net', 'asp.net core'],
-  ['mongodb', 'mongo'],
-  ['rest api', 'restful api', 'restful apis', 'rest apis', 'rest web services', 'restful web services'],
-  ['graphql', 'gql'],
-  ['docker', 'containerization', 'containers'],
   ['ci/cd', 'cicd', 'continuous integration', 'continuous deployment'],
   ['fastapi', 'fast api'],
-  ['scikit-learn', 'sklearn'],
+  ['flask'],
+  ['django'],
+  ['angular', 'angularjs', 'angular.js'],
+  ['vue', 'vuejs', 'vue.js'],
+  ['docker', 'docker compose', 'dockerfile'],
+  ['rest api', 'restful api', 'restful apis', 'rest apis', 'rest web services', 'restful web services', 'rest', 'restful'],
+  ['graphql', 'gql'],
+  ['aws bedrock', 'amazon bedrock', 'bedrock'],
+  ['generative ai', 'genai', 'gen ai', 'gen-ai', 'large language models', 'large language model', 'llm', 'llms', 'rag', 'retrieval augmented generation', 'retrieval-augmented generation'],
+  ['machine learning', 'ml', 'classical ml', 'traditional machine learning', 'scikit-learn', 'sklearn'],
   ['tensorflow', 'tf'],
   ['pytorch', 'torch'],
   ['langgraph', 'lang graph'],
@@ -162,15 +162,10 @@ const EXACT_SYNONYM_GROUPS: string[][] = [
   ['chromadb', 'chroma db', 'chroma'],
   ['weaviate', 'weaviate vector db'],
   ['qdrant', 'qdrant vector db'],
-  ['aws bedrock', 'amazon bedrock', 'bedrock'],
-  ['azure openai', 'azure open ai'],
   ['prompt engineering', 'prompt-engineering'],
   ['vector database', 'vector databases', 'vector db', 'vector store', 'vector stores'],
-  ['fine-tuning', 'finetuning', 'fine tuning', 'model fine-tuning', 'model tuning', 'lora', 'qlora', 'peft'],
   ['ptc windchill', 'windchill', 'ptc windchill pdmlink', 'windchill pdmlink', 'ptc plm'],
-  ['windchill customization', 'windchill development', 'windchill client architecture', 'wca', 'form processors', 'action models', 'data utilities'],
-  ['java', 'j2ee', 'core java', 'java/j2ee', 'jee'],
-  ['info*engine', 'infoengine', 'info engine', 'info*engine tasks'],
+  ['java', 'core java']
 ];
 
 // Map of canonical term -> all synonymous forms
@@ -182,7 +177,21 @@ for (const group of EXACT_SYNONYM_GROUPS) {
   }
 }
 
-// Related / Partial technologies mapping (when JD asks for X and candidate has Y -> PARTIAL match, NOT MATCHED)
+// Strict Non-Equivalent Pairs to avoid false-positive cross-matches
+export const STRICT_NON_EQUIVALENT_PAIRS: Array<{ required: RegExp; candidateOnly: RegExp; reason: string }> = [
+  { required: /\b(?:kubernetes|k8s)\b/i, candidateOnly: /\bdocker\b/i, reason: 'Docker is containerization, not Kubernetes orchestration' },
+  { required: /\b(?:react|reactjs)\b/i, candidateOnly: /\b(?:angular|angularjs|vue|vuejs)\b/i, reason: 'Angular/Vue is a different frontend framework than React' },
+  { required: /\b(?:postgresql|postgres|pgsql)\b/i, candidateOnly: /\b(?:mongodb|mongo)\b/i, reason: 'MongoDB is NoSQL document store, not relational PostgreSQL' },
+  { required: /\b(?:mongodb|mongo)\b/i, candidateOnly: /\b(?:postgresql|postgres|pgsql)\b/i, reason: 'PostgreSQL is relational SQL, not NoSQL MongoDB' },
+  { required: /\bfastapi\b/i, candidateOnly: /\b(?:flask|django)\b/i, reason: 'Flask/Django does not satisfy asynchronous FastAPI' },
+  { required: /\bflask\b/i, candidateOnly: /\b(?:fastapi|django)\b/i, reason: 'FastAPI/Django is not Flask' },
+  { required: /\b(?:rest|restful)\b/i, candidateOnly: /\bgraphql\b/i, reason: 'GraphQL is not REST' },
+  { required: /\bgraphql\b/i, candidateOnly: /\b(?:rest|restful)\b/i, reason: 'REST is not GraphQL' },
+  { required: /\b(?:generative ai|genai|gen ai|llm|llms|rag)\b/i, candidateOnly: /\b(?:classical ml|traditional machine learning|scikit-learn|sklearn|regression)\b/i, reason: 'Traditional ML does not satisfy Generative AI/LLM development' },
+  { required: /\b(?:aws bedrock|bedrock)\b/i, candidateOnly: /\b(?:aws|amazon web services)\b/i, reason: 'General AWS does not satisfy AWS Bedrock generative AI services' },
+];
+
+// Related / Partial technologies mapping (ONLY when genuinely justified)
 const RELATED_PARTIAL_MAPPINGS: Array<{
   target: RegExp;
   related: Array<{ regex: RegExp; name: string; reason: string }>;
@@ -192,49 +201,6 @@ const RELATED_PARTIAL_MAPPINGS: Array<{
     related: [
       { regex: /\blangchain\b/i, name: 'LangChain', reason: 'LangChain is an agent framework related to LangGraph but does not satisfy LangGraph multi-agent graph workflows.' },
       { regex: /\bllamaindex\b/i, name: 'LlamaIndex', reason: 'LlamaIndex is an orchestration framework related to LangGraph.' },
-      { regex: /\bautogen\b/i, name: 'AutoGen', reason: 'AutoGen is a multi-agent framework related to LangGraph.' },
-      { regex: /\bopenai\b/i, name: 'OpenAI API', reason: 'OpenAI API usage is foundational but does not cover LangGraph agent orchestration.' },
-    ],
-  },
-  {
-    target: /\bfastapi\b/i,
-    related: [
-      { regex: /\bflask\b/i, name: 'Flask', reason: 'Flask demonstrates Python API development but is not asynchronous FastAPI.' },
-      { regex: /\bdjango\b/i, name: 'Django', reason: 'Django demonstrates Python web framework experience but is not FastAPI.' },
-      { regex: /\bexpress(?:\.js)?\b/i, name: 'Express.js', reason: 'Express demonstrates backend REST API development in Node.js, related to API design but not Python FastAPI.' },
-    ],
-  },
-  {
-    target: /\baws bedrock\b|\bbedrock\b/i,
-    related: [
-      { regex: /\baws\b|\bamazon web services\b/i, name: 'General AWS', reason: 'Candidate has general AWS cloud experience but lacks explicit AWS Bedrock generative AI services.' },
-      { regex: /\bazure openai\b/i, name: 'Azure OpenAI', reason: 'Candidate has Azure OpenAI managed LLM experience, partially related to AWS Bedrock.' },
-    ],
-  },
-  {
-    target: /\breact native\b/i,
-    related: [
-      { regex: /\breact(?:\.js|js)?\b/i, name: 'React.js Web', reason: 'React.js web development shares component paradigms with React Native but does not cover native mobile bridge development.' },
-    ],
-  },
-  {
-    target: /\bkubernetes\b|\bk8s\b/i,
-    related: [
-      { regex: /\bdocker\b/i, name: 'Docker', reason: 'Docker containerization is foundational for Kubernetes orchestration but is not K8s cluster management.' },
-    ],
-  },
-  {
-    target: /\brag\b|\bretrieval augmented generation\b/i,
-    related: [
-      { regex: /\bsearch\b|\belasticsearch\b|\bopensearch\b/i, name: 'Traditional Search', reason: 'Traditional keyword search is related to retrieval but does not cover vector embeddings and LLM RAG pipelines.' },
-      { regex: /\bembeddings?\b/i, name: 'Vector Embeddings', reason: 'Embeddings experience covers vector representation, a component of full RAG architecture.' },
-    ],
-  },
-  {
-    target: /\bgenai\b|\bgenerative ai\b|\bllm\b|\blarge language models\b/i,
-    related: [
-      { regex: /\bscikit-learn\b|\bclassical ml\b|\bmachine learning\b/i, name: 'Classical Machine Learning', reason: 'Classical predictive ML is related to AI, but does not satisfy Generative AI / Large Language Model development.' },
-      { regex: /\bdeep learning\b|\btensorflow\b|\bpytorch\b/i, name: 'Deep Learning', reason: 'Deep learning frameworks are foundational but distinct from modern LLM/GenAI application engineering.' },
     ],
   },
 ];
@@ -278,6 +244,72 @@ export function checkNegationContext(text: string, term: string): { isNegated: b
 // 3. SKILL & EVIDENCE MATCHER
 // ============================================================================
 
+function escapeRegex(str: string): string {
+  return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+}
+
+/**
+ * Extracts normalized search terms and valid synonyms for a skill requirement.
+ * Enforces strict word boundaries and prevents parent category dilution.
+ */
+export function getSearchTermsForSkill(cleanReq: string): Set<string> {
+  const reqLower = cleanReq.toLowerCase().trim();
+  const searchTerms = new Set<string>();
+  if (!reqLower) return searchTerms;
+
+  searchTerms.add(reqLower);
+
+  // 1. Exact synonym map lookup
+  const exactSet = SYNONYM_MAP.get(reqLower);
+  if (exactSet) {
+    for (const syn of exactSet) searchTerms.add(syn);
+  }
+
+  // 2. Multi-word phrase matching with word boundaries (longest match first)
+  const sortedCanonicals = Array.from(SYNONYM_MAP.keys()).sort((a, b) => b.length - a.length);
+  for (const canonical of sortedCanonicals) {
+    const canonicalRegex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escapeRegex(canonical)}(?:[^a-zA-Z0-9_]|$)`, 'i');
+    if (canonicalRegex.test(reqLower)) {
+      // Prevent parent dilution (e.g. if requirement is 'aws bedrock', do not add general 'aws')
+      if (canonical === 'aws' && /\bbedrock\b/i.test(reqLower)) continue;
+      if (canonical === 'docker' && /\b(?:kubernetes|k8s)\b/i.test(reqLower)) continue;
+      if (canonical === 'react' && /\breact native\b/i.test(reqLower)) continue;
+      if (canonical === 'ml' && /\b(?:generative ai|genai|llm)\b/i.test(reqLower)) continue;
+      if (canonical === 'python' && /\b(?:fastapi|flask|django)\b/i.test(reqLower)) continue;
+
+      const synSet = SYNONYM_MAP.get(canonical);
+      if (synSet) {
+        for (const syn of synSet) searchTerms.add(syn);
+      }
+    }
+  }
+
+  // 3. Decompose compound phrases (e.g. "React and TypeScript", "Python/Django")
+  const compoundSubParts = reqLower
+    .split(/[\&,\/\+]|\b(?:and|or)\b/)
+    .map(p => p.trim())
+    .filter(p => p.length >= 2 && !GENERIC_FILLER_WORDS.has(p));
+
+  for (const part of compoundSubParts) {
+    searchTerms.add(part);
+    const subSet = SYNONYM_MAP.get(part);
+    if (subSet) {
+      for (const s of subSet) searchTerms.add(s);
+    }
+  }
+
+  // Clean out generic short words
+  const cleanTerms = new Set<string>();
+  for (const t of searchTerms) {
+    const trimmed = t.trim();
+    if (trimmed.length === 1 && !['c', 'r'].includes(trimmed)) continue;
+    if (GENERIC_FILLER_WORDS.has(trimmed)) continue;
+    cleanTerms.add(trimmed);
+  }
+
+  return cleanTerms;
+}
+
 export interface SkillMatchResult {
   status: MatchStatus;
   evidence: string;
@@ -288,7 +320,15 @@ export interface SkillMatchResult {
 
 /**
  * Searches the candidate's CV for exact or synonymous matches for a skill requirement.
- * Also checks related/partial technology mappings when exact match is missing.
+ * Strictly prioritizes evidence in order:
+ * 1. Work Experience
+ * 2. Projects
+ * 3. Skills Inventory
+ * 4. Certifications
+ * 5. Education
+ * 6. Summary / Overview
+ * 
+ * Prevents keyword inflation: evaluated once against requirement weight.
  */
 export function matchSkillRequirement(
   candidate: CandidateRecord,
@@ -300,6 +340,7 @@ export function matchSkillRequirement(
   const candExps = candidate.experience || [];
   const candProjects = candidate.projects || [];
   const candCerts = candidate.certifications || [];
+  const candEdu = candidate.education || [];
 
   // Extract core keywords by stripping filler words with proper word boundaries
   const cleanReq = requirementText
@@ -330,75 +371,57 @@ export function matchSkillRequirement(
   }
 
   // 2. Identify synonymous search terms for this requirement
-  const searchTerms = new Set<string>([reqLower]);
-  const mappedSynonyms = SYNONYM_MAP.get(reqLower);
-  if (mappedSynonyms) {
-    for (const syn of mappedSynonyms) searchTerms.add(syn);
-  }
+  const searchTerms = getSearchTermsForSkill(reqLower);
 
-  // Check multi-word phrase components
-  for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
-    if (reqLower.includes(canonical) || Array.from(synSet).some(s => reqLower.includes(s))) {
-      for (const syn of synSet) searchTerms.add(syn);
-    }
-  }
-
-  // Decompose compound phrases (split by &, /, +, commas, or 'and')
-  const compoundSubParts = reqLower.split(/[\&,\/\+]|\b(?:and)\b/).map(p => p.trim()).filter(p => p.length >= 2);
-  for (const part of compoundSubParts) {
-    searchTerms.add(part);
-    const subSyns = SYNONYM_MAP.get(part);
-    if (subSyns) {
-      for (const s of subSyns) searchTerms.add(s);
-    }
-    for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
-      if (part.includes(canonical) || Array.from(synSet).some(s => part.includes(s))) {
-        for (const syn of synSet) searchTerms.add(syn);
-      }
-    }
-  }
-
-  // 3. Search structured sections for EXACT / SYNONYMOUS Match
-  // Section A: Work Experience Roles (Highest Confidence)
-  for (const exp of candExps) {
-    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''}`;
+  const checkTextMatches = (text: string): { matched: boolean; sentence: string } => {
+    if (!text) return { matched: false, sentence: '' };
     for (const term of searchTerms) {
-      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
-      if (regex.test(roleText)) {
-        // Extract relevant sentence
-        const sentences = roleText.split(/(?<=[.!?\n])\s+/);
-        const matchSentence = sentences.find(s => regex.test(s)) || roleText.substring(0, 150);
-        return {
-          status: 'MATCHED',
-          evidence: matchSentence.trim(),
-          source: `Experience: ${exp.title || 'Role'} at ${exp.company || 'Company'}`,
-          confidence: 'EXPLICIT'
-        };
+      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escapeRegex(term)}(?:[^a-zA-Z0-9_]|$)`, 'i');
+      if (regex.test(text)) {
+        const sentences = text.split(/(?<=[.!?\n])\s+/);
+        const matchSentence = sentences.find(s => regex.test(s)) || text.substring(0, 150);
+        return { matched: true, sentence: matchSentence.trim() };
       }
+    }
+    return { matched: false, sentence: '' };
+  };
+
+  // 3. Search structured sections following the STRICT 6-LEVEL EVIDENCE PRIORITY:
+
+  // Priority 1: Work Experience (excluding non-professional bootcamps/training)
+  for (const exp of candExps) {
+    if (isNonProfessionalRole(exp.title, exp.company, exp.description)) continue;
+    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''} ${((exp as any).technologies || []).join(' ')}`;
+    const match = checkTextMatches(roleText);
+    if (match.matched) {
+      return {
+        status: 'MATCHED',
+        evidence: match.sentence,
+        source: `Work Experience: ${exp.title || 'Role'} at ${exp.company || 'Company'}`,
+        confidence: 'EXPLICIT'
+      };
     }
   }
 
-  // Section B: Projects
+  // Priority 2: Projects
   for (const proj of candProjects) {
     const projText = `${proj.name || ''} ${proj.description || ''} ${(proj.technologies || []).join(' ')}`;
-    for (const term of searchTerms) {
-      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
-      if (regex.test(projText)) {
-        return {
-          status: 'MATCHED',
-          evidence: `${proj.name ? `${proj.name}: ` : ''}${proj.description || projText.substring(0, 140)}`.trim(),
-          source: `Project: ${proj.name || 'Technical Project'}`,
-          confidence: 'EXPLICIT'
-        };
-      }
+    const match = checkTextMatches(projText);
+    if (match.matched) {
+      return {
+        status: 'MATCHED',
+        evidence: `${proj.name ? `${proj.name}: ` : ''}${match.sentence || proj.description || projText.substring(0, 140)}`.trim(),
+        source: `Project: ${proj.name || 'Technical Project'}`,
+        confidence: 'EXPLICIT'
+      };
     }
   }
 
-  // Section C: Explicit Skills List
+  // Priority 3: Skills Inventory
   for (const skill of candSkills) {
     const sLower = skill.toLowerCase().trim();
     for (const term of searchTerms) {
-      if (sLower === term || (term.length > 3 && (sLower === term || sLower.split(/[\s,;/]+/).includes(term)))) {
+      if (sLower === term || (term.length > 3 && sLower.split(/[\s,;/]+/).includes(term))) {
         return {
           status: 'MATCHED',
           evidence: `Explicitly listed in verified technical skills: "${skill}"`,
@@ -409,29 +432,66 @@ export function matchSkillRequirement(
     }
   }
 
-  // Section D: Raw Text Full Search with Exact Word Boundaries
-  for (const term of searchTerms) {
-    const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
-    if (regex.test(rawText)) {
-      const sentences = rawText.split(/(?<=[.!?\n])\s+/);
-      const matchSentence = sentences.find(s => regex.test(s));
-      if (matchSentence && matchSentence.trim().length > 10) {
-        return {
-          status: 'MATCHED',
-          evidence: matchSentence.replace(/^[-•*]\s*/, '').trim(),
-          source: 'CV Overview / Summary',
-          confidence: 'STRONG_SEMANTIC'
-        };
-      }
+  // Priority 4: Certifications
+  for (const cert of candCerts) {
+    const certText = `${(cert as any).name || (cert as any).certification || ''} ${(cert as any).issuer || ''}`;
+    const match = checkTextMatches(certText);
+    if (match.matched) {
+      return {
+        status: 'MATCHED',
+        evidence: `Verified professional credential: "${(cert as any).name || (cert as any).certification}"`,
+        source: 'Certifications',
+        confidence: 'EXPLICIT'
+      };
     }
   }
 
-  // 4. Check for PARTIAL Match via Related Technologies (e.g. LangChain for LangGraph, Flask for FastAPI)
+  // Priority 5: Education
+  for (const edu of candEdu) {
+    const eduText = `${edu.degree || ''} ${edu.field || ''} ${edu.institution || ''}`;
+    const match = checkTextMatches(eduText);
+    if (match.matched) {
+      return {
+        status: 'MATCHED',
+        evidence: `Academic coursework/credential: "${edu.degree || 'Degree'} in ${edu.field || 'Field'}"`,
+        source: 'Education',
+        confidence: 'EXPLICIT'
+      };
+    }
+  }
+
+  // Priority 6: Summary / Profile Overview
+  const summaryText = candidate.summary || '';
+  if (summaryText) {
+    const match = checkTextMatches(summaryText);
+    if (match.matched) {
+      return {
+        status: 'MATCHED',
+        evidence: match.sentence,
+        source: 'Summary / Profile Overview',
+        confidence: 'STRONG_SEMANTIC'
+      };
+    }
+  }
+
+  // Raw text overview fallback (only if not found in structured sections)
+  if (rawText) {
+    const match = checkTextMatches(rawText);
+    if (match.matched && match.sentence.length > 10) {
+      return {
+        status: 'MATCHED',
+        evidence: match.sentence.replace(/^[-•*]\s*/, '').trim(),
+        source: 'CV Overview',
+        confidence: 'STRONG_SEMANTIC'
+      };
+    }
+  }
+
+  // 4. Check for PARTIAL Match via Related Technologies ONLY when genuinely justified
   for (const mapping of RELATED_PARTIAL_MAPPINGS) {
     if (mapping.target.test(reqLower)) {
       for (const rel of mapping.related) {
         if (rel.regex.test(rawText) || candSkills.some(s => rel.regex.test(s))) {
-          // Find sentence
           const sentences = rawText.split(/(?<=[.!?\n])\s+/);
           const foundSentence = sentences.find(s => rel.regex.test(s)) || `Demonstrated experience with ${rel.name}.`;
           return {
@@ -472,8 +532,104 @@ export interface ExperienceMatchResult {
 }
 
 /**
+ * Helper to identify non-professional roles (bootcamps, courses, internships, traineeships)
+ * which should not count toward professional experience tenure.
+ */
+export function isNonProfessionalRole(title?: string | null, company?: string | null, description?: string | null): boolean {
+  const combined = `${title || ''} ${company || ''} ${description || ''}`.toLowerCase();
+  const nonProTerms = [
+    'bootcamp', 'training', 'course', 'coursera', 'udemy',
+    'student', 'intern', 'internship', 'trainee', 'apprentice',
+    'fellowship', 'academic project', 'school project', 'college project'
+  ];
+  return nonProTerms.some(term => new RegExp(`\\b${term}\\b`, 'i').test(combined));
+}
+
+/**
+ * Parses date components from strings like "Jan 2021", "2020", "2021-03", "March 2022"
+ */
+function parseDateComponents(dateStr?: string | null, isEnd: boolean = false): { year: number; month: number } | null {
+  if (!dateStr) return null;
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+
+  if (/present|current|now|ongoing/i.test(dateStr)) {
+    return { year: currentYear, month: currentMonth };
+  }
+
+  const yrMatch = dateStr.match(/\b(19\d\d|20\d\d)\b/);
+  if (!yrMatch) return null;
+  const year = parseInt(yrMatch[1], 10);
+
+  const monthsMap: Record<string, number> = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+  };
+
+  const lower = dateStr.toLowerCase();
+  let month = isEnd ? 12 : 1;
+  for (const [mName, mNum] of Object.entries(monthsMap)) {
+    if (new RegExp(`\\b${mName}\\b`, 'i').test(lower)) {
+      month = mNum;
+      break;
+    }
+  }
+
+  const isoMatch = dateStr.match(/\b(19\d\d|20\d\d)[-/](0?[1-9]|1[0-2])\b/);
+  if (isoMatch) {
+    month = parseInt(isoMatch[2], 10);
+  } else {
+    const usMatch = dateStr.match(/\b(0?[1-9]|1[0-2])[-/](19\d\d|20\d\d)\b/);
+    if (usMatch) {
+      month = parseInt(usMatch[1], 10);
+    }
+  }
+
+  return { year, month };
+}
+
+/**
+ * Merges overlapping employment intervals so concurrent jobs are not double-counted.
+ */
+function mergeAndCalculateIntervalYears(intervals: Array<[number, number]>): number {
+  if (intervals.length === 0) return 0;
+  intervals.sort((a, b) => a[0] - b[0]);
+
+  const merged: Array<[number, number]> = [];
+  let cur = [...intervals[0]] as [number, number];
+
+  for (let i = 1; i < intervals.length; i++) {
+    const next = intervals[i];
+    if (next[0] <= cur[1] + 1) {
+      cur[1] = Math.max(cur[1], next[1]);
+    } else {
+      merged.push(cur);
+      cur = [...next] as [number, number];
+    }
+  }
+  merged.push(cur);
+
+  let totalMonths = 0;
+  for (const [s, e] of merged) {
+    totalMonths += Math.max(1, (e - s + 1));
+  }
+
+  return Math.round((totalMonths / 12) * 10) / 10;
+}
+
+/**
  * Calculates candidate professional years from employment dates and role history.
- * Excludes training, short courses, and academic internships unless specified.
+ * Merges overlapping periods and excludes training, bootcamps, and student roles.
  */
 export function calculateProfessionalTenure(candidate: CandidateRecord): number {
   const candExps = candidate.experience || [];
@@ -482,64 +638,114 @@ export function calculateProfessionalTenure(candidate: CandidateRecord): number 
     return rawTotalMatch ? parseFloat(rawTotalMatch[1]) : 0;
   }
 
-  let totalYears = 0;
-  const currentYear = new Date().getFullYear();
+  const intervals: Array<[number, number]> = [];
+  let durationFallbackYears = 0;
 
   for (const exp of candExps) {
-    const title = (exp.title || '').toLowerCase();
-    // Exclude explicit student internships / trainee roles from core professional tenure
-    if (title.includes('intern') || title.includes('trainee') || title.includes('student')) {
+    if (isNonProfessionalRole(exp.title, exp.company, exp.description)) {
       continue;
     }
 
-    let roleYears = 0;
-    if (exp.duration) {
+    const start = parseDateComponents(exp.startDate, false);
+    const end = parseDateComponents(exp.endDate, true);
+
+    if (start && end && (end.year > start.year || (end.year === start.year && end.month >= start.month))) {
+      const sIndex = start.year * 12 + start.month;
+      const eIndex = end.year * 12 + end.month;
+      intervals.push([sIndex, eIndex]);
+    } else if (exp.duration) {
       const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
-      if (yrMatch) roleYears = parseFloat(yrMatch[1]);
-      else {
+      if (yrMatch) {
+        durationFallbackYears += parseFloat(yrMatch[1]);
+      } else {
         const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
-        if (moMatch) roleYears = parseFloat(moMatch[1]) / 12;
+        if (moMatch) durationFallbackYears += parseFloat(moMatch[1]) / 12;
       }
+    } else {
+      durationFallbackYears += 1.0;
     }
-
-    if (roleYears === 0 && exp.startDate) {
-      const startYear = parseInt(exp.startDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '0', 10);
-      let endYear = startYear;
-      if (exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)) {
-        endYear = currentYear;
-      } else if (exp.endDate) {
-        endYear = parseInt(exp.endDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || `${startYear}`, 10);
-      }
-
-      if (startYear > 0 && endYear >= startYear) {
-        roleYears = Math.max(0.5, endYear - startYear);
-      }
-    }
-
-    totalYears += (roleYears || 1.0);
   }
 
-  // Cross-verify with totalExperience field
+  if (intervals.length > 0) {
+    return mergeAndCalculateIntervalYears(intervals);
+  }
+
+  if (durationFallbackYears > 0) {
+    return Math.round(durationFallbackYears * 10) / 10;
+  }
+
   const rawTotalMatch = (candidate.totalExperience || '').match(/(\d+(?:\.\d+)?)/);
-  if (rawTotalMatch) {
-    const fieldYears = parseFloat(rawTotalMatch[1]);
-    if (totalYears === 0 || Math.abs(totalYears - fieldYears) > 5) {
-      totalYears = fieldYears;
+  return rawTotalMatch ? parseFloat(rawTotalMatch[1]) : 0;
+}
+
+/**
+ * Calculates relevant experience years for a specific technology target.
+ */
+export function calculateTechnologyTenure(candidate: CandidateRecord, techTerms: Set<string>): number {
+  const candExps = candidate.experience || [];
+  if (!Array.isArray(candExps) || candExps.length === 0) {
+    return 0;
+  }
+
+  const intervals: Array<[number, number]> = [];
+  let durationFallbackYears = 0;
+
+  for (const exp of candExps) {
+    if (isNonProfessionalRole(exp.title, exp.company, exp.description)) {
+      continue;
+    }
+
+    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''} ${((exp as any).technologies || []).join(' ')}`;
+    let roleMentionsTech = false;
+    for (const term of techTerms) {
+      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${escapeRegex(term)}(?:[^a-zA-Z0-9_]|$)`, 'i');
+      if (regex.test(roleText)) {
+        roleMentionsTech = true;
+        break;
+      }
+    }
+
+    if (roleMentionsTech) {
+      const start = parseDateComponents(exp.startDate, false);
+      const end = parseDateComponents(exp.endDate, true);
+
+      if (start && end && (end.year > start.year || (end.year === start.year && end.month >= start.month))) {
+        const sIndex = start.year * 12 + start.month;
+        const eIndex = end.year * 12 + end.month;
+        intervals.push([sIndex, eIndex]);
+      } else if (exp.duration) {
+        const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+        if (yrMatch) {
+          durationFallbackYears += parseFloat(yrMatch[1]);
+        } else {
+          const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
+          if (moMatch) durationFallbackYears += parseFloat(moMatch[1]) / 12;
+        }
+      } else {
+        durationFallbackYears += 1.0;
+      }
     }
   }
 
-  return Math.round(totalYears * 10) / 10;
+  if (intervals.length > 0) {
+    return mergeAndCalculateIntervalYears(intervals);
+  }
+
+  return Math.round(durationFallbackYears * 10) / 10;
 }
 
 /**
  * Evaluates experience requirement (supports single thresholds like "4+ years" and ranges like "4-6 years").
+ * Strictly enforces:
+ * - Candidate years >= Required years -> MATCHED (1.0)
+ * - Candidate years >= 80% of required years -> PARTIAL (0.5)
+ * - Candidate years < 80% of required years -> NOT_MATCHED (0.0)
  */
 export function evaluateExperienceRequirement(
   candidate: CandidateRecord,
   requirementText: string
 ): ExperienceMatchResult {
   const reqLower = requirementText.toLowerCase();
-  const candYears = calculateProfessionalTenure(candidate);
 
   // Range matching: "4-6 years", "4 to 6 yrs", "4 – 6 years"
   const rangeMatch = reqLower.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
@@ -556,53 +762,92 @@ export function evaluateExperienceRequirement(
     minYears = parseFloat(singleMatch[1]);
   }
 
+  // Detect specific technology target in requirement (e.g. "3+ years React", "5+ years in Python")
+  const stripped = reqLower
+    .replace(/\b(?:\d+(?:\.\d+)?\s*(?:-|to|–)\s*\d+(?:\.\d+)?\s*(?:years?|yrs?))\b/gi, ' ')
+    .replace(/\b(?:\d+(?:\.\d+)?\+?\s*(?:years?|yrs?))\b/gi, ' ')
+    .replace(/\b(?:experience|in|with|hands-on|demonstrated|minimum|at least|proven|expertise|of|proficiency|proficient|skills?|development|developing|engineering|architecture|designing|using)\b/gi, ' ')
+    .replace(/[^\w\s\+\#\.]/g, ' ')
+    .trim();
+
+  const words = stripped.split(/\s+/).filter(w => w.length >= 2 && !GENERIC_FILLER_WORDS.has(w));
+  const hasSpecificSkill = words.length > 0;
+
+  let candYears = 0;
+  let skillLabel = '';
+
+  if (hasSpecificSkill) {
+    const techCandidate = words.join(' ');
+    skillLabel = techCandidate;
+    const techSearchTerms = getSearchTermsForSkill(techCandidate);
+    candYears = calculateTechnologyTenure(candidate, techSearchTerms);
+
+    // If no dated employment history explicitly tagged the skill, check skills/projects
+    if (candYears === 0) {
+      const skillCheck = matchSkillRequirement(candidate, techCandidate, 'Technical Skill');
+      if (skillCheck.status === 'NOT_MATCHED') {
+        return {
+          status: 'NOT_MATCHED',
+          evidence: `Candidate does not document verified experience with "${skillLabel}" in employment history or skills.`,
+          source: 'Work Experience Analysis',
+          confidence: 'EXPLICIT',
+          candidateYears: 0,
+          requiredYears: minYears,
+          gap: minYears,
+          failureReason: `Candidate has no verified experience with "${skillLabel}" (required ${minYears}+ years).`
+        };
+      } else {
+        // Skill verified in skills/projects without explicit role dates: cap at overall tenure
+        const overallTenure = calculateProfessionalTenure(candidate);
+        candYears = Math.min(overallTenure, minYears);
+      }
+    }
+  } else {
+    // Pure general experience requirement
+    candYears = calculateProfessionalTenure(candidate);
+  }
+
   const gap = Math.max(0, Math.round((minYears - candYears) * 10) / 10);
 
   if (candYears >= minYears) {
-    if (maxYears && candYears > maxYears + 4) {
-      // Significantly exceeds upper range -> Overqualified but full score
-      return {
-        status: 'MATCHED',
-        evidence: `Candidate has ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : ''} years, profile is senior/over-qualified).`,
-        source: 'Employment History Tenure',
-        confidence: 'EXPLICIT',
-        candidateYears: candYears,
-        requiredYears: minYears,
-        gap: 0
-      };
-    }
     return {
       status: 'MATCHED',
-      evidence: `Candidate documents ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : '+'} years).`,
+      evidence: skillLabel
+        ? `Candidate documents ${candYears} years of verified experience in ${skillLabel} (meets required ${minYears}${maxYears ? `–${maxYears}` : '+'} years).`
+        : `Candidate documents ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : '+'} years).`,
       source: 'Employment History Tenure',
       confidence: 'EXPLICIT',
       candidateYears: candYears,
       requiredYears: minYears,
       gap: 0
     };
-  } else if (candYears >= minYears * 0.7) {
-    // Within 70-99% of required experience -> PARTIAL
+  } else if (candYears >= minYears * 0.8) {
+    // Exactly 80% to 99% of required experience -> PARTIAL (0.5)
     return {
       status: 'PARTIAL',
-      evidence: `Candidate documents ${candYears} years of experience vs ${minYears}+ years required (${gap}y gap).`,
+      evidence: skillLabel
+        ? `Candidate documents ${candYears} years of experience in ${skillLabel} vs ${minYears}+ years required (${gap}y gap, satisfies 80% threshold).`
+        : `Candidate documents ${candYears} years of experience vs ${minYears}+ years required (${gap}y gap, satisfies 80% threshold).`,
       source: 'Employment History Tenure',
       confidence: 'STRONG_SEMANTIC',
       candidateYears: candYears,
       requiredYears: minYears,
       gap,
-      failureReason: `Candidate has ${candYears} years experience, slightly below the ${minYears}+ years requirement.`
+      failureReason: `Candidate has ${candYears} years experience, slightly below the ${minYears}+ years requirement (within 80% threshold).`
     };
   } else {
-    // Significantly below requirement -> NOT MATCHED
+    // Below 80% of required experience -> NOT MATCHED (0.0)
     return {
       status: 'NOT_MATCHED',
-      evidence: `Candidate documents only ${candYears} years of experience vs ${minYears}+ years required (${gap}y deficit).`,
+      evidence: skillLabel
+        ? `Candidate documents only ${candYears} years of experience in ${skillLabel} vs ${minYears}+ years required (${gap}y deficit, below 80% threshold).`
+        : `Candidate documents only ${candYears} years of experience vs ${minYears}+ years required (${gap}y deficit, below 80% threshold).`,
       source: 'Employment History Tenure',
       confidence: 'EXPLICIT',
       candidateYears: candYears,
       requiredYears: minYears,
       gap,
-      failureReason: `Insufficient professional experience (${candYears}y vs ${minYears}+ years required).`
+      failureReason: `Insufficient experience (${candYears}y vs ${minYears}+ years required, below 80% threshold).`
     };
   }
 }
@@ -1030,12 +1275,12 @@ export function calculateATSScore(
   const eduPct = computePillarPct(pillarPoints.edu, (candidate.education && candidate.education.length > 0) ? 100 : 0);
   const genaiPct = computePillarPct(pillarPoints.genai, techPct);
 
-  // Semantic Relevance: Contextual overlap between candidate text and job domain
+  // Semantic Relevance: Contextual overlap between candidate text and job domain (strictly whole-word)
   const jdKeywords = (job.position || '').split(/\s+/).filter(w => w.length > 3 && !GENERIC_FILLER_WORDS.has(w.toLowerCase()));
   const candTextLower = (candidate.rawText || '').toLowerCase();
   let overlap = 0;
   for (const kw of jdKeywords) {
-    if (candTextLower.includes(kw.toLowerCase())) overlap++;
+    if (new RegExp(`\\b${escapeRegex(kw)}\\b`, 'i').test(candTextLower)) overlap++;
   }
   const semanticRelevance = jdKeywords.length > 0 ? Math.round((overlap / jdKeywords.length) * 100) : overallScore;
 
