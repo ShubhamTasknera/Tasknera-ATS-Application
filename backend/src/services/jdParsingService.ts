@@ -456,7 +456,7 @@ export const detectHeading = (line: string): { isHeading: boolean; type: JobSect
   const lower = cleanLine.toLowerCase().replace(/[:\-_]+$/, '').trim();
 
   // Mandatory Skills Headings
-  if (/^(mandatory\s+skills|mandatory\s+requirements|non-negotiable\s+mandatory\s+requirements|non-negotiable\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must-have\s+skills|mandatory|knock-out\s+rules|knockout\s+criteria|dealbreakers)$/i.test(lower)) {
+  if (/^(key\s+requirements|requirements|core\s+requirements|qualifications|eligibility\s+criteria|candidate\s+profile|what\s+you\s+need|what\s+we\s+are\s+looking\s+for|skills\s*(?:&|and)\s*experience|basic\s+qualifications|mandatory\s+skills|mandatory\s+requirements|non-negotiable\s+mandatory\s+requirements|non-negotiable\s+requirements|mandatory\s+qualifications|must\s+have|must\s+haves|required\s+skills|required\s+qualifications|minimum\s+requirements|minimum\s+qualifications|essential\s+skills|core\s+skills|must-have\s+skills|mandatory|knock-out\s+rules|knockout\s+criteria|dealbreakers)$/i.test(lower)) {
     return { isHeading: true, type: 'MANDATORY_SKILLS', title: trimmed };
   }
 
@@ -619,6 +619,10 @@ export const cleanBulletText = (text: string): string => {
 
 export const isValidRequirement = (text: string): boolean => {
   if (!text || text.length < 4) return false;
+  // Reject confidential recruiter notes/disclaimers
+  if (/keep\s+(the\s+)?hiring\s+company|confidential|name\s+to\s+be\s+disclosed|nothing\s+to\s+be\s+written|recruiter\s+note|internal\s+note/i.test(text)) return false;
+  // Reject work mode, location, commercials, and compensation metadata
+  if (/^(?:work\s+mode|location|commercials|total\s+incentives?|payable\s+period)/i.test(text.trim())) return false;
   // Reject single word fragments if too short
   if (!text.includes(' ') && text.length < 10) return false;
   // Reject common fragment tails
@@ -807,19 +811,28 @@ export const extractCompanyAndPosition = (
       }
     }
 
-    // Explicit Position Label
-    const posLabelMatch = line.match(/^(?:position\s+title|job\s+title|position|role\s+title|role|designation|title|requisition\s+title)\s*[:\-–]?\s*(.*)$/i);
+    const cleanPosScanLine = line
+      .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+      .trim();
+
+    // Explicit Position Label (e.g. "Open Positions", "Position:", "Job Title:")
+    const posLabelMatch = cleanPosScanLine.match(/^(?:position\s+title|job\s+title|open\s+positions?|open\s+roles?|position|role\s+title|role|designation|title|requisition\s+title)\s*[:\-–]?\s*(.*)$/i);
     if (posLabelMatch) {
       let val = posLabelMatch[1].trim();
+      let consumedNext = false;
       if (!val && i + 1 < lines.length) {
-        const next = lines[i + 1].trim();
-        if (!detectHeading(next).isHeading && !isLabelLine(next)) {
+        const next = lines[i + 1]
+          .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}\s•●*|\-–—\d.]+/gu, '')
+          .trim();
+        if (!detectHeading(next).isHeading && !isLabelLine(next) && next.length < 60) {
           val = next;
+          consumedNext = true;
         }
       }
-      // Check if next line continues the title (e.g. "Account Executive (B2B SaaS / Fintech)")
-      if (i + 1 < lines.length && !lines[i + 1].includes(':') && !detectHeading(lines[i + 1]).isHeading) {
-        const nextLine = lines[i + 1].trim();
+      // Check if subsequent line continues the title (e.g. "Account Executive (B2B SaaS / Fintech)")
+      const lookAheadIdx = consumedNext ? i + 2 : i + 1;
+      if (lookAheadIdx < lines.length && !lines[lookAheadIdx].includes(':') && !detectHeading(lines[lookAheadIdx]).isHeading) {
+        const nextLine = lines[lookAheadIdx].trim();
         if (
           isKnownPositionTitle(nextLine) ||
           nextLine.startsWith('(') ||
@@ -831,6 +844,18 @@ export const extractCompanyAndPosition = (
       const cleaned = cleanExtractedName(val, false);
       if (cleaned && !explicitPosition) {
         explicitPosition = cleaned;
+      }
+    }
+
+    // Hiring Banner Label (e.g. "We're Hiring | Sr. Windchill Developers")
+    const hiringBannerMatch = cleanPosScanLine.match(/^(?:we['’]?re\s+hiring|we\s+are\s+hiring|hiring\s+for|openings?\s+for)\s*[:\-–|]\s*(.+)$/i);
+    if (hiringBannerMatch && !explicitPosition) {
+      const bannerVal = hiringBannerMatch[1]
+        .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, '')
+        .trim();
+      const cleanedBanner = cleanExtractedName(bannerVal, false);
+      if (cleanedBanner) {
+        explicitPosition = cleanedBanner;
       }
     }
   }
@@ -1069,16 +1094,24 @@ export const extractJobMetadata = (
       }
     }
 
-    // Work Mode / Workplace Type
+    // Work Mode / Workplace Type (often contains embedded city, e.g. "Work Mode: Pune (Hybrid)...")
     const wmMatch = cleanLine.match(/^(?:work\s+mode|workplace\s+type|working\s+mode|work\s+type)\s*[:\-–]?\s*(.*)$/i);
     if (wmMatch) {
       const modeVal = getMultiLineValue(wmMatch, 1) || '';
-      if (/in-office|office|onsite|on-site|in office/i.test(modeVal)) {
-        metadata.workMode = 'Onsite';
-      } else if (/hybrid/i.test(modeVal)) {
+      // Extract city if embedded in work mode line e.g. "Pune (Hybrid)"
+      if (!metadata.location) {
+        const cityMatch = modeVal.match(/^([A-Za-z\s,]+?)\s*\((?:Hybrid|Remote|Onsite|In-Office)/i) ||
+                          modeVal.match(/^([A-Za-z\s,]+?)\s*[\-–]\s*(?:Hybrid|Remote|Onsite)/i);
+        if (cityMatch && cityMatch[1].trim().length > 2) {
+          metadata.location = cleanExtractedName(cityMatch[1].trim(), false);
+        }
+      }
+      if (/hybrid/i.test(modeVal)) {
         metadata.workMode = 'Hybrid';
       } else if (/remote/i.test(modeVal)) {
         metadata.workMode = 'Remote';
+      } else if (/in-office|office|onsite|on-site|in office/i.test(modeVal)) {
+        metadata.workMode = 'Onsite';
       }
     }
 
@@ -1261,33 +1294,45 @@ export const parseJobDescription = (
   const topSection = sections.find(s => s.type === 'TOP_HIRING');
   const hiringCriteria = extractHiringCriteria(topSection);
 
-  // 4. Extract Mandatory Skills (Strictly isMandatory = true)
+  // 4. Extract Mandatory Skills (Strictly isMandatory = true, unless marked preferred)
   const mandSection = sections.find(s => s.type === 'MANDATORY_SKILLS');
   const rawMandatoryBullets = mandSection ? extractBulletsFromSection(mandSection) : [];
-  const mandatoryRequirementsList: ParsedRequirement[] = rawMandatoryBullets.map((bullet) => {
+  const mandatoryRequirementsList: ParsedRequirement[] = [];
+  const preferredFromMandatory: ParsedRequirement[] = [];
+
+  for (const bullet of rawMandatoryBullets) {
     const clean = cleanBulletText(bullet);
-    return {
+    if (!isValidRequirement(clean)) continue;
+    const isPref = /\b(is\s+preferred|preferred|nice\s+to\s+have|good\s+to\s+have|plus|optional)\b/i.test(clean);
+    const item: ParsedRequirement = {
       requirement: clean,
       category: categorizeRequirement(clean),
       type: 'SKILL',
       weight: 1.0,
-      isMandatory: true,
-      mandatory: true,
+      isMandatory: !isPref,
+      mandatory: !isPref,
       evidenceRequired: true,
       recruiterConfirmed: false,
       sourceEvidence: clean,
-      sourceSection: 'Mandatory Skills',
+      sourceSection: isPref ? 'Preferred Skills' : 'Mandatory Skills',
       confidence: 'HIGH',
       needsVerification: false
     };
-  });
+    if (isPref) {
+      preferredFromMandatory.push(item);
+    } else {
+      mandatoryRequirementsList.push(item);
+    }
+  }
 
   // 5. Extract Preferred Skills (Strictly isMandatory = false)
   const prefSection = sections.find(s => s.type === 'PREFERRED_SKILLS');
   const rawPreferredBullets = prefSection ? extractBulletsFromSection(prefSection) : [];
-  const preferredRequirementsList: ParsedRequirement[] = rawPreferredBullets.map((bullet) => {
+  const preferredRequirementsList: ParsedRequirement[] = [...preferredFromMandatory];
+  for (const bullet of rawPreferredBullets) {
     const clean = cleanBulletText(bullet);
-    return {
+    if (!isValidRequirement(clean)) continue;
+    preferredRequirementsList.push({
       requirement: clean,
       category: categorizeRequirement(clean),
       type: 'SKILL',
@@ -1300,8 +1345,8 @@ export const parseJobDescription = (
       sourceSection: 'Preferred Skills',
       confidence: 'HIGH',
       needsVerification: false
-    };
-  });
+    });
+  }
 
   // 6. Extract Responsibilities (Separated collection; never converted into requirements)
   const respSection = sections.find(s => s.type === 'RESPONSIBILITIES');
