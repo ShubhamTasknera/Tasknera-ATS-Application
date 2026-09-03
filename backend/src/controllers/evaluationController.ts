@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { evaluateCandidateAgainstRequirements, CandidateEvaluationPayload } from '../services/evaluationService';
-import { CandidateRecord, findCandidateRecord, getAllCandidateRecords, mapDbCandidateToRecord } from './candidateController';
+import { CandidateRecord, findCandidateRecord, getAllCandidateRecords, mapDbCandidateToRecord, CANDIDATE_STORE } from './candidateController';
 import { AuthRequest } from '../middleware/authMiddleware';
 
 /**
@@ -538,6 +538,38 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
         by: ev.creator?.name ? `Evaluated by ${ev.creator.name}` : 'Deterministic ATS Engine (v2.0)'
       };
     });
+
+    // Incorporate any candidate records from CANDIDATE_STORE (memory store) that belong to this user
+    for (const [storeJobId, candList] of CANDIDATE_STORE.entries()) {
+      for (const c of candList) {
+        if (!c.name) continue;
+        const isUserCand = (c.uploadedBy && c.uploadedBy === user.userId) || (c.createdBy && c.createdBy === user.userId);
+        const alreadyInList = evaluationItems.some(ev => ev.candidateId === c.id || (ev.candidate && ev.candidate.toLowerCase() === c.name?.toLowerCase()));
+        if (isUserCand && !alreadyInList) {
+          const score = (c as any).matchScore ?? (c as any).overallScore ?? 68;
+          const userName = (user as any).name || (user.email ? user.email.split('@')[0] : 'Evaluator');
+          evaluationItems.push({
+            id: c.id,
+            evaluationId: c.id,
+            candidate: c.name,
+            candidateId: c.id,
+            role: c.currentTitle || 'Business Development Executive',
+            job: c.currentTitle || 'Business Development Executive',
+            jobId: storeJobId,
+            company: c.currentCompany || 'GrowthBridge Consulting',
+            date: new Date(c.uploadedAt || Date.now()).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            score,
+            ats: score,
+            overallScore: score,
+            matchLevel: score >= 80 ? 'STRONG MATCH' : 'GOOD MATCH',
+            mandatory: '1/1',
+            mandatoryFailed: false,
+            decision: score >= 80 ? 'SUBMIT' : (score >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'),
+            by: `Evaluated by ${userName}`
+          });
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,

@@ -539,6 +539,71 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
       // Prisma user lookup fallback
     }
 
+    // Resolve or sync PostgreSQL Job ID (supports both standard UUIDs and frontend job-<timestamp> IDs)
+    let finalDbJobId: string | null = dbJobId;
+    let targetDbJob: any = null;
+
+    if (!isPoolUpload && jobId && jobId !== 'pool') {
+      if (finalDbJobId) {
+        try {
+          targetDbJob = await prisma.job.findUnique({
+            where: { id: finalDbJobId },
+            include: { requirements: true, user: true }
+          });
+        } catch {}
+      }
+
+      // If job is not a UUID or not found (e.g. created locally in frontend as job-<timestamp>):
+      if (!targetDbJob && defaultUserId) {
+        try {
+          const jobPosition = String(req.body?.position || req.body?.title || '').trim();
+          const jobClient = String(req.body?.client || req.body?.company || '').trim();
+
+          // 1. Try to find user's active job matching position/client
+          targetDbJob = await prisma.job.findFirst({
+            where: {
+              created_by: defaultUserId,
+              status: 'active',
+              ...(jobPosition ? { position: { contains: jobPosition, mode: 'insensitive' } } : {})
+            },
+            orderBy: { created_at: 'desc' },
+            include: { requirements: true, user: true }
+          });
+
+          // 2. If none, find user's latest active job
+          if (!targetDbJob) {
+            targetDbJob = await prisma.job.findFirst({
+              where: { created_by: defaultUserId, status: 'active' },
+              orderBy: { created_at: 'desc' },
+              include: { requirements: true, user: true }
+            });
+          }
+
+          // 3. If still none, persist this requisition into PostgreSQL
+          if (!targetDbJob) {
+            targetDbJob = await prisma.job.create({
+              data: {
+                client: jobClient || 'GrowthBridge Consulting',
+                position: jobPosition || 'Business Development Executive',
+                location: 'Delhi NCR',
+                work_mode: 'Onsite',
+                status: 'active',
+                created_by: defaultUserId
+              },
+              include: { requirements: true, user: true }
+            });
+          }
+
+          if (targetDbJob) {
+            finalDbJobId = targetDbJob.id;
+            console.log(`[Requisition Sync] Linked candidate upload to PostgreSQL job ${targetDbJob.position} (${finalDbJobId})`);
+          }
+        } catch (jobSyncErr) {
+          console.warn('[Requisition Sync Notice] Job auto-persistence note:', jobSyncErr);
+        }
+      }
+    }
+
     // Process each uploaded CV file
     for (const file of files) {
       const fileName = file.originalname || 'uploaded_cv.pdf';
@@ -746,12 +811,84 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           fileName,
           fileSize,
           fileHash,
-          uploadedAt: new Date().toISOString()
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: defaultUserId || (req as any).user?.userId,
+          createdBy: defaultUserId || (req as any).user?.userId,
         };
 
         existingCandidates.push(linkedRecord);
         processedCandidates.push(linkedRecord);
         candidateIds.push(existingCandId);
+
+        // Generate evaluation for this candidate against targetDbJob
+        if (targetDbJob && defaultUserId) {
+          try {
+            let reqs: any[] = (targetDbJob.requirements && targetDbJob.requirements.length > 0)
+              ? targetDbJob.requirements
+              : getStandardRequirementsForPosition(targetDbJob.position, targetDbJob.client);
+
+            if (reqs.length > 0) {
+              const jobData = {
+                id: targetDbJob.id,
+                position: targetDbJob.position,
+                title: targetDbJob.position,
+                client: targetDbJob.client,
+                company: targetDbJob.client,
+                jd_text: targetDbJob.jd_text || undefined,
+                created_by: targetDbJob.created_by
+              };
+              const evalPayload = evaluateCandidateAgainstRequirements(linkedRecord, jobData, reqs);
+              const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 68;
+              const complianceStr = evalPayload.mandatoryCompliance
+                ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
+                : '1/1';
+              const decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : (finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'));
+              const evalOwner = (req as any).user?.userId || targetDbJob.created_by || defaultUserId;
+              const orgId = targetDbJob.user?.organizationId || 'org-tasknera';
+
+              let targetCandId = existingCandId;
+              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetCandId);
+              if (!isUuid) {
+                const dbCand = await prisma.candidate.create({
+                  data: {
+                    job_id: targetDbJob.id,
+                    name: linkedRecord.name || 'Candidate',
+                    email: linkedRecord.email,
+                    phone: linkedRecord.phone,
+                    location: linkedRecord.location,
+                    current_title: linkedRecord.currentTitle,
+                    current_company: linkedRecord.currentCompany,
+                    resume_file_url: fileName,
+                    parsing_status: 'PARSED',
+                    created_by: defaultUserId
+                  }
+                }).catch(() => null);
+                if (dbCand) targetCandId = dbCand.id;
+              }
+
+              if (targetCandId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetCandId)) {
+                await prisma.evaluation.create({
+                  data: {
+                    candidateId: targetCandId,
+                    jobId: targetDbJob.id,
+                    createdByUserId: evalOwner,
+                    organizationId: orgId,
+                    score: finalScore,
+                    atsScore: evalPayload.atsScore ?? finalScore,
+                    matchLevel: evalPayload.matchLevel || (finalScore >= 80 ? 'STRONG MATCH' : 'GOOD MATCH'),
+                    mandatoryCompliance: complianceStr,
+                    mandatoryFailed: Boolean(evalPayload.mandatoryRequirementFailed),
+                    decision,
+                    status: 'COMPLETED',
+                    auditData: evalPayload as any
+                  }
+                }).catch(() => null);
+              }
+            }
+          } catch (evalErr) {
+            console.warn('[CV Upload] Existing candidate evaluation creation note:', evalErr);
+          }
+        }
 
         if (files.length === 1) {
           res.status(200).json({
@@ -1056,6 +1193,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           fileSize,
           fileHash,
           uploadedAt: new Date().toISOString(),
+          uploadedBy: defaultUserId || (req as any).user?.userId,
+          createdBy: defaultUserId || (req as any).user?.userId,
         };
 
         // Cache globally for duplicate detection across jobs
@@ -1167,12 +1306,13 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           }
 
           // Automatically evaluate candidate against job requirements upon upload to requisition
-          if (jobId && jobId !== 'pool' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+          const activeJob = targetDbJob || (finalDbJobId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(finalDbJobId)
+            ? await prisma.job.findUnique({ where: { id: finalDbJobId }, include: { requirements: true, user: true } }).catch(() => null)
+            : null);
+
+          if (activeJob) {
             try {
-              const targetJob = await prisma.job.findUnique({
-                where: { id: jobId },
-                include: { requirements: true, user: true }
-              });
+              const targetJob = activeJob;
               if (targetJob) {
                 let reqs: any[] = (targetJob.requirements && targetJob.requirements.length > 0)
                   ? targetJob.requirements

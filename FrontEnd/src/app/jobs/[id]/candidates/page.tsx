@@ -912,6 +912,8 @@ export default function JobCandidatesPage() {
     try {
       const formData = new FormData();
       formData.append('jobId', jobId);
+      if (job?.position) formData.append('position', job.position);
+      if (job?.client) formData.append('client', job.client);
       items.forEach(item => {
         formData.append('files', item.file);
       });
@@ -963,6 +965,24 @@ export default function JobCandidatesPage() {
         setCandidates(result.allCandidates);
       } else {
         await fetchJobAndCandidates();
+      }
+
+      // Sync updated applicant count to localStorage for jobs directory
+      if (typeof window !== 'undefined') {
+        try {
+          const totalCount = (result.allCandidates || result.candidates || candidates).length;
+          const localJobs = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+          const updatedJobs = localJobs.map((j: any) =>
+            String(j.id) === String(jobId) ? { ...j, candidates: totalCount, candidatesCount: totalCount } : j
+          );
+          localStorage.setItem('tasknera_created_jobs', JSON.stringify(updatedJobs));
+
+          const allJobs = JSON.parse(localStorage.getItem('tasknera_all_jobs') || '[]');
+          const updatedAll = allJobs.map((j: any) =>
+            String(j.id) === String(jobId) ? { ...j, candidates: totalCount, candidatesCount: totalCount } : j
+          );
+          localStorage.setItem('tasknera_all_jobs', JSON.stringify(updatedAll));
+        } catch {}
       }
     } catch (err: any) {
       console.error('Upload failed:', err);
