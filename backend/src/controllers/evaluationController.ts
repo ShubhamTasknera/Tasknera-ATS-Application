@@ -266,8 +266,8 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     const isAdmin = req.user.role === 'ADMIN';
     const currentUserId = req.user.userId;
 
-    // 1. Fetch all candidate records
-    const allRecords = await getAllCandidateRecords();
+    // 1. Fetch candidate records uploaded by this user (or all if admin)
+    const allRecords = await getAllCandidateRecords(!isAdmin ? currentUserId : undefined);
     const candidateMap = new Map<string, CandidateRecord>();
     for (const r of allRecords) {
       candidateMap.set(r.candidate.id, r.candidate);
@@ -324,6 +324,7 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
       const appWhere: any = {};
       if (!isAdmin) {
         appWhere.job_id = { in: Array.from(allowedJobIds) };
+        appWhere.candidate = { created_by: currentUserId };
       }
       applications = await prisma.candidateApplication.findMany({
         where: appWhere,
@@ -343,6 +344,8 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
     // Process from DB applications
     for (const app of applications) {
       if (!app.candidate_id || !app.job_id) continue;
+      if (!isAdmin && app.candidate && app.candidate.created_by && app.candidate.created_by !== currentUserId) continue;
+
       const pairKey = `${app.candidate_id}___${app.job_id}`;
       if (seenPairs.has(pairKey)) continue;
       seenPairs.add(pairKey);
@@ -412,26 +415,22 @@ export const getAllEvaluations = async (req: AuthRequest, res: Response): Promis
         mandatory: `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`,
         mandatoryFailed: evalPayload.mandatoryRequirementFailed,
         decision: evalPayload.recommendation,
-        by: 'Deterministic ATS Engine (v2.0)'
+        by: 'Evidence-Based ATS Engine'
       });
     }
 
-    // 2. Also process candidate records associated directly with jobs (c.job_id or CANDIDATE_STORE)
+    // 2. Also process candidate records explicitly associated with jobs belonging to this user
     for (const item of allRecords) {
       const { candidate, jobId } = item;
-      let targetJobId = jobId || candidate.jobId;
+      const targetJobId = jobId || candidate.jobId;
 
-      // If candidate has no explicit job, only link to user's permitted jobs
-      if (!targetJobId || targetJobId.toLowerCase() === 'pool' || targetJobId === 'jd-1') {
-        const firstJobId = Array.from(allowedJobIds)[0];
-        if (firstJobId) {
-          targetJobId = firstJobId;
-        } else {
-          continue;
-        }
+      if (!targetJobId || !allowedJobIds.has(targetJobId)) {
+        continue;
       }
-
-      if (!allowedJobIds.has(targetJobId)) {
+      if (!isAdmin && candidate.uploadedBy && candidate.uploadedBy !== currentUserId) {
+        continue;
+      }
+      if (!isAdmin && candidate.createdBy && candidate.createdBy !== currentUserId) {
         continue;
       }
 

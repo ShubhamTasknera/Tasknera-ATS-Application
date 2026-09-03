@@ -17,6 +17,8 @@ export interface CandidateRecord extends CandidateParsedProfile {
   fileSize: number;
   fileHash?: string;
   uploadedAt: string;
+  uploadedBy?: string;
+  createdBy?: string;
   isDuplicate?: boolean;
 }
 
@@ -196,6 +198,8 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
     fileSize: 100000,
     fileHash: c.file_hash || undefined,
     uploadedAt: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
+    uploadedBy: c.created_by,
+    createdBy: c.created_by,
   };
 }
 
@@ -204,15 +208,17 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
  * Get all candidates belonging to the Search Talent Pool (job_id IS NULL)
  * GET /api/candidates
  */
-export const getAllCandidates = async (req: Request, res: Response): Promise<void> => {
+export const getAllCandidates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     let dbCandidates: CandidateRecord[] = [];
     try {
-      // ONLY fetch candidates from Talent Pool (job_id IS NULL)
+      // ONLY fetch candidates from Talent Pool (job_id IS NULL) belonging to this user (unless admin)
+      const poolWhere: any = { job_id: null };
+      if (req.user && req.user.role !== 'ADMIN') {
+        poolWhere.created_by = req.user.userId;
+      }
       const candidatesFromDb = await prisma.candidate.findMany({
-        where: {
-          job_id: null
-        },
+        where: poolWhere,
         include: {
           experiences: true,
           education: true,
@@ -296,12 +302,18 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
     }
 
-    // 1. Try fetching from Prisma DB if accessible and valid UUID
     let dbCandidates: CandidateRecord[] = [];
     if (isJobUuid) {
       try {
+        const appWhere: any = { job_id: jobId };
+        const directWhere: any = { job_id: jobId };
+        if (req.user && req.user.role !== 'ADMIN') {
+          appWhere.candidate = { created_by: req.user.userId };
+          directWhere.created_by = req.user.userId;
+        }
+
         const apps = await (prisma as any).candidateApplication?.findMany({
-          where: { job_id: jobId },
+          where: appWhere,
           include: {
             candidate: {
               include: {
@@ -318,7 +330,7 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
         });
 
         const directCands = await (prisma as any).candidate?.findMany({
-          where: { job_id: jobId },
+          where: directWhere,
           include: {
             experiences: true,
             education: true,
@@ -1369,14 +1381,20 @@ export async function findCandidateRecord(candidateId: string, jobId?: string): 
 
 /**
  * Retrieves all candidates from both DB and memory store with their associated jobId
+ * Filtered by user if specified
  */
-export async function getAllCandidateRecords(): Promise<Array<{ candidate: CandidateRecord; jobId: string }>> {
+export async function getAllCandidateRecords(userId?: string): Promise<Array<{ candidate: CandidateRecord; jobId: string }>> {
   const result: Array<{ candidate: CandidateRecord; jobId: string }> = [];
   const seenIds = new Set<string>();
 
   // 1. Fetch DB candidates
   try {
+    const whereClause: any = {};
+    if (userId) {
+      whereClause.created_by = userId;
+    }
     const dbCandidates = await prisma.candidate.findMany({
+      where: whereClause,
       include: {
         experiences: true,
         education: true,
@@ -1389,7 +1407,7 @@ export async function getAllCandidateRecords(): Promise<Array<{ candidate: Candi
 
     for (const c of dbCandidates) {
       const record = mapDbCandidateToRecord(c);
-      const jId = c.job_id || 'jd-1';
+      const jId = c.job_id || 'pool';
       seenIds.add(record.id);
       result.push({ candidate: record, jobId: jId });
     }
@@ -1401,8 +1419,10 @@ export async function getAllCandidateRecords(): Promise<Array<{ candidate: Candi
   for (const [jId, list] of CANDIDATE_STORE.entries()) {
     for (const c of list) {
       if (!seenIds.has(c.id)) {
-        seenIds.add(c.id);
-        result.push({ candidate: c, jobId: jId || c.jobId || 'jd-1' });
+        if (!userId || c.uploadedBy === userId || c.createdBy === userId) {
+          seenIds.add(c.id);
+          result.push({ candidate: c, jobId: jId || c.jobId || 'pool' });
+        }
       }
     }
   }
