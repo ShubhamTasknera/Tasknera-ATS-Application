@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (userId: string, email: string, role: UserRole, organizationId: string = 'org-tasknera'): string => {
   const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
@@ -178,41 +181,80 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   }
 };
 
-// @desc    Authenticate with Google OAuth / SSO
+// @desc    Authenticate with Google OAuth / SSO (Google Identity Services)
 // @route   POST /api/auth/google
 export const googleSignin = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, name, avatarUrl } = req.body;
+    const { credential, idToken } = req.body;
+    const tokenToVerify = credential || idToken;
 
-    if (!email) {
-      res.status(400).json({ error: 'Google email is required' });
+    if (!tokenToVerify) {
+      res.status(400).json({ error: 'Google credential (ID token) is required' });
       return;
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('[Google Auth] GOOGLE_CLIENT_ID is not configured in backend environment.');
+      res.status(500).json({ error: 'Google OAuth is not configured on the server' });
+      return;
+    }
 
-    // Find or create user
+    // Cryptographically verify Google ID Token with Google's public certs
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: tokenToVerify,
+        audience: clientId,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr: any) {
+      console.error('[Google Auth] ID Token Verification Failed:', verifyErr?.message || verifyErr);
+      res.status(401).json({ error: 'Invalid or expired Google authentication token' });
+      return;
+    }
+
+    if (!payload || !payload.email) {
+      res.status(401).json({ error: 'Google token did not contain an email address' });
+      return;
+    }
+
+    if (!payload.email_verified) {
+      res.status(403).json({ error: 'Google email address is not verified' });
+      return;
+    }
+
+    const cleanEmail = payload.email.toLowerCase().trim();
+    const verifiedName = payload.name ? payload.name.trim() : (cleanEmail.split('@')[0] || 'User');
+
+    // Find or create user in Supabase DB via Prisma
     let user = await prisma.user.findUnique({
       where: { email: cleanEmail }
     });
 
     if (!user) {
       const userCount = await prisma.user.count();
-      const assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
-      const randomPassword = await bcrypt.hash(`google_oauth_${Date.now()}_${Math.random()}`, 10);
+      const isAdminEmail = cleanEmail === 'admin@tasknera.com' || cleanEmail === 'admin@ats.tasknera.com';
+      const assignedRole: UserRole = (userCount === 0 || isAdminEmail) ? 'ADMIN' : 'MEMBER';
+      const randomPassword = await bcrypt.hash(`google_sso_${Date.now()}_${Math.random()}`, 10);
 
       user = await prisma.user.create({
         data: {
-          name: name ? name.trim() : cleanEmail.split('@')[0],
+          name: verifiedName,
           email: cleanEmail,
           password: randomPassword,
           role: assignedRole,
+          organizationId: 'org-tasknera'
         }
       });
+      console.log(`[Google Auth] Created new user: ${cleanEmail} (${assignedRole})`);
+    } else {
+      console.log(`[Google Auth] Existing user authenticated: ${cleanEmail} (${user.role})`);
     }
 
     const userRole = (user.role as UserRole) || 'MEMBER';
-    const token = generateToken(user.id, user.email, userRole);
+    const orgId = user.organizationId || 'org-tasknera';
+    const token = generateToken(user.id, user.email, userRole, orgId);
 
     res.status(200).json({
       message: 'Google authentication successful',
@@ -223,6 +265,7 @@ export const googleSignin = async (req: Request, res: Response): Promise<void> =
         email: user.email,
         role: userRole,
         teamId: user.teamId,
+        organizationId: orgId,
         createdAt: user.createdAt
       }
     });

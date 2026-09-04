@@ -10,7 +10,7 @@ interface AuthContextType {
   isLoading: boolean;
   signin: (email: string, password: string) => Promise<UserRole>;
   signup: (name: string, email: string, password: string) => Promise<UserRole>;
-  googleSignin: (email?: string, name?: string) => Promise<void>;
+  googleSignin: (credential: string) => Promise<UserRole>;
   setRole: (role: UserRole) => void;
   logout: () => void;
 }
@@ -146,18 +146,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     }
   };
 
-  const googleSignin = async (email?: string, name?: string): Promise<void> => {
-    const defaultEmail = email || 'recruiter@tasknera.com';
-    const defaultName = name || 'Google User';
-
+  const googleSignin = async (credential: string): Promise<UserRole> => {
     const data = await fetchApi<AuthResponse>('/auth/google', {
       method: 'POST',
-      body: JSON.stringify({ email: defaultEmail, name: defaultName }),
+      body: JSON.stringify({ credential }),
     });
 
+    const userRole: UserRole = data.user?.role === 'ADMIN' ? 'ADMIN' : 'RECRUITER_MEMBER';
     localStorage.setItem('tasknera_token', data.token);
+    localStorage.setItem('tasknera_role', userRole);
+    if (data.user?.email) localStorage.setItem('tasknera_email', data.user.email);
+    if (data.user?.name) localStorage.setItem('tasknera_name', data.user.name);
     setToken(data.token);
-    setUser(data.user);
+    setUser({ ...data.user, role: userRole });
+    return userRole;
   };
 
   const logout = (): void => {
