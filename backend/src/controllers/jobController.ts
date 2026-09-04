@@ -443,9 +443,17 @@ export const getAllJobs = async (req: AuthRequest, res: Response): Promise<void>
       };
     });
 
-    // Merge non-UUID custom jobs from GLOBAL_JOB_STORE
+    // Merge non-UUID custom jobs from GLOBAL_JOB_STORE (isolated by user)
     for (const [gId, gJob] of GLOBAL_JOB_STORE.entries()) {
       if (!formattedJobs.some(fj => fj.id === gId)) {
+        // Enforce user isolation: non-admin users only see jobs they created
+        if (req.user && req.user.role !== 'ADMIN') {
+          const jobOwner = gJob.created_by || gJob.createdBy;
+          if (!jobOwner || (jobOwner !== req.user.userId && jobOwner !== req.user.id)) {
+            continue;
+          }
+        }
+
         const memCount = CANDIDATE_STORE.get(gId)?.length || 0;
         const totalCount = Math.max(gJob.candidatesCount || 0, gJob.candidates || 0, memCount);
         formattedJobs.unshift({
@@ -564,7 +572,15 @@ export const getJobById = async (req: AuthRequest, res: Response): Promise<void>
 
     // 1. Check in-memory store first
     if (GLOBAL_JOB_STORE.has(jobId)) {
-      res.status(200).json({ job: GLOBAL_JOB_STORE.get(jobId) });
+      const gJob = GLOBAL_JOB_STORE.get(jobId);
+      if (req.user && req.user.role !== 'ADMIN') {
+        const jobOwner = gJob.created_by || gJob.createdBy;
+        if (jobOwner && jobOwner !== req.user.userId && jobOwner !== req.user.id) {
+          res.status(403).json({ error: 'Access denied: Requisition belongs to another recruiter.' });
+          return;
+        }
+      }
+      res.status(200).json({ job: gJob });
       return;
     }
 

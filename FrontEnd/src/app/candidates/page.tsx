@@ -333,9 +333,6 @@ export default function CandidatesPage() {
       if (!res || !res.ok) {
         res = await fetch(`${backendUrl}/jobs/all/candidates`, { headers }).catch(() => null);
       }
-      if (!res || !res.ok) {
-        res = await fetch(`${backendUrl}/jobs/jd-1/candidates`).catch(() => null);
-      }
 
       if (res && res.ok) {
         const data = await res.json();
@@ -821,7 +818,7 @@ export default function CandidatesPage() {
         )}
 
         {/* Candidate Grid View */}
-        {!isLoading && viewMode === 'grid' && (
+        {!isLoading && viewMode === 'grid' && filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map((c, idx) => (
               <div key={`${c.id}-${idx}`} className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">

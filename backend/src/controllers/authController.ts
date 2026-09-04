@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import prisma from '../config/prisma';
 import { AuthRequest, UserRole } from '../middleware/authMiddleware';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (userId: string, email: string, role: UserRole, organizationId: string = 'org-tasknera'): string => {
   const secret = process.env.JWT_SECRET || 'ats_tasknera_super_secret_jwt_key_2026';
@@ -22,7 +25,23 @@ interface InMemoryUser {
   updatedAt: Date;
 }
 
-const IN_MEMORY_USERS: Map<string, InMemoryUser> = new Map();
+const DESIGNATED_ADMIN_EMAIL = 'admin123@gmail.com';
+
+const IN_MEMORY_USERS: Map<string, InMemoryUser> = new Map([
+  [
+    DESIGNATED_ADMIN_EMAIL,
+    {
+      id: 'usr_admin_master',
+      name: 'Admin',
+      email: DESIGNATED_ADMIN_EMAIL,
+      password: bcrypt.hashSync('admin12345', 10),
+      role: 'ADMIN',
+      organizationId: 'org-tasknera',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ],
+]);
 
 // @desc    Register a new user
 // @route   POST /api/auth/signup
@@ -48,6 +67,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
     }
 
     const cleanEmail = email.toLowerCase().trim();
+    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL;
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const resolvedOrgId = organizationId ? String(organizationId).trim() : 'org-tasknera';
@@ -65,15 +85,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      const userCount = await prisma.user.count();
-      let assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
-      if (role && ['ADMIN', 'MEMBER', 'TEAM_LEADER'].includes(role.toUpperCase())) {
-        assignedRole = role.toUpperCase() as UserRole;
-      }
+      // ONLY admin123@gmail.com can be granted the ADMIN role
+      const assignedRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
 
       user = await prisma.user.create({
         data: {
-          name: name ? name.trim() : null,
+          name: isDesignatedAdmin ? 'Admin' : (name ? name.trim() : null),
           email: cleanEmail,
           password: hashedPassword,
           role: assignedRole,
@@ -87,14 +104,12 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         return;
       }
 
-      let assignedRole: UserRole = IN_MEMORY_USERS.size === 0 || cleanEmail.includes('admin') ? 'ADMIN' : 'MEMBER';
-      if (role && ['ADMIN', 'MEMBER', 'TEAM_LEADER'].includes(role.toUpperCase())) {
-        assignedRole = role.toUpperCase() as UserRole;
-      }
+      // ONLY admin123@gmail.com can be granted the ADMIN role
+      const assignedRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
 
       const memoryUser: InMemoryUser = {
-        id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        name: name ? name.trim() : cleanEmail.split('@')[0],
+        id: isDesignatedAdmin ? 'usr_admin_master' : `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        name: isDesignatedAdmin ? 'Admin' : (name ? name.trim() : cleanEmail.split('@')[0]),
         email: cleanEmail,
         password: hashedPassword,
         role: assignedRole,
@@ -185,7 +200,8 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
       user = memUser;
     }
 
-    const userRole = (user.role as UserRole) || 'MEMBER';
+    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL;
+    const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
     const orgId = user.organizationId || 'org-tasknera';
     const token = generateToken(user.id, user.email, userRole, orgId);
 
@@ -194,7 +210,7 @@ export const signin = async (req: Request, res: Response): Promise<void> => {
       token,
       user: {
         id: user.id,
-        name: user.name,
+        name: isDesignatedAdmin ? 'Admin' : user.name,
         email: user.email,
         role: userRole,
         teamId: user.teamId,
@@ -240,22 +256,24 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       // Find in memory by email or id
       const memUser = Array.from(IN_MEMORY_USERS.values()).find(u => u.id === req.user?.userId || u.email === req.user?.email);
       if (memUser) {
+        const isDesignatedAdmin = memUser.email === DESIGNATED_ADMIN_EMAIL;
         user = {
           id: memUser.id,
-          name: memUser.name,
+          name: isDesignatedAdmin ? 'Admin' : memUser.name,
           email: memUser.email,
-          role: memUser.role,
+          role: isDesignatedAdmin ? 'ADMIN' : 'MEMBER',
           teamId: null,
           organizationId: memUser.organizationId,
           createdAt: memUser.createdAt,
           updatedAt: memUser.updatedAt
         };
       } else if (req.user?.email) {
+        const isDesignatedAdmin = req.user.email === DESIGNATED_ADMIN_EMAIL;
         user = {
           id: req.user.userId,
-          name: req.user.email.split('@')[0],
+          name: isDesignatedAdmin ? 'Admin' : req.user.email.split('@')[0],
           email: req.user.email,
-          role: req.user.role,
+          role: isDesignatedAdmin ? 'ADMIN' : 'MEMBER',
           teamId: null,
           organizationId: req.user.organizationId || 'org-tasknera',
           createdAt: new Date().toISOString(),
@@ -269,6 +287,10 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
+    const isDesignatedAdmin = user.email === DESIGNATED_ADMIN_EMAIL;
+    user.role = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
+    if (isDesignatedAdmin) user.name = 'Admin';
+
     res.status(200).json({ user });
   } catch (error) {
     console.error('GetMe Error:', error);
@@ -276,33 +298,52 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   }
 };
 
-// @desc    Authenticate with Google OAuth / SSO
+// @desc    Authenticate with Google OAuth (ID Token verification)
 // @route   POST /api/auth/google
 export const googleSignin = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, name, avatarUrl } = req.body;
+    const { idToken } = req.body;
 
-    if (!email) {
-      res.status(400).json({ error: 'Google email is required' });
+    if (!idToken) {
+      res.status(400).json({ error: 'Google ID token is required' });
       return;
     }
 
-    const cleanEmail = email.toLowerCase().trim();
+    // Verify the Google ID token
+    let payload: any;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.error('[AuthController] Google token verification failed:', verifyErr);
+      res.status(401).json({ error: 'Invalid Google token. Please try signing in again.' });
+      return;
+    }
+
+    if (!payload || !payload.email) {
+      res.status(400).json({ error: 'Could not retrieve email from Google account' });
+      return;
+    }
+
+    const cleanEmail = payload.email.toLowerCase().trim();
+    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL;
+    const googleName = isDesignatedAdmin ? 'Admin' : (payload.name || payload.given_name || cleanEmail.split('@')[0]);
+    const avatarUrl = payload.picture || null;
     let user: any = null;
 
     try {
-      user = await prisma.user.findUnique({
-        where: { email: cleanEmail }
-      });
+      user = await prisma.user.findUnique({ where: { email: cleanEmail } });
 
       if (!user) {
-        const userCount = await prisma.user.count();
-        const assignedRole: UserRole = userCount === 0 ? 'ADMIN' : 'MEMBER';
+        const assignedRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
         const randomPassword = await bcrypt.hash(`google_oauth_${Date.now()}_${Math.random()}`, 10);
 
         user = await prisma.user.create({
           data: {
-            name: name ? name.trim() : cleanEmail.split('@')[0],
+            name: googleName,
             email: cleanEmail,
             password: randomPassword,
             role: assignedRole,
@@ -315,11 +356,11 @@ export const googleSignin = async (req: Request, res: Response): Promise<void> =
       if (!memUser) {
         const randomPassword = await bcrypt.hash(`google_oauth_${Date.now()}`, 10);
         memUser = {
-          id: `usr_${Date.now()}`,
-          name: name ? name.trim() : cleanEmail.split('@')[0],
+          id: isDesignatedAdmin ? 'usr_admin_master' : `usr_${Date.now()}`,
+          name: googleName,
           email: cleanEmail,
           password: randomPassword,
-          role: cleanEmail.includes('admin') ? 'ADMIN' : 'MEMBER',
+          role: isDesignatedAdmin ? 'ADMIN' : 'MEMBER',
           organizationId: 'org-tasknera',
           createdAt: new Date(),
           updatedAt: new Date()
@@ -329,18 +370,20 @@ export const googleSignin = async (req: Request, res: Response): Promise<void> =
       user = memUser;
     }
 
-    const userRole = (user.role as UserRole) || 'MEMBER';
-    const token = generateToken(user.id, user.email, userRole);
+    const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'MEMBER';
+    const token = generateToken(user.id, user.email, userRole, user.organizationId || 'org-tasknera');
 
     res.status(200).json({
       message: 'Google authentication successful',
       token,
       user: {
         id: user.id,
-        name: user.name,
+        name: isDesignatedAdmin ? 'Admin' : user.name,
         email: user.email,
         role: userRole,
+        avatarUrl,
         teamId: user.teamId,
+        organizationId: user.organizationId || 'org-tasknera',
         createdAt: user.createdAt
       }
     });

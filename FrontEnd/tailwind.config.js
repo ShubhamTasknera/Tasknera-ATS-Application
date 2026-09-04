@@ -44,6 +44,7 @@ module.exports = {
         sans: ['Inter', 'sans-serif'],
       },
       boxShadow: {
+        '2xs':  '0 1px 2px rgba(0,0,0,0.03)',
         xs:     '0 1px 2px rgba(0,0,0,0.04)',
         sm:     '0 1px 2px rgba(0,0,0,0.05)',
         card:   '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',

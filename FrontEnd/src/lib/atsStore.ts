@@ -123,6 +123,12 @@ export interface RecruiterMetric {
   capacity: 'Optimal' | 'Normal' | 'Available' | 'High Load';
   lastActive: string;
   recentActivity?: string[];
+  avatarUrl?: string;
+  phone?: string;
+  strengths?: string[];
+  insightsSummary?: string;
+  topSkills?: string[];
+  efficiencyScore?: number;
 }
 
 const INITIAL_JOBS: JobItem[] = [
@@ -457,6 +463,12 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
     avgTimePerResume: '1.8 min',
     todayHoursSpent: 6.4,
     totalHoursThisWeek: 32.8,
+    capacity: 'Normal',
+    lastActive: 'Active now',
+    strengths: ['SAP S/4HANA Talent', 'High Shortlist Quality', 'Precision Sourcing'],
+    insightsSummary: 'Sarah is the highest-converting SAP recruiter with a 94% interview pass rate. She averaged 6.4 hours today evaluating S/4HANA candidates with exceptional 1.8 min/CV parsing speed.',
+    topSkills: ['SAP CO', 'S/4HANA 2020', 'Material Ledger', 'Product Costing (CO-PC)'],
+    efficiencyScore: 94,
     dailyTimeLogs: [
       { day: 'Mon', date: 'Aug 28', hoursSpent: 6.8, resumesReviewedCount: 38, resumesTimeHours: 3.4, screeningsCount: 10, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.2 },
       { day: 'Tue', date: 'Aug 29', hoursSpent: 7.2, resumesReviewedCount: 42, resumesTimeHours: 3.8, screeningsCount: 12, screeningTimeHours: 2.4, jdsUploadedCount: 2, jdTimeHours: 1.0 },
@@ -464,12 +476,10 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
       { day: 'Thu', date: 'Aug 31', hoursSpent: 5.9, resumesReviewedCount: 34, resumesTimeHours: 3.0, screeningsCount: 8, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.0 },
       { day: 'Fri', date: 'Sep 01', hoursSpent: 6.4, resumesReviewedCount: 34, resumesTimeHours: 3.1, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
     ],
-    capacity: 'Normal',
-    lastActive: 'Active now',
     recentActivity: [
       'Uploaded 32 resumes for SAP CO Lead Consultant (Took 1.2 hrs)',
       'Screened Michael Chen (76% fit - 18 min call)',
-      'Shortlisted Sarah Jenkins (94% fit)',
+      'Shortlisted Sarah Jenkins (94% fit - direct client match)',
     ],
   },
   {
@@ -488,6 +498,12 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
     avgTimePerResume: '1.5 min',
     todayHoursSpent: 7.1,
     totalHoursThisWeek: 35.6,
+    capacity: 'Optimal',
+    lastActive: '15 min ago',
+    strengths: ['Distributed Systems', 'Rapid CV Processing', 'Top Screen Volume'],
+    insightsSummary: 'Priya leads the team in total resumes evaluated (215 CVs this week) and maintains the highest review velocity at 1.5 min per resume with 42 candidates screened.',
+    topSkills: ['Golang', 'Node.js', 'Distributed Systems', 'PostgreSQL', 'Microservices'],
+    efficiencyScore: 96,
     dailyTimeLogs: [
       { day: 'Mon', date: 'Aug 28', hoursSpent: 7.4, resumesReviewedCount: 46, resumesTimeHours: 3.9, screeningsCount: 12, screeningTimeHours: 2.3, jdsUploadedCount: 2, jdTimeHours: 1.2 },
       { day: 'Tue', date: 'Aug 29', hoursSpent: 7.0, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 11, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.2 },
@@ -495,8 +511,6 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
       { day: 'Thu', date: 'Aug 31', hoursSpent: 6.9, resumesReviewedCount: 40, resumesTimeHours: 3.4, screeningsCount: 11, screeningTimeHours: 2.2, jdsUploadedCount: 1, jdTimeHours: 1.3 },
       { day: 'Fri', date: 'Sep 01', hoursSpent: 7.1, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 11, screeningTimeHours: 2.3, jdsUploadedCount: 2, jdTimeHours: 1.2 },
     ],
-    capacity: 'Optimal',
-    lastActive: '15 min ago',
     recentActivity: [
       'Created JD: Senior Backend Engineer (Go/Node) (Took 45 min)',
       'Parsed & evaluated 45 CVs with AI matcher (Took 1.8 hrs)',
@@ -519,6 +533,12 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
     avgTimePerResume: '2.2 min',
     todayHoursSpent: 5.4,
     totalHoursThisWeek: 26.2,
+    capacity: 'Available',
+    lastActive: '1 hour ago',
+    strengths: ['Cloud Infrastructure', 'Deep Technical Screening', 'Available Capacity'],
+    insightsSummary: 'David specializes in high-bar Cloud DevOps SRE assessments. He has available capacity (5.4h logged today) and is ready for new engineering requisition assignments.',
+    topSkills: ['Kubernetes', 'AWS Architecture', 'Terraform', 'CI/CD Pipelines'],
+    efficiencyScore: 88,
     dailyTimeLogs: [
       { day: 'Mon', date: 'Aug 28', hoursSpent: 5.2, resumesReviewedCount: 24, resumesTimeHours: 2.6, screeningsCount: 6, screeningTimeHours: 1.6, jdsUploadedCount: 1, jdTimeHours: 1.0 },
       { day: 'Tue', date: 'Aug 29', hoursSpent: 5.6, resumesReviewedCount: 28, resumesTimeHours: 2.8, screeningsCount: 7, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.0 },
@@ -526,8 +546,6 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
       { day: 'Thu', date: 'Aug 31', hoursSpent: 5.0, resumesReviewedCount: 25, resumesTimeHours: 2.5, screeningsCount: 6, screeningTimeHours: 1.5, jdsUploadedCount: 0, jdTimeHours: 1.0 },
       { day: 'Fri', date: 'Sep 01', hoursSpent: 5.4, resumesReviewedCount: 26, resumesTimeHours: 2.7, screeningsCount: 7, screeningTimeHours: 1.7, jdsUploadedCount: 1, jdTimeHours: 1.0 },
     ],
-    capacity: 'Available',
-    lastActive: '1 hour ago',
     recentActivity: [
       'Uploaded 20 resumes for DevOps SRE (Took 1.1 hrs)',
       'Screened James Wilson (79% fit - 15 min call)',
@@ -549,6 +567,12 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
     avgTimePerResume: '1.4 min',
     todayHoursSpent: 7.5,
     totalHoursThisWeek: 37.0,
+    capacity: 'Optimal',
+    lastActive: 'Active now',
+    strengths: ['Requisition Architecture', 'Team Mentorship', 'Client Stakeholder Mgmt'],
+    insightsSummary: 'John leads the SAP pod, managing 6 active enterprise requisitions and delivering 38 shortlists with a 91% candidate match rating and rapid review velocity.',
+    topSkills: ['Enterprise Architecture', 'SAP Advisory', 'JD Structuring', 'Client Delivery'],
+    efficiencyScore: 98,
     dailyTimeLogs: [
       { day: 'Mon', date: 'Aug 28', hoursSpent: 7.8, resumesReviewedCount: 52, resumesTimeHours: 4.0, screeningsCount: 9, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 2.0 },
       { day: 'Tue', date: 'Aug 29', hoursSpent: 7.5, resumesReviewedCount: 48, resumesTimeHours: 3.8, screeningsCount: 9, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.9 },
@@ -556,8 +580,6 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
       { day: 'Thu', date: 'Aug 31', hoursSpent: 7.0, resumesReviewedCount: 46, resumesTimeHours: 3.6, screeningsCount: 8, screeningTimeHours: 1.7, jdsUploadedCount: 1, jdTimeHours: 1.7 },
       { day: 'Fri', date: 'Sep 01', hoursSpent: 7.5, resumesReviewedCount: 48, resumesTimeHours: 3.8, screeningsCount: 8, screeningTimeHours: 1.7, jdsUploadedCount: 2, jdTimeHours: 2.0 },
     ],
-    capacity: 'Optimal',
-    lastActive: 'Active now',
     recentActivity: [
       'Created JD: SAP CO Lead Consultant (Took 1.2 hrs)',
       'Approved 5 candidate submissions for client interview',
@@ -580,6 +602,12 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
     avgTimePerResume: '1.6 min',
     todayHoursSpent: 7.0,
     totalHoursThisWeek: 34.5,
+    capacity: 'Optimal',
+    lastActive: 'Active now',
+    strengths: ['Score Calibration', 'Technical QA Signoff', 'Pipeline Optimization'],
+    insightsSummary: 'Alex oversees technical calibration for Cloud & Engineering. Reviewed 39 candidate score edge cases this week and approved 41 candidates for final client rounds.',
+    topSkills: ['Full-Stack Systems', 'Cloud DevOps', 'ATS Algorithm Calibration'],
+    efficiencyScore: 95,
     dailyTimeLogs: [
       { day: 'Mon', date: 'Aug 28', hoursSpent: 7.0, resumesReviewedCount: 40, resumesTimeHours: 3.4, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.8 },
       { day: 'Tue', date: 'Aug 29', hoursSpent: 7.2, resumesReviewedCount: 42, resumesTimeHours: 3.6, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.8 },
@@ -587,8 +615,6 @@ const INITIAL_RECRUITERS: RecruiterMetric[] = [
       { day: 'Thu', date: 'Aug 31', hoursSpent: 6.5, resumesReviewedCount: 36, resumesTimeHours: 3.0, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.7 },
       { day: 'Fri', date: 'Sep 01', hoursSpent: 7.0, resumesReviewedCount: 39, resumesTimeHours: 3.3, screeningsCount: 8, screeningTimeHours: 1.8, jdsUploadedCount: 2, jdTimeHours: 1.9 },
     ],
-    capacity: 'Optimal',
-    lastActive: 'Active now',
     recentActivity: [
       'Calibrated score for Marcus Vance to 91%',
       'Reviewed 12 borderline AI match candidates (Took 1.1 hrs)',
@@ -624,7 +650,34 @@ class ATSStore {
       this.jobs = storedJobs ? JSON.parse(storedJobs) : INITIAL_JOBS;
       this.candidates = storedCandidates ? JSON.parse(storedCandidates) : INITIAL_CANDIDATES;
       this.auditEvents = storedAudits ? JSON.parse(storedAudits) : INITIAL_AUDIT_EVENTS;
-      this.recruiters = storedRecruiters ? JSON.parse(storedRecruiters) : INITIAL_RECRUITERS;
+      
+      if (storedRecruiters) {
+        const parsed = JSON.parse(storedRecruiters) as RecruiterMetric[];
+        // Merge enriched metadata into any cached stored recruiters
+        this.recruiters = parsed.map(pr => {
+          const init = INITIAL_RECRUITERS.find(ir => ir.id === pr.id || ir.email.toLowerCase() === pr.email.toLowerCase());
+          if (init) {
+            return {
+              ...init,
+              ...pr,
+              strengths: pr.strengths?.length ? pr.strengths : init.strengths,
+              insightsSummary: pr.insightsSummary || init.insightsSummary,
+              topSkills: pr.topSkills?.length ? pr.topSkills : init.topSkills,
+              efficiencyScore: pr.efficiencyScore || init.efficiencyScore,
+            };
+          }
+          return pr;
+        });
+
+        // Ensure all default initial recruiters are always present
+        for (const ir of INITIAL_RECRUITERS) {
+          if (!this.recruiters.some(r => r.id === ir.id || r.email.toLowerCase() === ir.email.toLowerCase())) {
+            this.recruiters.push(ir);
+          }
+        }
+      } else {
+        this.recruiters = INITIAL_RECRUITERS;
+      }
     } catch {
       this.jobs = INITIAL_JOBS;
       this.candidates = INITIAL_CANDIDATES;
@@ -687,6 +740,89 @@ class ATSStore {
 
   public getRecruiters(): RecruiterMetric[] {
     return this.recruiters;
+  }
+
+  public getRecruiter(id: string): RecruiterMetric | undefined {
+    return this.recruiters.find(r => r.id === id);
+  }
+
+  public ensureMember(user: { id?: string; name?: string | null; email?: string; role?: string }): RecruiterMetric | null {
+    if (!user || !user.email) return null;
+    const cleanEmail = user.email.toLowerCase().trim();
+    const cleanName = user.name?.trim() || cleanEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    const existing = this.recruiters.find(r => r.email.toLowerCase() === cleanEmail || r.name.toLowerCase() === cleanName.toLowerCase());
+    if (existing) {
+      if (user.role && (user.role === 'ADMIN' || user.role.toUpperCase().includes('ADMIN')) && existing.role !== 'ADMIN') {
+        existing.role = 'ADMIN';
+        this.saveToStorage();
+      }
+      return existing;
+    }
+
+    const newMember: RecruiterMetric = {
+      id: user.id || `rec-${Date.now()}`,
+      name: cleanName,
+      email: cleanEmail,
+      role: (user.role === 'ADMIN' ? 'ADMIN' : user.role === 'TEAM_LEAD' ? 'TEAM_LEAD' : 'RECRUITER_MEMBER'),
+      team: user.role === 'ADMIN' ? 'Executive & TA Leadership' : 'Cloud & Engineering Pod',
+      activeJobs: 3,
+      jdsUploaded: 5,
+      resumesSeen: 142,
+      screenedThisWeek: 34,
+      tlApprovedCount: 18,
+      avgMatchScore: 87,
+      avgTimePerScreen: '3.0 min',
+      avgTimePerResume: '1.7 min',
+      todayHoursSpent: 6.5,
+      totalHoursThisWeek: 32.5,
+      capacity: 'Optimal',
+      lastActive: 'Active now',
+      strengths: ['AI Resume Analysis', 'Talent Engagement', 'Fast Evaluation'],
+      insightsSummary: `${cleanName} is actively engaged in requisition screening with 6.5 hours logged today. Maintains strong 87% match quality and 1.7 min/CV review velocity.`,
+      topSkills: ['Full-Cycle Recruiting', 'Technical Screening', 'Candidate Calibration'],
+      efficiencyScore: 93,
+      dailyTimeLogs: [
+        { day: 'Mon', date: 'Aug 28', hoursSpent: 6.6, resumesReviewedCount: 32, resumesTimeHours: 3.2, screeningsCount: 8, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.3 },
+        { day: 'Tue', date: 'Aug 29', hoursSpent: 6.8, resumesReviewedCount: 36, resumesTimeHours: 3.5, screeningsCount: 9, screeningTimeHours: 2.1, jdsUploadedCount: 1, jdTimeHours: 1.2 },
+        { day: 'Wed', date: 'Aug 30', hoursSpent: 6.4, resumesReviewedCount: 30, resumesTimeHours: 3.1, screeningsCount: 7, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.4 },
+        { day: 'Thu', date: 'Aug 31', hoursSpent: 6.2, resumesReviewedCount: 28, resumesTimeHours: 2.9, screeningsCount: 6, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.5 },
+        { day: 'Fri', date: 'Sep 01', hoursSpent: 6.5, resumesReviewedCount: 32, resumesTimeHours: 3.2, screeningsCount: 8, screeningTimeHours: 2.0, jdsUploadedCount: 1, jdTimeHours: 1.3 },
+      ],
+      recentActivity: [
+        'Reviewed candidate batch on active requisitions (Took 1.2 hrs)',
+        'Calibrated ATS scoring rules and candidate match rankings',
+      ]
+    };
+
+    this.recruiters = [newMember, ...this.recruiters];
+    this.saveToStorage();
+    return newMember;
+  }
+
+  public addRecruiter(member: Omit<RecruiterMetric, 'id'>): RecruiterMetric {
+    const newMember: RecruiterMetric = {
+      ...member,
+      id: `rec-${Date.now()}`,
+    };
+    this.recruiters = [newMember, ...this.recruiters];
+    this.logAudit({
+      action: 'USER_ROLE_UPDATED',
+      user: 'Administrator',
+      userRole: 'ADMIN',
+      target: `Member ${newMember.name}`,
+      detail: `Provisioned new team member ${newMember.name} in ${newMember.team} with role ${newMember.role}.`
+    });
+    this.saveToStorage();
+    return newMember;
+  }
+
+  public updateRecruiter(id: string, updates: Partial<RecruiterMetric>): RecruiterMetric | undefined {
+    const rec = this.recruiters.find(r => r.id === id);
+    if (!rec) return undefined;
+    Object.assign(rec, updates);
+    this.saveToStorage();
+    return rec;
   }
 
   // --- Admin Analytics Helpers ---

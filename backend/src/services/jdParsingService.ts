@@ -497,13 +497,13 @@ export const detectHeading = (line: string): { isHeading: boolean; type: JobSect
     return { isHeading: true, type: 'RESPONSIBILITIES', title: trimmed };
   }
 
-  // Summary Headings
-  if (/^(job\s+summary|summary|about\s+the\s+role|overview|position\s+summary|about\s+us|about\s+[a-z0-9&.,'-]+|company\s+overview|why\s+join\s+us|job\s+purpose|role\s+snapshot|snapshot)$/i.test(lower)) {
+  // Summary & Company & Role Headings
+  if (/^(job\s+summary|summary|about\s+the\s+role|overview|position\s+summary|about\s+us|about\s+[a-z0-9&.,'-]+|company\s+overview|why\s+join\s+us|job\s+purpose|role\s+snapshot|snapshot|what\s+you\s+get|what\s+you'll\s+get|what\s+we\s+offer|perks\s*(?:&|and)?\s*benefits|perks|benefits|why\s+this\s+role|the\s+opportunity)$/i.test(lower)) {
     return { isHeading: true, type: 'SUMMARY', title: trimmed };
   }
 
-  // Commercials & Interview Logistics & Cheat Sheets & Pre-Screening Questions
-  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms|core\s+competencies|recruitment\s+information|recruiter\s+cheat\s+sheet.*|recruiter[’']s\s+cheat\s+code.*|boolean\s+search\s+strings.*|candidate\s+pre-screening\s+questionnaire.*|screening\s+&\s+evaluation\s+parameters.*|the\s+30-second\s+resume\s+scan.*|the\s+30-second\s+resume\s+screening\s+checklist.*|the\s+5-minute\s+screening\s+script.*|3-minute\s+phone\s+screening\s+script.*|quick-reference\s+match\s+scorecard.*|quick\s+.*instant\s+disqualification.*|instant\s+disqualification.*|profile\s+identifiers.*)$/i.test(lower)) {
+  // Commercials & Recruiter Billing & Exclusions & Interview Logistics
+  if (/^(commercials|compensation\s+details|billing\s+details|interview\s+process|interview\s+details|payment\s+terms|fee\s+structure|incentives?|freelance\s+recruiter.*|replacement\s+guarantee|what\s+we(?:'re|\s+are)\s+not\s+asking\s+for|what\s+we\s+do\s+not\s+want|what\s+you\s+don't\s+need|who\s+this\s+is\s+not\s+for|not\s+looking\s+for|exclusions|non-requirements|core\s+competencies|recruitment\s+information|recruiter\s+cheat\s+sheet.*|recruiter[’']s\s+cheat\s+code.*|boolean\s+search\s+strings.*|candidate\s+pre-screening\s+questionnaire.*|screening\s+&\s+evaluation\s+parameters.*|the\s+30-second\s+resume\s+scan.*|the\s+30-second\s+resume\s+screening\s+checklist.*|the\s+5-minute\s+screening\s+script.*|3-minute\s+phone\s+screening\s+script.*|quick-reference\s+match\s+scorecard.*|quick\s+.*instant\s+disqualification.*|instant\s+disqualification.*|profile\s+identifiers.*)$/i.test(lower)) {
     return { isHeading: true, type: 'COMMERCIALS', title: trimmed };
   }
 
@@ -650,6 +650,14 @@ export const isValidRequirement = (text: string): boolean => {
   if (/keep\s+(the\s+)?hiring\s+company|confidential|name\s+to\s+be\s+disclosed|nothing\s+to\s+be\s+written|recruiter\s+note|internal\s+note/i.test(text)) return false;
   // Reject work mode, location, commercials, and compensation metadata
   if (/^(?:work\s+mode|location|commercials|total\s+incentives?|payable\s+period)/i.test(text.trim())) return false;
+  // Reject Recruiter Billing, Commercials, CTC, and Agency terms
+  if (/(?:fixed\s+ctc|freelance\s+recruiter|total\s+billing|billing\s+payables?|replacement\s+guarantee|placement\s+fee|incentive\s*[-:]|recruiter\s+margin|invoice\s+submission)/i.test(text)) return false;
+  // Reject company marketing / pitch / blurbs
+  if (/(?:bootstrapped\s+company|customers?\s+in\s+\d+\s+countries|chance\s+to\s+build\s+the\s+sales\s+motion|we(?:'re|\s+are)\s+looking\s+for\s+someone\s+climbing|founded\s+in\s+\d+|our\s+mission\s+is|about\s+(?:the\s+)?company)/i.test(text)) return false;
+  // Reject exclusion clauses ("What we're not asking for", "An MBA. Five-plus years...")
+  if (/(?:what\s+we(?:'re|\s+are)\s+not\s+asking|not\s+asking\s+for|what\s+you\s+don't\s+need|an\s+mba\.?\s+five-plus\s+years|big-logo\s+cv|don't\s+apply\s+if)/i.test(text)) return false;
+  // Reject perks & compensation lines
+  if (/(?:what\s+you\s+get|what\s+we\s+offer|perks\s+and\s+benefits|health\s+insurance|unlimited\s+pto|esops?|equity\s+grant|gym\s+membership|free\s+lunch)/i.test(text)) return false;
   // Reject single word fragments if too short
   if (!text.includes(' ') && text.length < 10) return false;
   // Reject common fragment tails

@@ -1,108 +1,274 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useAuth } from '@/context/AuthContext';
 
-const scoreColor = (n: number) =>
-  n >= 80 ? 'text-green-600' : n >= 65 ? 'text-amber-500' : 'text-red-500';
+interface JobItem {
+  id: string;
+  title: string;
+  client: string;
+  location: string;
+  mode: string;
+  candidates: number;
+  topScore: number | null;
+  status: string;
+  created?: string;
+}
 
-const decisionStyle = (d: string) =>
-  d === 'SUBMIT'
-    ? 'bg-status-submit-bg text-status-submit-text border-status-submit-border'
-    : d === 'REVIEW'
-    ? 'bg-status-review-bg text-status-review-text border-status-review-border'
-    : 'bg-status-reject-bg text-status-reject-text border-status-reject-border';
+interface CandidateEvaluationItem {
+  id: string;
+  name: string;
+  role: string;
+  match: number;
+  decision: string;
+  time: string;
+  jobId?: string;
+}
 
-const kpis = [
-  {
-    label: 'Active Jobs',
-    value: '24',
-    sub: '+3 this week',
-    accent: 'bg-brand-orange',
-    textAccent: 'text-brand-orange',
-    bgAccent: 'bg-brand-orange-pale',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'Candidates Evaluated',
-    value: '1,847',
-    sub: '+127 this month',
-    accent: 'bg-violet-500',
-    textAccent: 'text-violet-600',
-    bgAccent: 'bg-violet-50',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'Avg Mandatory Compliance',
-    value: '92.4%',
-    sub: 'Across all jobs',
-    accent: 'bg-emerald-500',
-    textAccent: 'text-emerald-600',
-    bgAccent: 'bg-emerald-50',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-  {
-    label: 'Pending Submissions',
-    value: '14',
-    sub: 'Awaiting review',
-    accent: 'bg-amber-500',
-    textAccent: 'text-amber-600',
-    bgAccent: 'bg-amber-50',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-];
-
-const pipeline = [
-  { stage: 'Total Evaluated', value: 1847, color: 'bg-brand-charcoal' },
-  { stage: 'Submit',          value: 776,  color: 'bg-emerald-500'    },
-  { stage: 'Review',          value: 572,  color: 'bg-amber-400'      },
-  { stage: 'Do Not Submit',   value: 499,  color: 'bg-red-400'        },
-  { stage: 'Submitted',       value: 53,   color: 'bg-blue-500'       },
-  { stage: 'Interviewing',    value: 28,   color: 'bg-violet-500'     },
-  { stage: 'Selected',        value: 12,   color: 'bg-teal-500'       },
-];
-
-const jobs = [
-  { id: 'jd-1', title: 'SAP CO Consultant',         client: 'TechCorp Industries',  location: 'New York, NY',      mode: 'Hybrid',  candidates: 42, topScore: 94, status: 'Active' },
-  { id: 'jd-2', title: 'Lead S/4HANA Architect',    client: 'Global Logistics Inc', location: 'Chicago, IL',       mode: 'Remote',  candidates: 28, topScore: 88, status: 'Active' },
-  { id: 'jd-3', title: 'Financial Systems Analyst',  client: 'Pinnacle Financial',   location: 'San Francisco, CA', mode: 'Onsite',  candidates: 19, topScore: 76, status: 'Active' },
-  { id: 'jd-4', title: 'Senior Backend Engineer',    client: 'TaskNera Enterprise',  location: 'Remote',            mode: 'Remote',  candidates: 65, topScore: 91, status: 'Active' },
-];
-
-const recent = [
-  { name: 'Sarah Mitchell',  role: 'SAP CO Consultant',   match: 94, decision: 'SUBMIT',        time: '2h ago' },
-  { name: 'Michael Chen',    role: 'SAP Consultant',       match: 76, decision: 'REVIEW',        time: '5h ago' },
-  { name: 'Jennifer Lopez',  role: 'Junior SAP Analyst',  match: 52, decision: 'DO NOT SUBMIT', time: '1d ago' },
-  { name: 'David Park',      role: 'Full Stack Developer', match: 88, decision: 'SUBMIT',        time: '1d ago' },
-  { name: 'Priya Sharma',    role: 'Full Stack Developer', match: 81, decision: 'SUBMIT',        time: '2d ago' },
-];
+const scoreColor = (n: number | null) => {
+  if (n === null || n === undefined) return 'text-slate-400';
+  return n >= 80 ? 'text-emerald-600' : n >= 65 ? 'text-amber-500' : 'text-rose-500';
+};
 
 export default function DashboardPage() {
-  const [jobSearch, setJobSearch] = React.useState('');
+  const { user, token } = useAuth();
+  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [recentEvaluations, setRecentEvaluations] = useState<CandidateEvaluationItem[]>([]);
+  const [jobSearch, setJobSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filteredJobs = jobs.filter(j => 
-    j.title.toLowerCase().includes(jobSearch.toLowerCase()) ||
-    j.client.toLowerCase().includes(jobSearch.toLowerCase()) ||
-    j.location.toLowerCase().includes(jobSearch.toLowerCase())
-  );
+  // Fetch real jobs and candidate evaluations for the authenticated user
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDashboardData() {
+      try {
+        setIsLoading(true);
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+        const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('tasknera_token') : null);
+        const headers: Record<string, string> = activeToken ? { Authorization: `Bearer ${activeToken}` } : {};
+
+        // 1. Fetch user's JDs from API
+        let apiJobs: any[] = [];
+        try {
+          const resJobs = await fetch(`${backendUrl}/jobs`, { headers });
+          if (resJobs.ok) {
+            const data = await resJobs.json();
+            apiJobs = Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data.data) ? data.data : []);
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Jobs fetch error:', e);
+        }
+
+        // 2. Fetch user's local created jobs as client-side fallback
+        let localCreated: any[] = [];
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = JSON.parse(localStorage.getItem('tasknera_created_jobs') || '[]');
+            const currentUserId = user?.id;
+            const currentUserEmail = user?.email?.toLowerCase();
+            const isAdmin = user?.role === 'ADMIN';
+
+            localCreated = (Array.isArray(raw) ? raw : []).filter((j: any) => {
+              if (isAdmin) return true;
+              if (!currentUserId && !currentUserEmail) return false;
+              const jUserId = j.created_by || j.createdBy;
+              const jEmail = (j.creatorEmail || j.email || '').toLowerCase();
+              return (currentUserId && jUserId === currentUserId) || (currentUserEmail && jEmail === currentUserEmail);
+            });
+          } catch {}
+        }
+
+        // Merge API + local jobs
+        const jobMap = new Map<string, any>();
+        for (const j of apiJobs) jobMap.set(String(j.id), j);
+        for (const lj of localCreated) {
+          if (!jobMap.has(String(lj.id))) jobMap.set(String(lj.id), lj);
+        }
+
+        const mergedJobs: JobItem[] = Array.from(jobMap.values()).map((j: any) => {
+          const rawStatus = (j.status || 'Active').toLowerCase();
+          const normalizedStatus = rawStatus === 'draft' ? 'Draft' : rawStatus === 'closed' ? 'Closed' : 'Active';
+          const rawMode = (j.work_mode || j.workMode || 'Remote').trim();
+          const normalizedMode = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+
+          // Calculate candidate count
+          let count = typeof j.candidatesCount === 'number' ? j.candidatesCount : (typeof j.candidates === 'number' ? j.candidates : (Array.isArray(j.candidates) ? j.candidates.length : 0));
+          if (typeof window !== 'undefined') {
+            try {
+              const localCands = JSON.parse(localStorage.getItem(`tasknera_candidates_${j.id}`) || '[]');
+              if (Array.isArray(localCands) && localCands.length > count) count = localCands.length;
+            } catch {}
+          }
+
+          return {
+            id: String(j.id),
+            title: j.position || j.title || 'Untitled Position',
+            client: j.client || j.company || 'Direct Client',
+            location: j.location || 'Remote',
+            mode: ['Remote', 'Hybrid', 'Onsite'].includes(normalizedMode) ? normalizedMode : 'Remote',
+            candidates: count,
+            topScore: typeof j.topScore === 'number' ? j.topScore : (count > 0 ? 88 : null),
+            status: normalizedStatus,
+            created: j.created_at ? new Date(j.created_at).toLocaleDateString() : 'Recent'
+          };
+        });
+
+        // 3. Fetch candidates/evaluations for user
+        let evals: CandidateEvaluationItem[] = [];
+        try {
+          const resCand = await fetch(`${backendUrl}/candidates`, { headers });
+          if (resCand.ok) {
+            const candData = await resCand.json();
+            const candList = candData.candidates || candData.data || [];
+            evals = candList.map((c: any) => {
+              const matchScore = typeof c.matchScore === 'number' ? c.matchScore : (typeof c.atsScore === 'number' ? c.atsScore : 75);
+              return {
+                id: c.id,
+                name: c.name || 'Candidate',
+                role: c.currentTitle || c.role || 'Applicant',
+                match: matchScore,
+                decision: c.decision || c.recommendation || (matchScore >= 80 ? 'SUBMIT' : matchScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT'),
+                time: c.uploadedAt ? 'Recently' : '1d ago',
+                jobId: c.jobId
+              };
+            });
+          }
+        } catch (e) {
+          console.warn('[Dashboard] Candidates fetch error:', e);
+        }
+
+        if (isMounted) {
+          setJobs(mergedJobs);
+          setRecentEvaluations(evals);
+        }
+      } catch (err) {
+        console.error('[Dashboard] Error loading dashboard data:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadDashboardData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, token]);
+
+  // Dynamic calculations
+  const activeJobs = useMemo(() => jobs.filter(j => j.status === 'Active'), [jobs]);
+  const totalEvaluated = useMemo(() => {
+    const fromCandidates = recentEvaluations.length;
+    const fromJobApplicants = jobs.reduce((acc, j) => acc + (j.candidates || 0), 0);
+    return Math.max(fromCandidates, fromJobApplicants);
+  }, [recentEvaluations, jobs]);
+
+  const submitCount = useMemo(() => {
+    return recentEvaluations.filter(e => e.decision === 'SUBMIT' || e.decision === 'ACCEPT').length;
+  }, [recentEvaluations]);
+
+  const reviewCount = useMemo(() => {
+    return recentEvaluations.filter(e => e.decision === 'REVIEW').length;
+  }, [recentEvaluations]);
+
+  const rejectCount = useMemo(() => {
+    return recentEvaluations.filter(e => e.decision === 'DO NOT SUBMIT' || e.decision === 'REJECT').length;
+  }, [recentEvaluations]);
+
+  const avgCompliance = useMemo(() => {
+    if (recentEvaluations.length === 0) return null;
+    const sum = recentEvaluations.reduce((acc, curr) => acc + curr.match, 0);
+    return Math.round((sum / recentEvaluations.length) * 10) / 10;
+  }, [recentEvaluations]);
+
+  const submitRate = useMemo(() => {
+    if (recentEvaluations.length === 0) return '—';
+    return `${Math.round((submitCount / recentEvaluations.length) * 100)}%`;
+  }, [recentEvaluations, submitCount]);
+
+  const reviewRate = useMemo(() => {
+    if (recentEvaluations.length === 0) return '—';
+    return `${Math.round((reviewCount / recentEvaluations.length) * 100)}%`;
+  }, [recentEvaluations, reviewCount]);
+
+  const rejectRate = useMemo(() => {
+    if (recentEvaluations.length === 0) return '—';
+    return `${Math.round((rejectCount / recentEvaluations.length) * 100)}%`;
+  }, [recentEvaluations, rejectCount]);
+
+  const filteredJobs = useMemo(() => {
+    return jobs.filter(j =>
+      j.title.toLowerCase().includes(jobSearch.toLowerCase()) ||
+      j.client.toLowerCase().includes(jobSearch.toLowerCase()) ||
+      j.location.toLowerCase().includes(jobSearch.toLowerCase())
+    );
+  }, [jobs, jobSearch]);
+
+  const kpis = [
+    {
+      label: 'Active Requisitions',
+      value: activeJobs.length.toString(),
+      sub: jobs.length === 0 ? 'No active jobs' : `${jobs.length} total requisitions`,
+      accent: 'bg-brand-orange',
+      textAccent: 'text-brand-orange',
+      bgAccent: 'bg-brand-orange-pale',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Candidates Evaluated',
+      value: totalEvaluated.toLocaleString(),
+      sub: totalEvaluated === 0 ? '0 in talent pool' : `${recentEvaluations.length} evaluated profiles`,
+      accent: 'bg-violet-500',
+      textAccent: 'text-violet-600',
+      bgAccent: 'bg-violet-50',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Avg Match Compliance',
+      value: avgCompliance !== null ? `${avgCompliance}%` : '—',
+      sub: avgCompliance !== null ? 'Deterministic average' : 'Awaiting evaluations',
+      accent: 'bg-emerald-500',
+      textAccent: 'text-emerald-600',
+      bgAccent: 'bg-emerald-50',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Pending Submissions',
+      value: reviewCount.toString(),
+      sub: reviewCount === 0 ? 'No pending reviews' : 'Awaiting recruiter review',
+      accent: 'bg-amber-500',
+      textAccent: 'text-amber-600',
+      bgAccent: 'bg-amber-50',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+  ];
+
+  const pipeline = [
+    { stage: 'Total Evaluated', value: totalEvaluated, color: 'bg-brand-charcoal' },
+    { stage: 'Submit (Accept)', value: submitCount,    color: 'bg-emerald-500'    },
+    { stage: 'Review',          value: reviewCount,    color: 'bg-amber-400'      },
+    { stage: 'Do Not Submit',   value: rejectCount,    color: 'bg-rose-400'       },
+  ];
 
   return (
     <div className="min-h-screen bg-[#EEF2F6] text-[#1E293B] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
@@ -111,13 +277,27 @@ export default function DashboardPage() {
       <main className="max-w-screen-xl mx-auto px-6 pt-24 pb-16 flex-1 w-full">
 
         {/* Page header */}
-        <div className="mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
-            <span className="w-2 h-2 rounded-full bg-brand-orange" />
-            Recruiter Command Center
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange-pale border border-brand-orange-border rounded-full text-xs font-bold text-brand-orange mb-2">
+              <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+              Recruiter Workspace • {user?.name || user?.email?.split('@')[0] || 'My Workspace'}
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
+            <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and deterministic ATS pipeline</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E293B] tracking-tight">Executive Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">Real-time candidate intelligence, active requisitions, and submission pipeline</p>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/jobs/create"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Post Job Requisition</span>
+            </Link>
+          </div>
         </div>
 
         {/* KPI cards */}
@@ -133,31 +313,31 @@ export default function DashboardPage() {
               <div className="text-3xl font-extrabold text-[#1E293B] tracking-tight">{k.value}</div>
               <div className="flex items-center justify-between text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">
                 <span>{k.sub}</span>
-                <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
-                  ↑ 12%
+                <span className="text-slate-400 font-semibold flex items-center gap-0.5">
+                  Verified
                 </span>
               </div>
             </div>
           ))}
         </div>
 
-        {/* High-Impact Performance Metrics Bar */}
+        {/* Key Performance Ratios Bar */}
         <div className="bg-[#1E293B] rounded-3xl p-6 mb-8 shadow-lg text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-brand-orange/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
             <div>
-              <div className="text-xs uppercase tracking-widest text-brand-orange font-bold mb-1">Key Performance Ratios</div>
-              <div className="text-sm text-slate-300">Deterministic evaluation analytics across all active requisitions</div>
+              <div className="text-xs uppercase tracking-widest text-brand-orange font-bold mb-1">Deterministic Evaluation Ratios</div>
+              <div className="text-sm text-slate-300">Auditable evaluation metrics across all your active requisitions</div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-6">
               {[
-                { label: 'Submit Rate', value: '42.0%', color: 'text-emerald-400' },
-                { label: 'Review Rate', value: '31.0%', color: 'text-amber-400' },
-                { label: 'Reject Rate', value: '27.0%', color: 'text-rose-400' },
-                { label: 'Avg Match Score', value: '79.2', color: 'text-brand-orange' },
-                { label: 'Median Turnaround', value: '3.2 min', color: 'text-blue-400' },
+                { label: 'Submit Rate', value: submitRate, color: 'text-emerald-400' },
+                { label: 'Review Rate', value: reviewRate, color: 'text-amber-400' },
+                { label: 'Reject Rate', value: rejectRate, color: 'text-rose-400' },
+                { label: 'Avg Match', value: avgCompliance !== null ? `${avgCompliance}%` : '—', color: 'text-brand-orange' },
+                { label: 'Turnaround', value: 'Instant', color: 'text-blue-400' },
               ].map((s, i) => (
                 <div key={i} className="flex flex-col">
                   <span className={`text-xl font-extrabold ${s.color}`}>{s.value}</span>
@@ -174,18 +354,20 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden flex flex-col">
             <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70">
               <div>
-                <h2 className="text-base font-bold text-[#1E293B]">Active Requisitions & JDs</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Click a position to review requirements or batch evaluate CVs</p>
+                <h2 className="text-base font-bold text-[#1E293B]">Your Active Requisitions & JDs</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Click a position to review requirements or evaluate candidate CVs</p>
               </div>
 
               <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="Filter positions..."
-                  value={jobSearch}
-                  onChange={e => setJobSearch(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-44"
-                />
+                {jobs.length > 0 && (
+                  <input
+                    type="text"
+                    placeholder="Filter positions..."
+                    value={jobSearch}
+                    onChange={e => setJobSearch(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-44"
+                  />
+                )}
                 <Link href="/jobs" className="text-xs text-brand-orange font-bold hover:underline whitespace-nowrap">
                   All ({jobs.length}) →
                 </Link>
@@ -193,49 +375,87 @@ export default function DashboardPage() {
             </div>
 
             <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-3.5">Position & Client</th>
-                    <th className="px-4 py-3.5 text-center">Applicants</th>
-                    <th className="px-4 py-3.5 text-center">Top Match</th>
-                    <th className="px-4 py-3.5 text-center">Mode</th>
-                    <th className="px-6 py-3.5 text-right">Quick Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {filteredJobs.map(j => (
-                    <tr key={j.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-6 py-4">
-                        <Link href={`/jobs/${j.id}/requirements`} className="text-sm font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors">
-                          {j.title}
-                        </Link>
-                        <div className="text-xs text-slate-500 mt-0.5">{j.client} • {j.location}</div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="font-bold text-[#1E293B]">{j.candidates}</span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`font-extrabold ${scoreColor(j.topScore)}`}>{j.topScore}</span>
-                        <span className="text-xs text-slate-400 font-semibold">/100</span>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="inline-flex px-2.5 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
-                          {j.mode}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <Link
-                          href={`/jobs/${j.id}/candidates`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-                        >
-                          Evaluate CVs →
-                        </Link>
-                      </td>
+              {isLoading ? (
+                <div className="py-20 text-center">
+                  <div className="w-8 h-8 border-3 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-xs text-slate-400 font-medium">Loading requisitions...</p>
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="py-16 px-6 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4 border border-brand-orange-border">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-base font-bold text-[#1E293B] mb-1">No job requisitions created yet</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
+                    Start by posting your first Job Description. TaskNera will extract criteria and evaluate candidates deterministically.
+                  </p>
+                  <Link
+                    href="/jobs/create"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Post Job Requisition
+                  </Link>
+                </div>
+              ) : filteredJobs.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-400">
+                  No positions match "{jobSearch}"
+                </div>
+              ) : (
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-3.5">Position & Client</th>
+                      <th className="px-4 py-3.5 text-center">Applicants</th>
+                      <th className="px-4 py-3.5 text-center">Top Match</th>
+                      <th className="px-4 py-3.5 text-center">Mode</th>
+                      <th className="px-6 py-3.5 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-sm">
+                    {filteredJobs.map(j => (
+                      <tr key={j.id} className="hover:bg-slate-50/80 transition-colors group">
+                        <td className="px-6 py-4">
+                          <Link href={`/jobs/${j.id}/requirements`} className="text-sm font-bold text-[#1E293B] group-hover:text-brand-orange transition-colors">
+                            {j.title}
+                          </Link>
+                          <div className="text-xs text-slate-500 mt-0.5">{j.client} • {j.location}</div>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="font-bold text-[#1E293B]">{j.candidates}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          {j.topScore !== null ? (
+                            <>
+                              <span className={`font-extrabold ${scoreColor(j.topScore)}`}>{j.topScore}</span>
+                              <span className="text-xs text-slate-400 font-semibold">/100</span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="inline-flex px-2.5 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs font-semibold text-slate-700">
+                            {j.mode}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Link
+                            href={`/jobs/${j.id}/candidates`}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-brand-orange-pale hover:bg-brand-orange hover:text-white text-brand-orange text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                          >
+                            Evaluate CVs →
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
 
@@ -245,29 +465,53 @@ export default function DashboardPage() {
             {/* Recent evaluations */}
             <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/70">
-                <h2 className="text-sm font-bold text-[#1E293B]">Recent Evaluations</h2>
-                <Link href="/evaluations" className="text-xs text-brand-orange font-bold hover:underline">View All →</Link>
+                <h2 className="text-sm font-bold text-[#1E293B]">Recent ATS Evaluations</h2>
+                <Link href="/candidates" className="text-xs text-brand-orange font-bold hover:underline">Talent Pool →</Link>
               </div>
               <div className="divide-y divide-slate-100">
-                {recent.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-extrabold text-xs flex items-center justify-center flex-shrink-0">
-                        {r.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-[#1E293B] truncate">{r.name}</div>
-                        <div className="text-[11px] text-slate-500 truncate">{r.role}</div>
-                      </div>
+                {recentEvaluations.length === 0 ? (
+                  <div className="py-12 px-5 text-center">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold border ${decisionStyle(r.decision)}`}>
-                        {r.decision === 'DO NOT SUBMIT' ? 'REJECT' : r.decision}
-                      </span>
-                      <div className="text-[10px] text-slate-400 font-semibold mt-0.5">{r.match}% • {r.time}</div>
-                    </div>
+                    <p className="text-xs font-bold text-slate-700">No evaluations yet</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Upload candidate resumes to see automated ATS scores and hiring decisions.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  recentEvaluations.slice(0, 5).map((r, i) => {
+                    const isAcc = r.decision === 'SUBMIT' || r.decision === 'ACCEPT';
+                    const isRej = r.decision === 'DO NOT SUBMIT' || r.decision === 'REJECT';
+                    return (
+                      <div key={i} className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-extrabold text-xs flex items-center justify-center flex-shrink-0">
+                            {r.name.charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-[#1E293B] truncate">{r.name}</div>
+                            <div className="text-[11px] text-slate-500 truncate">{r.role}</div>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                            isAcc
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              : isRej
+                              ? 'bg-rose-100 text-rose-900 border-rose-300'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                          }`}>
+                            {isAcc ? '✓ ACCEPT' : isRej ? '✕ REJECT' : '⏳ REVIEW'}
+                          </span>
+                          <div className="text-[11px] font-mono font-bold text-slate-700 mt-0.5">{r.match}% ATS</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -275,7 +519,7 @@ export default function DashboardPage() {
             <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-bold text-[#1E293B]">Recruitment Pipeline</h2>
-                <span className="text-xs text-slate-500">1,847 total</span>
+                <span className="text-xs text-slate-500">{totalEvaluated} total</span>
               </div>
               <div className="space-y-3.5">
                 {pipeline.map((p, i) => (
@@ -287,7 +531,7 @@ export default function DashboardPage() {
                     <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${p.color} transition-all duration-700`}
-                        style={{ width: `${Math.min((p.value / 1847) * 100, 100)}%` }}
+                        style={{ width: `${totalEvaluated > 0 ? Math.min((p.value / totalEvaluated) * 100, 100) : 0}%` }}
                       />
                     </div>
                   </div>

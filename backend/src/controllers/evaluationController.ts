@@ -404,7 +404,7 @@ export const getCandidateEvaluation = async (req: AuthRequest, res: Response): P
       return;
     }
 
-    const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
+    const evaluation = await evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
     res.status(200).json({
       success: true,
@@ -463,8 +463,8 @@ export const evaluateCandidateController = async (req: AuthRequest, res: Respons
       candidateData.currentCompany || undefined
     );
 
-    // Run deterministic evaluation
-    const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
+    // Run deterministic / AI semantic evaluation
+    const evaluation = await evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
     // Ensure Candidate exists in PostgreSQL database with valid UUID
     let dbCandidateId: string | null = null;
@@ -857,8 +857,8 @@ export const matchCandidateWithJobController = async (req: AuthRequest, res: Res
       return;
     }
 
-    // 4. Run Existing Requirement Matching & Deterministic Scoring Engine (DO NOT REPARSE)
-    const evaluation = evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
+    // 4. Run Requirement Matching & AI Semantic Scoring Engine
+    const evaluation = await evaluateCandidateAgainstRequirements(candidateData, jobData, requirements);
 
     const finalScore = evaluation.overallScore ?? evaluation.overallMatch ?? 0;
     const complianceStr = evaluation.mandatoryCompliance

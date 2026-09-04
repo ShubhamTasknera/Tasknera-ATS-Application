@@ -170,7 +170,7 @@ async function setupWindchillJobAndEvaluateRiya() {
     created_by: ram.id
   };
 
-  const evaluationPayload = evaluateCandidateAgainstRequirements(candidateRecord, jobData, windchillJob.requirements);
+  const evaluationPayload = await evaluateCandidateAgainstRequirements(candidateRecord, jobData, windchillJob.requirements);
 
   const finalScore = Math.round(evaluationPayload.overallScore ?? evaluationPayload.overallMatch ?? 0);
   const complianceStr = `${evaluationPayload.mandatoryCompliance.met}/${evaluationPayload.mandatoryCompliance.total}`;

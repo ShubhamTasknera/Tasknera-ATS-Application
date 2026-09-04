@@ -116,11 +116,13 @@ export interface CandidateEvaluationPayload {
   evaluator: string;
 }
 
+const PYTHON_SERVICE_URL = process.env.DOCUMENT_PROCESSOR_URL || 'http://127.0.0.1:8000';
+
 /**
- * Evaluates a single candidate against a job's confirmed requirements deterministically
- * Using the Evidence-Based ATS Engine
+ * Evaluates a single candidate against a job's confirmed requirements
+ * Prioritizes Local Free AI Semantic Matching (all-MiniLM-L6-v2) with robust fallback
  */
-export function evaluateCandidateAgainstRequirements(
+export async function evaluateCandidateAgainstRequirements(
   candidate: CandidateRecord,
   job: { id: string; position?: string; title?: string; client?: string; company?: string; jd_text?: string },
   requirements: Array<{
@@ -133,8 +135,171 @@ export function evaluateCandidateAgainstRequirements(
     needs_verification?: boolean;
     source_evidence?: string | null;
   }>
-): CandidateEvaluationPayload {
-  // Execute deterministic engine
+): Promise<CandidateEvaluationPayload> {
+  // 1. Attempt AI-Powered Semantic Evaluation via Python Service
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(`${PYTHON_SERVICE_URL}/evaluate-ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidate,
+        job,
+        requirements
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const aiResult: any = await response.json();
+      if (aiResult && typeof aiResult.overallScore === 'number') {
+        const mappedReqs: RequirementEvaluationResult[] = (aiResult.requirements || []).map((r: any) => ({
+          id: r.id,
+          requirement: r.requirement,
+          category: r.category || 'Technical Skill',
+          mandatory: Boolean(r.mandatory ?? r.isMandatory),
+          isMandatory: Boolean(r.mandatory ?? r.isMandatory),
+          evidence: r.candidateEvidence || r.evidence || '',
+          candidateEvidence: r.candidateEvidence || r.evidence || '',
+          evidenceSource: r.evidenceSource || 'Semantic AI Evaluation',
+          status: r.status,
+          confidence: r.confidence || 'High',
+          weight: r.weight || 1.0,
+          score: r.score ?? 0,
+          failureReason: r.failureReason,
+          evidenceType: 'STRONG_SEMANTIC'
+        }));
+
+        const mandatoryTotal = aiResult.mandatoryCompliance?.total ?? mappedReqs.filter(r => r.mandatory).length;
+        const mandatoryMet = aiResult.mandatoryCompliance?.met ?? mappedReqs.filter(r => r.mandatory && r.status === 'MATCHED').length;
+        const mandatoryFailed = aiResult.mandatoryCompliance?.failed ?? (mandatoryTotal - mandatoryMet);
+
+        const matchedCount = mappedReqs.filter(r => r.status === 'MATCHED').length;
+        const partialCount = mappedReqs.filter(r => r.status === 'PARTIAL').length;
+        const notMatchedCount = mappedReqs.filter(r => r.status === 'NOT_MATCHED').length;
+        const unknownCount = mappedReqs.filter(r => r.status === 'UNKNOWN').length;
+
+        const rawScore = aiResult.rawScore ?? aiResult.overallScore;
+        const overallScore = aiResult.overallScore;
+
+        const payload: CandidateEvaluationPayload = {
+          evaluationId: aiResult.evaluationId || `eval-ai-${Date.now()}`,
+          candidateId: candidate.id,
+          candidateName: candidate.name || 'Candidate',
+          candidateRole: candidate.currentTitle || job.position || 'Professional',
+          candidateCompany: candidate.currentCompany || 'Organization',
+          candidateEmail: candidate.email || '',
+          candidatePhone: candidate.phone || '',
+          candidateLocation: candidate.location || '',
+          jobId: job.id,
+          jobTitle: job.position || job.title || 'Job Position',
+          jobClient: job.client || job.company || 'Client',
+          rawScore,
+          baseDeterministicScore: rawScore,
+          aiSemanticAdjustment: 0.0,
+          aiAssistanceEnabled: true,
+          inferredRequirementsCount: 0,
+          overallMatch: Math.round(overallScore),
+          atsScore: Math.round(overallScore),
+          overallScore,
+          matchLevel: aiResult.matchLevel || (overallScore >= 80 ? 'STRONG MATCH' : overallScore >= 50 ? 'MODERATE MATCH' : 'LOW MATCH'),
+          mandatoryRequirementFailed: Boolean(aiResult.mandatoryRequirementFailed),
+          mandatoryComplianceScore: aiResult.mandatoryComplianceScore ?? Math.round((mandatoryMet / Math.max(1, mandatoryTotal)) * 100),
+          mandatoryFailures: aiResult.mandatoryFailures || [],
+          mandatoryCompliance: {
+            total: mandatoryTotal,
+            met: mandatoryMet,
+            failed: mandatoryFailed,
+            passed: !aiResult.mandatoryRequirementFailed
+          },
+          recommendation: aiResult.recommendation || (overallScore >= 75 ? 'SUBMIT' : overallScore >= 50 ? 'REVIEW' : 'DO NOT SUBMIT'),
+          recommendationReason: aiResult.recommendationReason || 'Evaluated via Semantic AI ATS Matching Engine.',
+          pillarScores: aiResult.pillarScores || {
+            technicalSkills: Math.round(rawScore),
+            experience: Math.round(rawScore * 0.95),
+            education: 90,
+            genAI: Math.round(rawScore * 0.85),
+            semanticRelevance: Math.round(rawScore)
+          },
+          pillars: aiResult.pillarScores || {
+            technicalSkills: Math.round(rawScore),
+            experience: Math.round(rawScore * 0.95),
+            education: 90,
+            genAI: Math.round(rawScore * 0.85),
+            semanticRelevance: Math.round(rawScore)
+          },
+          scoreBreakdown: {
+            mandatory: {
+              score: aiResult.mandatoryComplianceScore ?? 100,
+              max: 100,
+              pct: aiResult.mandatoryComplianceScore ?? 100,
+              label: mandatoryTotal > 0 ? `Mandatory Compliance (${mandatoryMet}/${mandatoryTotal})` : 'Mandatory Compliance (N/A)'
+            },
+            skills: {
+              score: aiResult.pillarScores?.technicalSkills ?? Math.round(rawScore),
+              max: 100,
+              pct: aiResult.pillarScores?.technicalSkills ?? Math.round(rawScore),
+              label: 'Technical Skills'
+            },
+            experience: {
+              score: aiResult.pillarScores?.experience ?? Math.round(rawScore * 0.95),
+              max: 100,
+              pct: aiResult.pillarScores?.experience ?? Math.round(rawScore * 0.95),
+              label: 'Experience'
+            },
+            responsibilities: {
+              score: aiResult.pillarScores?.genAI ?? Math.round(rawScore * 0.85),
+              max: 100,
+              pct: aiResult.pillarScores?.genAI ?? Math.round(rawScore * 0.85),
+              label: 'Role Competencies'
+            },
+            preferred: {
+              score: aiResult.pillarScores?.education ?? 90,
+              max: 100,
+              pct: aiResult.pillarScores?.education ?? 90,
+              label: 'Education & Preferred'
+            }
+          },
+          summaryCounts: {
+            mandatoryTotal,
+            preferredTotal: mappedReqs.filter(r => !r.mandatory).length,
+            matched: matchedCount,
+            partial: partialCount,
+            notMatched: notMatchedCount,
+            unknown: unknownCount,
+            fullyMet: matchedCount,
+            partiallyMet: partialCount,
+            notMet: notMatchedCount,
+            needsVerification: unknownCount,
+            notFound: notMatchedCount
+          },
+          requirements: mappedReqs,
+          requirementResults: mappedReqs,
+          strengths: aiResult.strengths || [],
+          gaps: aiResult.gaps || [],
+          warnings: aiResult.warnings || [],
+          explanation: {
+            summary: `${aiResult.matchLevel} (${overallScore}% Overall Match). ${mandatoryTotal > 0 ? `Mandatory: ${mandatoryMet}/${mandatoryTotal}` : 'No mandatory constraints'}.`,
+            strengths: aiResult.strengths || [],
+            gaps: aiResult.gaps || [],
+            mandatoryStatus: aiResult.mandatoryRequirementFailed ? 'FAILED' : 'PASSED'
+          },
+          scoringConfigVersion: '5.0.0-ai-semantic-matcher',
+          evaluatedAt: new Date().toISOString(),
+          evaluator: 'TaskNera Semantic AI Engine (all-MiniLM-L6-v2)'
+        };
+
+        return payload;
+      }
+    }
+  } catch (err: any) {
+    console.warn('[EvaluationService] AI service call bypassed or failed, using local scoring engine:', err.message);
+  }
+
+  // 2. Deterministic Fallback Engine
   const result: ATSScoringResult = calculateATSScore(candidate, job, requirements);
 
   const mappedReqs: RequirementEvaluationResult[] = result.requirements.map(r => ({
@@ -251,7 +416,6 @@ export function evaluateCandidateAgainstRequirements(
       partial: partialCount,
       notMatched: notMatchedCount,
       unknown: unknownCount,
-      // Compatibility fields
       fullyMet: matchedCount,
       partiallyMet: partialCount,
       notMet: notMatchedCount,

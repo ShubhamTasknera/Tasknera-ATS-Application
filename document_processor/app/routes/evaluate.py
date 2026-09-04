@@ -44,6 +44,24 @@ async def evaluate_candidate(payload: EvaluationRequest):
 class ParseJdAiRequest(BaseModel):
     jd_text: str
 
+@router.post("/evaluate-ai")
+async def evaluate_ai_endpoint(payload: dict):
+    """
+    Executes free local AI sentence-transformers semantic matching between candidate CV and JD criteria.
+    Produces highly apt, realistic ATS scores and exact evidence quotes.
+    """
+    try:
+        from app.services.ai_matcher import evaluate_with_ai
+        candidate = payload.get("candidate") or {}
+        job = payload.get("job") or {}
+        requirements = payload.get("requirements") or []
+        result = evaluate_with_ai(candidate, job, requirements)
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI evaluation failed: {str(e)}")
+
 @router.post("/parse-jd-ai")
 async def parse_jd_ai_endpoint(payload: ParseJdAiRequest):
     """

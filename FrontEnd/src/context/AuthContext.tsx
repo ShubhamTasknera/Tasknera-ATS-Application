@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { fetchApi, User, AuthResponse, UserRole } from '../lib/api';
+import { atsStore } from '../lib/atsStore';
 
 interface AuthContextType {
   user: User | null;
@@ -10,7 +11,7 @@ interface AuthContextType {
   isLoading: boolean;
   signin: (email: string, password: string) => Promise<UserRole>;
   signup: (name: string, email: string, password: string) => Promise<UserRole>;
-  googleSignin: (email?: string, name?: string) => Promise<void>;
+  googleSignin: () => Promise<void>;
   setRole: (role: UserRole) => void;
   logout: () => void;
 }
@@ -20,6 +21,8 @@ interface AuthProviderProps {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const DESIGNATED_ADMIN_EMAIL = 'admin123@gmail.com';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
@@ -38,27 +41,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
       try {
         const data = await fetchApi<{ user: User }>('/auth/me', {}, savedToken);
         if (data && data.user) {
-          const userRole: UserRole = data.user.role === 'ADMIN' ? 'ADMIN' : 'RECRUITER_MEMBER';
-          setUser({ ...data.user, role: userRole });
+          const isDesignatedAdmin = data.user.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL;
+          const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+          const fullUser = { 
+            ...data.user, 
+            name: isDesignatedAdmin ? 'Admin' : data.user.name,
+            role: userRole 
+          };
+          setUser(fullUser);
+          atsStore.ensureMember(fullUser);
           localStorage.setItem('tasknera_role', userRole);
-          if (data.user.name) localStorage.setItem('tasknera_name', data.user.name);
+          if (data.user.name) localStorage.setItem('tasknera_name', fullUser.name || 'User');
           if (data.user.email) localStorage.setItem('tasknera_email', data.user.email);
         } else {
           throw new Error('Invalid user response');
         }
       } catch (err) {
         console.warn('Fallback to local stored session:', err);
-        const savedRole = localStorage.getItem('tasknera_role') as UserRole | null;
         const savedEmail = localStorage.getItem('tasknera_email');
         const savedName = localStorage.getItem('tasknera_name');
+        const savedUserId = localStorage.getItem('tasknera_user_id');
         if (savedEmail) {
-          const computedRole: UserRole = savedRole || (savedEmail.toLowerCase().includes('admin') ? 'ADMIN' : 'RECRUITER_MEMBER');
-          setUser({
-            id: computedRole === 'ADMIN' ? 'admin-1' : 'rec-1',
+          const isDesignatedAdmin = savedEmail.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL;
+          const computedRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+          const userId = savedUserId || (computedRole === 'ADMIN' ? 'admin-1' : `usr-${savedEmail.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}`);
+          const fallbackUser = {
+            id: userId,
             email: savedEmail,
-            name: savedName || (computedRole === 'ADMIN' ? 'Administrator' : 'Team Member'),
+            name: isDesignatedAdmin ? 'Admin' : (savedName || 'Team Member'),
             role: computedRole,
-          });
+          };
+          setUser(fallbackUser);
+          atsStore.ensureMember(fallbackUser);
+          localStorage.setItem('tasknera_role', computedRole);
         }
       } finally {
         setIsLoading(false);
@@ -69,15 +84,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
   }, []);
 
   const setRole = (newRole: UserRole) => {
-    localStorage.setItem('tasknera_role', newRole);
-    setUser(prev => prev ? { ...prev, role: newRole } : { id: 'usr-1', email: 'user@tasknera.com', name: 'User', role: newRole });
+    const isDesignatedAdmin = user?.email?.toLowerCase().trim() === DESIGNATED_ADMIN_EMAIL;
+    if (newRole === 'ADMIN' && !isDesignatedAdmin) {
+      console.warn('[AuthContext] Access restricted: Only admin123@gmail.com can assume the ADMIN role.');
+      return;
+    }
+    const resolvedRole: UserRole = newRole === 'ADMIN' && isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    localStorage.setItem('tasknera_role', resolvedRole);
+    setUser(prev => {
+      const updated = prev ? { ...prev, role: resolvedRole } : { id: 'usr-1', email: 'user@tasknera.com', name: 'User', role: resolvedRole };
+      atsStore.ensureMember(updated);
+      return updated;
+    });
   };
 
   const signin = async (email: string, password: string): Promise<UserRole> => {
     const cleanEmail = email.trim().toLowerCase();
-    const isAdmin = cleanEmail === 'admin@tasknera.com' || cleanEmail === 'admin@ats.tasknera.com';
-    const defaultRole: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
-    const userName = isAdmin ? 'Administrator' : (email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Team Member');
+    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL;
+    const defaultRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    const userName = isDesignatedAdmin ? 'Admin' : (email.split('@')[0].replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Team Member');
+    const uniqueUserId = isDesignatedAdmin ? 'admin-1' : `usr-${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
     const dummyToken = 'tasknera_jwt_' + Date.now();
 
     try {
@@ -85,79 +111,182 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
         method: 'POST',
         body: JSON.stringify({ email: cleanEmail, password }),
       });
-      const userRole: UserRole = (data.user?.role === 'ADMIN' || isAdmin) ? 'ADMIN' : 'RECRUITER_MEMBER';
+      const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+      const resolvedUserId = data.user?.id || uniqueUserId;
       localStorage.setItem('tasknera_token', data.token);
       localStorage.setItem('tasknera_role', userRole);
       localStorage.setItem('tasknera_email', data.user?.email || cleanEmail);
-      localStorage.setItem('tasknera_name', data.user?.name || userName);
+      localStorage.setItem('tasknera_name', isDesignatedAdmin ? 'Admin' : (data.user?.name || userName));
+      localStorage.setItem('tasknera_user_id', resolvedUserId);
       setToken(data.token);
-      setUser({ ...data.user, role: userRole });
+      const signedUser = { ...data.user, id: resolvedUserId, name: isDesignatedAdmin ? 'Admin' : (data.user?.name || userName), role: userRole };
+      setUser(signedUser);
+      atsStore.ensureMember(signedUser);
       return userRole;
     } catch {
       // Standalone frontend fallback
       localStorage.setItem('tasknera_token', dummyToken);
       localStorage.setItem('tasknera_role', defaultRole);
       localStorage.setItem('tasknera_email', cleanEmail);
-      localStorage.setItem('tasknera_name', userName);
+      localStorage.setItem('tasknera_name', isDesignatedAdmin ? 'Admin' : userName);
+      localStorage.setItem('tasknera_user_id', uniqueUserId);
       setToken(dummyToken);
-      setUser({
-        id: isAdmin ? 'admin-1' : 'rec-1',
+      const fallbackUser = {
+        id: uniqueUserId,
         email: cleanEmail,
-        name: userName,
+        name: isDesignatedAdmin ? 'Admin' : userName,
         role: defaultRole,
-      });
+      };
+      setUser(fallbackUser);
+      atsStore.ensureMember(fallbackUser);
       return defaultRole;
     }
   };
 
   const signup = async (name: string, email: string, password: string): Promise<UserRole> => {
     const cleanEmail = email.trim().toLowerCase();
-    const isAdmin = cleanEmail === 'admin@tasknera.com';
-    const defaultRole: UserRole = isAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    const isDesignatedAdmin = cleanEmail === DESIGNATED_ADMIN_EMAIL;
+    const defaultRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+    const uniqueUserId = isDesignatedAdmin ? 'admin-1' : `usr-${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
     const dummyToken = 'tasknera_jwt_' + Date.now();
 
     try {
       const data = await fetchApi<AuthResponse>('/auth/signup', {
         method: 'POST',
-        body: JSON.stringify({ name, email: cleanEmail, password }),
+        body: JSON.stringify({ name: isDesignatedAdmin ? 'Admin' : name, email: cleanEmail, password }),
       });
-      const userRole: UserRole = (data.user?.role === 'ADMIN' || isAdmin) ? 'ADMIN' : 'RECRUITER_MEMBER';
+      const userRole: UserRole = isDesignatedAdmin ? 'ADMIN' : 'RECRUITER_MEMBER';
+      const resolvedUserId = data.user?.id || uniqueUserId;
       localStorage.setItem('tasknera_token', data.token);
       localStorage.setItem('tasknera_role', userRole);
       localStorage.setItem('tasknera_email', data.user?.email || cleanEmail);
-      localStorage.setItem('tasknera_name', name);
+      localStorage.setItem('tasknera_name', isDesignatedAdmin ? 'Admin' : name);
+      localStorage.setItem('tasknera_user_id', resolvedUserId);
       setToken(data.token);
-      setUser({ ...data.user, role: userRole });
+      const signedUser = { ...data.user, id: resolvedUserId, name: isDesignatedAdmin ? 'Admin' : name, role: userRole };
+      setUser(signedUser);
+      atsStore.ensureMember(signedUser);
       return userRole;
     } catch {
       // Standalone frontend fallback
       localStorage.setItem('tasknera_token', dummyToken);
       localStorage.setItem('tasknera_role', defaultRole);
       localStorage.setItem('tasknera_email', cleanEmail);
-      localStorage.setItem('tasknera_name', name);
+      localStorage.setItem('tasknera_name', isDesignatedAdmin ? 'Admin' : name);
+      localStorage.setItem('tasknera_user_id', uniqueUserId);
       setToken(dummyToken);
-      setUser({
-        id: isAdmin ? 'admin-1' : 'rec-1',
+      const fallbackUser = {
+        id: uniqueUserId,
         email: cleanEmail,
-        name,
+        name: isDesignatedAdmin ? 'Admin' : name,
         role: defaultRole,
-      });
+      };
+      setUser(fallbackUser);
+      atsStore.ensureMember(fallbackUser);
       return defaultRole;
     }
   };
 
-  const googleSignin = async (email?: string, name?: string): Promise<void> => {
-    const defaultEmail = email || 'recruiter@tasknera.com';
-    const defaultName = name || 'Google User';
+  const googleSignin = async (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        reject(new Error('Google Client ID is not configured'));
+        return;
+      }
 
-    const data = await fetchApi<AuthResponse>('/auth/google', {
-      method: 'POST',
-      body: JSON.stringify({ email: defaultEmail, name: defaultName }),
+      // Load the GIS script if not already present
+      const loadGIS = (): Promise<void> => {
+        return new Promise((res) => {
+          if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+            res();
+            return;
+          }
+          const script = document.createElement('script');
+          script.src = 'https://accounts.google.com/gsi/client';
+          script.async = true;
+          script.defer = true;
+          script.onload = () => res();
+          script.onerror = () => res(); // still attempt even if blocked
+          document.head.appendChild(script);
+        });
+      };
+
+      loadGIS().then(() => {
+        const google = (window as any).google;
+        if (!google?.accounts?.id) {
+          reject(new Error('Google Identity Services failed to load'));
+          return;
+        }
+
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: async (response: { credential: string }) => {
+            try {
+              const idToken = response.credential;
+              if (!idToken) throw new Error('No credential received from Google');
+
+              const data = await fetchApi<AuthResponse>('/auth/google', {
+                method: 'POST',
+                body: JSON.stringify({ idToken }),
+              });
+
+              const userRole: UserRole = data.user?.role === 'ADMIN' ? 'ADMIN' : 'RECRUITER_MEMBER';
+              const resolvedUserId = data.user?.id || `usr-google-${Date.now()}`;
+
+              localStorage.setItem('tasknera_token', data.token);
+              localStorage.setItem('tasknera_role', userRole);
+              localStorage.setItem('tasknera_email', data.user?.email || '');
+              localStorage.setItem('tasknera_name', data.user?.name || '');
+              localStorage.setItem('tasknera_user_id', resolvedUserId);
+              if (data.user?.avatarUrl) {
+                localStorage.setItem('tasknera_avatar', data.user.avatarUrl);
+              }
+
+              setToken(data.token);
+              setUser({ ...data.user, id: resolvedUserId, role: userRole });
+
+              google.accounts.id.cancel();
+              resolve();
+            } catch (err) {
+              reject(err instanceof Error ? err : new Error('Google authentication failed'));
+            }
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+
+        // Try One Tap first, fall back to popup
+        google.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            // One Tap was suppressed — use popup flow
+            const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+              client_id: clientId,
+              scope: 'openid email profile',
+              callback: '', // handled by initTokenClient's promise equivalent
+            });
+            // Fall back: re-use the id flow via renderButton on a hidden div
+            const tempDiv = document.createElement('div');
+            tempDiv.style.display = 'none';
+            document.body.appendChild(tempDiv);
+            google.accounts.id.renderButton(tempDiv, {
+              type: 'standard',
+              shape: 'rectangular',
+              theme: 'outline',
+              size: 'large',
+            });
+            // Click the hidden button to trigger the Google popup
+            const btn = tempDiv.querySelector('[role="button"], button, div[tabindex]') as HTMLElement | null;
+            if (btn) {
+              btn.click();
+            } else {
+              document.body.removeChild(tempDiv);
+              reject(new Error('Google sign-in popup could not be opened. Please try again.'));
+            }
+          }
+        });
+      });
     });
-
-    localStorage.setItem('tasknera_token', data.token);
-    setToken(data.token);
-    setUser(data.user);
   };
 
   const logout = (): void => {
@@ -165,7 +294,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }: AuthProv
     localStorage.removeItem('tasknera_role');
     localStorage.removeItem('tasknera_email');
     localStorage.removeItem('tasknera_name');
-    // NOTE: Keep user's created jobs and evaluation data in localStorage so work is never lost across sessions
+    localStorage.removeItem('tasknera_user_id');
     setToken(null);
     setUser(null);
     if (typeof window !== 'undefined') {

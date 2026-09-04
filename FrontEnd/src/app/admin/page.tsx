@@ -24,18 +24,33 @@ import {
 } from 'recharts';
 
 export default function AdminPage() {
-  const { user } = useAuth();
+  const { user, setRole, signin } = useAuth();
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'timetracking' | 'leaderboard' | 'requisitions' | 'audit' | 'governance'>('overview');
+  const [activeTab, setActiveTab] = useState<'members' | 'overview' | 'timetracking' | 'requisitions' | 'audit' | 'governance'>('members');
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'all'>('week');
   const [podFilter, setPodFilter] = useState<string>('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchRecruiter, setSearchRecruiter] = useState('');
   const [searchJob, setSearchJob] = useState('');
   const [searchAudit, setSearchAudit] = useState('');
 
+  // Designated Admin Login State
+  const [adminLoginEmail, setAdminLoginEmail] = useState('admin123@gmail.com');
+  const [adminLoginPassword, setAdminLoginPassword] = useState('admin12345');
+  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+  const [adminLoginError, setAdminLoginError] = useState('');
+
   // Modals & detail view
   const [selectedRecruiter, setSelectedRecruiter] = useState<RecruiterMetric | null>(null);
   const [showRecruiterModal, setShowRecruiterModal] = useState(false);
+
+  // Add Member Modal
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
+  const [newMemberTeam, setNewMemberTeam] = useState('SAP & Enterprise Practice');
+  const [newMemberRole, setNewMemberRole] = useState<'RECRUITER_MEMBER' | 'TEAM_LEAD'>('RECRUITER_MEMBER');
+  const [newMemberSkills, setNewMemberSkills] = useState('');
 
   // Governance settings
   const [autoSubmitThreshold, setAutoSubmitThreshold] = useState(85);
@@ -75,11 +90,18 @@ export default function AdminPage() {
 
   // Filtered recruiters
   const filteredRecruiters = recruiters.filter(r => {
-    const matchesSearch = r.name.toLowerCase().includes(searchRecruiter.toLowerCase()) ||
-                          r.email.toLowerCase().includes(searchRecruiter.toLowerCase()) ||
-                          r.team.toLowerCase().includes(searchRecruiter.toLowerCase());
+    const q = searchRecruiter.toLowerCase();
+    const matchesSearch = r.name.toLowerCase().includes(q) ||
+                          r.email.toLowerCase().includes(q) ||
+                          r.team.toLowerCase().includes(q) ||
+                          (r.topSkills && r.topSkills.some(s => s.toLowerCase().includes(q))) ||
+                          (r.strengths && r.strengths.some(s => s.toLowerCase().includes(q)));
     const matchesPod = podFilter === 'All' || r.team === podFilter;
-    return matchesSearch && matchesPod;
+    const matchesStatus = statusFilter === 'All' || 
+      (statusFilter === 'Active' && r.lastActive.includes('Active')) ||
+      (statusFilter === 'Optimal' && r.capacity === 'Optimal') ||
+      (statusFilter === 'Available' && r.capacity === 'Available');
+    return matchesSearch && matchesPod && matchesStatus;
   });
 
   // Filtered jobs
@@ -102,29 +124,165 @@ export default function AdminPage() {
   const totalTeamHoursToday = recruiters.reduce((sum, r) => sum + (r.todayHoursSpent || 0), 0);
   const totalTeamHoursThisWeek = recruiters.reduce((sum, r) => sum + (r.totalHoursThisWeek || 0), 0);
 
-  // Strict Role Guard: Only Administrators can view this page
-  if (mounted && user && user.role !== 'ADMIN') {
+  const handleAddMember = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim() || !newMemberEmail.trim()) return;
+
+    const skillsArray = newMemberSkills
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    atsStore.addRecruiter({
+      name: newMemberName.trim(),
+      email: newMemberEmail.trim().toLowerCase(),
+      role: newMemberRole,
+      team: newMemberTeam,
+      activeJobs: 2,
+      jdsUploaded: 1,
+      resumesSeen: 45,
+      screenedThisWeek: 12,
+      tlApprovedCount: 6,
+      avgMatchScore: 86,
+      avgTimePerScreen: '3.0 min',
+      avgTimePerResume: '1.8 min',
+      todayHoursSpent: 6.0,
+      totalHoursThisWeek: 30.0,
+      capacity: 'Optimal',
+      lastActive: 'Active now',
+      strengths: skillsArray.length > 0 ? skillsArray : ['Talent Sourcing', 'Candidate Screening'],
+      insightsSummary: `${newMemberName.trim()} has been provisioned as an active recruiter in ${newMemberTeam}. Currently maintaining high engagement and steady candidate review pacing.`,
+      topSkills: skillsArray.length > 0 ? skillsArray : ['Sourcing', 'Interviewing'],
+      efficiencyScore: 92,
+      dailyTimeLogs: [
+        { day: 'Mon', date: 'Aug 28', hoursSpent: 6.0, resumesReviewedCount: 25, resumesTimeHours: 2.8, screeningsCount: 6, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.4 },
+        { day: 'Tue', date: 'Aug 29', hoursSpent: 6.2, resumesReviewedCount: 28, resumesTimeHours: 3.0, screeningsCount: 7, screeningTimeHours: 1.9, jdsUploadedCount: 1, jdTimeHours: 1.3 },
+        { day: 'Wed', date: 'Aug 30', hoursSpent: 5.8, resumesReviewedCount: 24, resumesTimeHours: 2.6, screeningsCount: 6, screeningTimeHours: 1.7, jdsUploadedCount: 0, jdTimeHours: 1.5 },
+        { day: 'Thu', date: 'Aug 31', hoursSpent: 6.0, resumesReviewedCount: 26, resumesTimeHours: 2.8, screeningsCount: 6, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.4 },
+        { day: 'Fri', date: 'Sep 01', hoursSpent: 6.0, resumesReviewedCount: 27, resumesTimeHours: 2.9, screeningsCount: 7, screeningTimeHours: 1.8, jdsUploadedCount: 1, jdTimeHours: 1.3 },
+      ],
+      recentActivity: [
+        `Joined ${newMemberTeam} and initialized ATS workspace`,
+        'Configured candidate pipeline alerts',
+      ]
+    });
+
+    setNewMemberName('');
+    setNewMemberEmail('');
+    setNewMemberSkills('');
+    setShowAddMemberModal(false);
+  };
+
+  const isAuthorizedAdmin = user?.email?.toLowerCase().trim() === 'admin123@gmail.com' && user?.role === 'ADMIN';
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError('');
+    setAdminLoginLoading(true);
+    try {
+      const cleanInputEmail = adminLoginEmail.trim().toLowerCase();
+      if (cleanInputEmail !== 'admin123@gmail.com') {
+        throw new Error('Access denied. Only admin123@gmail.com is authorized as Administrator.');
+      }
+      const role = await signin(cleanInputEmail, adminLoginPassword);
+      if (role !== 'ADMIN') {
+        throw new Error('Could not authenticate as Administrator. Please verify your credentials.');
+      }
+    } catch (err: any) {
+      setAdminLoginError(err?.message || 'Failed to sign in as Administrator.');
+    } finally {
+      setAdminLoginLoading(false);
+    }
+  };
+
+  // Strict Role Guard: Only admin123@gmail.com with role ADMIN can enter
+  if (mounted && !isAuthorizedAdmin) {
     return (
-      <div className="min-h-screen bg-[#EEF2F6] flex flex-col">
+      <div className="min-h-screen bg-[#EEF2F6] flex flex-col selection:bg-brand-orange-pale selection:text-brand-orange">
         <Header />
-        <main className="max-w-screen-md mx-auto px-6 pt-32 pb-16 flex-1 flex flex-col items-center justify-center text-center">
-          <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center text-3xl font-bold mb-4 shadow-sm">
-            🔒
-          </div>
-          <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider mb-2">
-            Access Restricted
-          </span>
-          <h1 className="text-2xl font-black text-slate-900">Administrator Access Required</h1>
-          <p className="text-sm text-slate-500 max-w-md mt-2 leading-relaxed">
-            You are currently signed in as a <strong>Talent Acquisition Team Member</strong> ({user.name || user.email}). This executive performance review and governance hub is strictly accessible to administrators.
-          </p>
-          <div className="flex items-center gap-3 mt-6">
-            <Link
-              href="/dashboard"
-              className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-extrabold rounded-xl shadow-orange transition-all"
-            >
-              Return to My Recruiter Workspace →
-            </Link>
+        <main className="max-w-md mx-auto px-6 pt-28 pb-16 flex-1 flex flex-col items-center justify-center w-full">
+          <div className="w-full bg-white rounded-3xl p-8 shadow-xl border border-slate-200 text-center animate-in fade-in duration-200">
+            <div className="w-16 h-16 rounded-3xl bg-violet-100 text-violet-700 border border-violet-200 flex items-center justify-center text-3xl font-bold mx-auto mb-4 shadow-xs">
+              👑
+            </div>
+
+            <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black bg-violet-50 text-violet-700 border border-violet-200 uppercase tracking-widest mb-2">
+              Exclusive Administrator Access
+            </span>
+
+            <h1 className="text-xl font-black text-slate-900 mb-1">
+              Admin &amp; Team Insights Portal
+            </h1>
+
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Strict Security Policy: Only the designated Administrator account (<strong className="text-slate-800">admin123@gmail.com</strong>) is authorized to access executive administration and member insights.
+            </p>
+
+            {user && (
+              <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 text-left flex items-start gap-2">
+                <span className="text-amber-600 font-bold">⚠️</span>
+                <div>
+                  Currently signed in as <strong>{user.email}</strong> ({user.role}). This account does not possess executive administrative authority.
+                </div>
+              </div>
+            )}
+
+            {adminLoginError && (
+              <div className="mb-4 p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-700 text-left flex items-center gap-2">
+                <span>✕</span>
+                <span className="font-semibold">{adminLoginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminLogin} className="space-y-3.5 text-left text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Authorized Admin Email</label>
+                <input
+                  type="email"
+                  required
+                  value={adminLoginEmail}
+                  onChange={e => setAdminLoginEmail(e.target.value)}
+                  placeholder="admin123@gmail.com"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Admin Password</label>
+                <input
+                  type="password"
+                  required
+                  value={adminLoginPassword}
+                  onChange={e => setAdminLoginPassword(e.target.value)}
+                  placeholder="admin12345"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={adminLoginLoading}
+                className="w-full mt-2 py-3 bg-violet-600 hover:bg-violet-700 active:scale-[0.99] text-white text-xs font-black rounded-xl shadow-lg shadow-violet-500/25 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {adminLoginLoading ? (
+                  <span>Authenticating Administrator...</span>
+                ) : (
+                  <>
+                    <span>👑 Sign In as Administrator</span>
+                    <span>→</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center">
+              <Link
+                href="/dashboard"
+                className="text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                Return to Recruiter Workspace
+              </Link>
+            </div>
           </div>
         </main>
         <Footer />
@@ -163,8 +321,16 @@ export default function AdminPage() {
               </p>
             </div>
 
-            {/* Top Right Controls: Time Range & Invite */}
+            {/* Top Right Controls: Time Range & Add Member */}
             <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={() => setShowAddMemberModal(true)}
+                className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-2xl shadow-orange transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>+</span>
+                <span>Add Team Member</span>
+              </button>
+
               {/* Time selector */}
               <div className="bg-slate-900/80 border border-violet-500/30 p-1 rounded-2xl flex items-center gap-1 text-xs font-bold">
                 {(['today', 'week', 'month', 'all'] as const).map(t => (
@@ -187,44 +353,25 @@ export default function AdminPage() {
 
         {/* ── EXECUTIVE KPI METRIC CARDS ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8">
-          {/* Metric 1: Resumes Seen & Evaluated */}
+          {/* Metric 1: Active Team Members */}
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Resumes Seen &amp; Evaluated</span>
-              <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-xs">
-                📄
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Active Team Members</span>
+              <span className="w-8 h-8 rounded-xl bg-violet-50 text-violet-600 border border-violet-200 flex items-center justify-center font-bold text-xs">
+                👥
               </span>
             </div>
-            <div className="text-3xl font-black text-slate-900 tracking-tight">
-              {stats.totalResumesSeen.toLocaleString()}
+            <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-2">
+              <span>{recruiters.length}</span>
+              <span className="text-xs font-semibold text-slate-400">Recruiters</span>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
-              <span className="text-blue-600 font-bold flex items-center gap-1">
-                <span>↑ 18%</span>
-                <span className="text-slate-400 font-medium">vs last week</span>
-              </span>
-              <span className="font-semibold text-slate-700">98.4% ATS Parsed</span>
+              <span className="text-violet-600 font-bold">3 Specialized Pods</span>
+              <span className="font-semibold text-slate-700">100% Tracked</span>
             </div>
           </div>
 
-          {/* Metric 2: JDs Uploaded & Created */}
-          <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">JDs Uploaded &amp; Created</span>
-              <span className="w-8 h-8 rounded-xl bg-brand-orange-pale text-brand-orange border border-brand-orange-border flex items-center justify-center font-bold text-xs">
-                💼
-              </span>
-            </div>
-            <div className="text-3xl font-black text-slate-900 tracking-tight">
-              {stats.totalJdsUploaded}
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
-              <span className="font-semibold text-slate-700">{jobs.length} Active Positions</span>
-              <span className="font-bold text-emerald-600">Active Requisitions</span>
-            </div>
-          </div>
-
-          {/* Metric 3: Time Spent by Team Today & This Week */}
+          {/* Metric 2: Team Time Spent Today & This Week */}
           <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Team Time Spent Today</span>
@@ -238,6 +385,26 @@ export default function AdminPage() {
             <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
               <span className="text-purple-600 font-bold">{totalTeamHoursThisWeek.toFixed(1)} hrs this week</span>
               <span className="font-semibold text-slate-700">Avg 6.7h / member</span>
+            </div>
+          </div>
+
+          {/* Metric 3: Resumes Seen & Evaluated */}
+          <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider">Resumes Evaluated</span>
+              <span className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-xs">
+                📄
+              </span>
+            </div>
+            <div className="text-3xl font-black text-slate-900 tracking-tight">
+              {stats.totalResumesSeen.toLocaleString()}
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 pt-2.5 border-t border-slate-100">
+              <span className="text-blue-600 font-bold flex items-center gap-1">
+                <span>↑ 18%</span>
+                <span className="text-slate-400 font-medium">vs last week</span>
+              </span>
+              <span className="font-semibold text-slate-700">1.7 min avg/CV</span>
             </div>
           </div>
 
@@ -262,9 +429,9 @@ export default function AdminPage() {
         {/* ── TAB NAVIGATION ── */}
         <div className="flex items-center gap-2 mb-6 border-b border-slate-200/80 pb-3 overflow-x-auto">
           {[
-            { id: 'overview', label: '📊 Performance & Volume Analytics' },
+            { id: 'members', label: '👥 Team Members & Insights', count: recruiters.length },
             { id: 'timetracking', label: '⏱️ Daily Time Tracking & Hours Spent' },
-            { id: 'leaderboard', label: '👥 Recruiter Performance Leaderboard', count: recruiters.length },
+            { id: 'overview', label: '📊 ATS Match Quality & Volume Analytics' },
             { id: 'requisitions', label: '🎯 Requisitions Oversight Radar', count: jobs.length },
             { id: 'audit', label: '📋 Live Team Audit Stream', count: auditEvents.length },
             { id: 'governance', label: '⚙️ ATS Rules & User Governance' },
@@ -571,117 +738,335 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── TAB 3: RECRUITER PERFORMANCE LEADERBOARD ── */}
-        {activeTab === 'leaderboard' && (
-          <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
-            <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/70">
-              <div className="flex items-center gap-3 flex-wrap">
-                <input
-                  type="text"
-                  placeholder="Search recruiters by name, email, or pod..."
-                  value={searchRecruiter}
-                  onChange={e => setSearchRecruiter(e.target.value)}
-                  className="px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 w-full sm:w-80"
-                />
+        {/* ── TAB 1: TEAM MEMBERS & PERFORMANCE INSIGHTS ── */}
+        {activeTab === 'members' && (
+          <div className="space-y-6">
+            {/* Search & Filter Toolbar */}
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-sm">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                      Active Team Members &amp; Recruiter Insights
+                    </h3>
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-violet-100 text-violet-800 border border-violet-200">
+                      {filteredRecruiters.length} Members
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Individual recruiter hours logged, resume review velocity, candidate match quality, and hiring strengths
+                  </p>
+                </div>
 
-                <select
-                  value={podFilter}
-                  onChange={e => setPodFilter(e.target.value)}
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
-                >
-                  <option value="All">All Pods</option>
-                  <option value="SAP & Enterprise Practice">SAP &amp; Enterprise Practice</option>
-                  <option value="Cloud & Engineering Pod">Cloud &amp; Engineering Pod</option>
-                  <option value="Finance & Operations TA">Finance &amp; Operations TA</option>
-                </select>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Search */}
+                  <div className="relative flex-1 sm:w-72">
+                    <input
+                      type="text"
+                      placeholder="Search member name, email, pod, or skill..."
+                      value={searchRecruiter}
+                      onChange={e => setSearchRecruiter(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 transition-all"
+                    />
+                    <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+
+                  {/* Pod filter */}
+                  <select
+                    value={podFilter}
+                    onChange={e => setPodFilter(e.target.value)}
+                    className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                  >
+                    <option value="All">All Practice Pods</option>
+                    <option value="SAP & Enterprise Practice">SAP &amp; Enterprise Practice</option>
+                    <option value="Cloud & Engineering Pod">Cloud &amp; Engineering Pod</option>
+                    <option value="Finance & Operations TA">Finance &amp; Operations TA</option>
+                  </select>
+
+                  {/* Status filter */}
+                  <select
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                    className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Active">Active Now</option>
+                    <option value="Optimal">Optimal Capacity</option>
+                    <option value="Available">Available Capacity</option>
+                  </select>
+
+                  <button
+                    onClick={() => setShowAddMemberModal(true)}
+                    className="px-4 py-2 bg-slate-900 hover:bg-brand-orange text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <span>+</span>
+                    <span>Add Member</span>
+                  </button>
+                </div>
               </div>
-
-              <span className="text-xs text-slate-500 font-bold">{filteredRecruiters.length} Recruiter Profiles Active</span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[1020px]">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-4 min-w-[240px]">Recruiter / Team Member</th>
-                    <th className="px-4 py-4 min-w-[170px]">Assigned Pod</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">JDs Uploaded</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">Resumes Seen</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">Hours Active</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">Shortlists</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">Shortlist Rate</th>
-                    <th className="px-4 py-4 text-center whitespace-nowrap">Avg Match Fit</th>
-                    <th className="px-6 py-4 text-right whitespace-nowrap">Performance Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRecruiters.map((r, i) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-6 py-4">
+            {/* ── SECTION A: MEMBER SPOTLIGHT & INSIGHT CARDS (NAMES PROMINENTLY VISIBLE) ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredRecruiters.map(r => {
+                const initial = r.name.charAt(0).toUpperCase();
+                const colors = [
+                  'from-violet-600 to-indigo-600',
+                  'from-blue-600 to-cyan-600',
+                  'from-amber-600 to-orange-600',
+                  'from-emerald-600 to-teal-600',
+                  'from-rose-600 to-pink-600'
+                ];
+                const charCode = r.name.charCodeAt(0) || 0;
+                const gradient = colors[charCode % colors.length];
+
+                return (
+                  <div
+                    key={r.id}
+                    className="bg-white border border-slate-200/90 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group relative overflow-hidden"
+                  >
+                    {/* Decorative subtle top edge glow */}
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-500 via-brand-orange to-indigo-500 opacity-60" />
+
+                    <div>
+                      {/* Header row: Avatar + Name + Badges */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-black text-xs flex items-center justify-center flex-shrink-0">
-                            {r.name.charAt(0)}
+                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${gradient} text-white font-black text-lg flex items-center justify-center shadow-sm shrink-0`}>
+                            {initial}
                           </div>
                           <div>
-                            <div className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-                              <span>{r.name}</span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">
-                                {r.role === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-base font-black text-slate-900 leading-tight">
+                                {r.name}
+                              </h4>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                r.role === 'ADMIN' ? 'bg-violet-100 text-violet-800' :
+                                r.role === 'TEAM_LEAD' ? 'bg-amber-100 text-amber-800' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                                {r.role === 'ADMIN' ? '👑 Admin' : r.role === 'TEAM_LEAD' ? '🎖️ Team Lead' : '👤 TA Member'}
                               </span>
                             </div>
-                            <div className="text-slate-400 text-[11px] mt-0.5">{r.email} • {r.lastActive}</div>
+                            <span className="text-xs font-semibold text-slate-500 block mt-0.5">
+                              {r.team}
+                            </span>
+                            <span className="text-[11px] text-slate-400 block truncate max-w-[200px]">
+                              {r.email}
+                            </span>
                           </div>
                         </div>
-                      </td>
 
-                      <td className="px-4 py-4 font-semibold text-slate-700 whitespace-nowrap">{r.team}</td>
-
-                      <td className="px-4 py-4 text-center font-black text-slate-900 text-sm whitespace-nowrap">
-                        <span className="inline-block px-2.5 py-1 rounded-lg bg-orange-50 text-brand-orange border border-orange-200/80">
-                          {r.jdsUploaded} JDs
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {r.lastActive.includes('Active') ? 'Active' : r.lastActive}
                         </span>
-                      </td>
+                      </div>
 
-                      <td className="px-4 py-4 text-center font-black text-blue-600 text-sm whitespace-nowrap">
-                        {r.resumesSeen} CVs
-                      </td>
+                      {/* 🌟 AI Qualitative Insight Quote Box */}
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-br from-violet-50/70 via-slate-50 to-indigo-50/40 border border-violet-100/90 my-3.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-xs">💡</span>
+                          <span className="text-[10px] font-black text-violet-800 uppercase tracking-wider">
+                            Executive Insight
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                          &ldquo;{r.insightsSummary || `${r.name} maintains strong candidate sourcing precision with high evaluation pacing on assigned requisitions.`}&rdquo;
+                        </p>
+                      </div>
 
-                      <td className="px-4 py-4 text-center whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
-                          ⏱️ {r.todayHoursSpent}h today
+                      {/* Domain Strengths */}
+                      <div className="mb-4">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1.5">
+                          Specialized Competencies
                         </span>
-                      </td>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {(r.strengths || ['Talent Sourcing', 'ATS Evaluation', 'Candidate Screening']).map((st, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80"
+                            >
+                              {st}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
 
-                      <td className="px-4 py-4 text-center font-black text-emerald-600 text-sm whitespace-nowrap">
-                        {r.tlApprovedCount}
-                      </td>
+                      {/* 4 Metric Stats Grid */}
+                      <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-100 text-xs">
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
+                          <span className="text-[10px] font-black text-slate-400 uppercase block">TODAY&apos;S TIME</span>
+                          <span className="text-sm font-black text-purple-700">{r.todayHoursSpent} Hours</span>
+                          <span className="text-[10px] text-slate-400 block">{r.totalHoursThisWeek}h this week</span>
+                        </div>
 
-                      <td className="px-4 py-4 text-center font-black text-purple-700 text-sm whitespace-nowrap">
-                        {Math.min(45, Math.round((r.tlApprovedCount / (r.resumesSeen || 1)) * 100))}%
-                      </td>
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
+                          <span className="text-[10px] font-black text-slate-400 uppercase block">RESUMES SEEN</span>
+                          <span className="text-sm font-black text-blue-600">{r.resumesSeen} CVs</span>
+                          <span className="text-[10px] text-slate-400 block">{r.avgTimePerResume || '1.8 min'} / CV</span>
+                        </div>
 
-                      <td className="px-4 py-4 text-center whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {r.avgMatchScore}% Fit
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
+                          <span className="text-[10px] font-black text-slate-400 uppercase block">SHORTLISTED</span>
+                          <span className="text-sm font-black text-emerald-600">{r.tlApprovedCount} Ready</span>
+                          <span className="text-[10px] text-slate-400 block">
+                            {Math.round((r.tlApprovedCount / (r.resumesSeen || 1)) * 100)}% shortlist rate
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70">
+                          <span className="text-[10px] font-black text-slate-400 uppercase block">AVG MATCH FIT</span>
+                          <span className="text-sm font-black text-amber-600">{r.avgMatchScore}% Fit</span>
+                          <span className="text-[10px] text-slate-400 block">High Accuracy</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer */}
+                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs">⚡</span>
+                        <span className="text-xs font-extrabold text-slate-800">
+                          {r.efficiencyScore || 94}%
                         </span>
-                      </td>
+                        <span className="text-[10px] font-semibold text-slate-400">Score</span>
+                      </div>
 
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => {
-                            setSelectedRecruiter(r);
-                            setShowRecruiterModal(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
-                        >
-                          <span>Review Activity</span>
-                          <span>→</span>
-                        </button>
-                      </td>
+                      <button
+                        onClick={() => {
+                          setSelectedRecruiter(r);
+                          setShowRecruiterModal(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-900 hover:bg-brand-orange text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1"
+                      >
+                        <span>Deep-Dive Insights</span>
+                        <span>→</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── SECTION B: DETAILED RECRUITER PERFORMANCE & DAILY HOURS TABLE ── */}
+            <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden mt-8">
+              <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/70">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Comprehensive Recruiter Performance &amp; Hours Log
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Compare daily hours logged, evaluation speed, and shortlisting conversion across all team members
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500 font-bold">{filteredRecruiters.length} Recruiter Profiles Active</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs min-w-[1040px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 min-w-[240px]">Recruiter / Member</th>
+                      <th className="px-4 py-4 min-w-[170px]">Assigned Pod</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Hours Today</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Total This Week</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Avg Time / Resume</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Resumes Seen</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Shortlists</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Shortlist Rate</th>
+                      <th className="px-4 py-4 text-center whitespace-nowrap">Avg Match Fit</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredRecruiters.map(r => {
+                      const hoursPercent = Math.min(100, Math.round((r.todayHoursSpent / 8) * 100));
+                      return (
+                        <tr key={r.id} className="hover:bg-slate-50/80 transition-colors group">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-brand-orange-pale text-brand-orange font-black text-xs flex items-center justify-center flex-shrink-0">
+                                {r.name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                                  <span>{r.name}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                                    r.role === 'ADMIN' ? 'bg-violet-100 text-violet-800' :
+                                    r.role === 'TEAM_LEAD' ? 'bg-amber-100 text-amber-800' :
+                                    'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {r.role === 'ADMIN' ? 'Admin' : r.role === 'TEAM_LEAD' ? 'Team Lead' : 'TA Member'}
+                                  </span>
+                                </div>
+                                <div className="text-slate-400 text-[11px] mt-0.5">{r.email} • {r.lastActive}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-4 font-semibold text-slate-700 whitespace-nowrap">{r.team}</td>
+
+                          <td className="px-4 py-4 text-center whitespace-nowrap">
+                            <div className="inline-flex flex-col items-center">
+                              <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                ⏱️ {r.todayHoursSpent} hrs
+                              </span>
+                              <div className="w-16 h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden">
+                                <div
+                                  className="h-full bg-purple-600 rounded-full"
+                                  style={{ width: `${hoursPercent}%` }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-4 text-center font-black text-slate-900 text-sm whitespace-nowrap">
+                            {r.totalHoursThisWeek} hrs
+                          </td>
+
+                          <td className="px-4 py-4 text-center font-bold text-blue-600 whitespace-nowrap">
+                            {r.avgTimePerResume || '1.8 min'}
+                          </td>
+
+                          <td className="px-4 py-4 text-center font-black text-slate-800 text-sm whitespace-nowrap">
+                            {r.resumesSeen} CVs
+                          </td>
+
+                          <td className="px-4 py-4 text-center font-black text-emerald-600 text-sm whitespace-nowrap">
+                            {r.tlApprovedCount}
+                          </td>
+
+                          <td className="px-4 py-4 text-center font-black text-purple-700 text-sm whitespace-nowrap">
+                            {Math.round((r.tlApprovedCount / (r.resumesSeen || 1)) * 100)}%
+                          </td>
+
+                          <td className="px-4 py-4 text-center whitespace-nowrap">
+                            <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {r.avgMatchScore}% Fit
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => {
+                                setSelectedRecruiter(r);
+                                setShowRecruiterModal(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                            >
+                              <span>View Insights</span>
+                              <span>→</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -1022,6 +1407,80 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* 🌟 AI Executive Performance & Sourcing Insights */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-50 via-slate-50 to-indigo-50/50 border border-violet-200/80">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-base">💡</span>
+                    <h4 className="font-black text-violet-900 text-xs uppercase tracking-wider">
+                      Executive Qualitative Analysis &amp; Sourcing Insights
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                    {selectedRecruiter.insightsSummary || `${selectedRecruiter.name} exhibits steady candidate review velocity with high ATS calibration accuracy. Averaging ${selectedRecruiter.avgTimePerResume || '1.8 min'} per resume review.`}
+                  </p>
+                </div>
+
+                {/* Core Domain Competencies */}
+                <div>
+                  <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
+                    🎯 Core Competencies &amp; Technical Domains
+                  </h4>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {((selectedRecruiter.topSkills && selectedRecruiter.topSkills.length > 0)
+                      ? selectedRecruiter.topSkills
+                      : (selectedRecruiter.strengths || ['Talent Sourcing', 'ATS Evaluation', 'Technical Screening'])
+                    ).map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-3 py-1 rounded-xl text-xs font-bold bg-white border border-slate-200 text-slate-800 shadow-2xs"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Operational Time Allocation Split */}
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider">
+                      ⏱️ Operational Time Allocation Breakdown
+                    </h4>
+                    <span className="text-[10px] font-bold text-slate-400">Weekly Distribution</span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                        <span>Resume Review &amp; Scoring</span>
+                        <span className="text-blue-600">60% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.6).toFixed(1)} hrs)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: '60%' }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                        <span>Candidate Shortlisting &amp; Screening</span>
+                        <span className="text-emerald-600">25% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.25).toFixed(1)} hrs)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: '25%' }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                        <span>JD Setup &amp; Calibration</span>
+                        <span className="text-amber-600">15% (~{((selectedRecruiter.totalHoursThisWeek || 30) * 0.15).toFixed(1)} hrs)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-orange rounded-full" style={{ width: '15%' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Day by Day Time Log Table */}
                 <div>
                   <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
@@ -1069,6 +1528,35 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* Active Requisitions Assigned */}
+                {jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length > 0 && (
+                  <div>
+                    <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
+                      🎯 Active Requisitions Assigned ({jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).length})
+                    </h4>
+                    <div className="space-y-2">
+                      {jobs.filter(j => j.assignedRecruiter.toLowerCase().includes(selectedRecruiter.name.toLowerCase()) || (j.workedBy && j.workedBy.some(w => w.name.toLowerCase().includes(selectedRecruiter.name.toLowerCase())))).map(j => (
+                        <div key={j.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+                          <div>
+                            <Link href={`/jobs/${j.id}`} className="font-bold text-slate-900 hover:text-brand-orange transition-colors block">
+                              {j.title}
+                            </Link>
+                            <span className="text-[11px] text-slate-500">{j.client} • {j.location}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                              {j.candidates} Candidates
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {j.topScore}% Top Fit
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Activity List */}
                 <div>
                   <h4 className="font-black text-slate-900 uppercase text-[11px] tracking-wider mb-2">
@@ -1087,12 +1575,119 @@ export default function AdminPage() {
                 <div className="flex items-center justify-end pt-3 border-t border-slate-100">
                   <button
                     onClick={() => setShowRecruiterModal(false)}
-                    className="px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl"
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
                   >
                     Close Log
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MODAL: ADD NEW TEAM MEMBER ── */}
+        {showAddMemberModal && (
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-brand-orange text-white font-black text-base flex items-center justify-center shadow-orange">
+                    +
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">Add Team Member</h3>
+                    <p className="text-xs text-slate-500">Provision a new recruiter profile with tracked insights</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAddMemberModal(false)}
+                  className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleAddMember} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Sakshi Sharma"
+                    value={newMemberName}
+                    onChange={e => setNewMemberName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Corporate Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. sakshi.s@tasknera.com"
+                    value={newMemberEmail}
+                    onChange={e => setNewMemberEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Assigned Practice Pod</label>
+                    <select
+                      value={newMemberTeam}
+                      onChange={e => setNewMemberTeam(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="SAP & Enterprise Practice">SAP &amp; Enterprise</option>
+                      <option value="Cloud & Engineering Pod">Cloud &amp; Engineering</option>
+                      <option value="Finance & Operations TA">Finance &amp; Operations</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Role / Authority</label>
+                    <select
+                      value={newMemberRole}
+                      onChange={e => setNewMemberRole(e.target.value as any)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30 cursor-pointer"
+                    >
+                      <option value="RECRUITER_MEMBER">TA Team Member</option>
+                      <option value="TEAM_LEAD">Team Lead</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Specialized Competencies (Comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. S/4HANA, Kubernetes, Fast Sourcing"
+                    value={newMemberSkills}
+                    onChange={e => setNewMemberSkills(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/30"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMemberModal(false)}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-black rounded-xl shadow-orange transition-all cursor-pointer"
+                  >
+                    Add Member to ATS
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

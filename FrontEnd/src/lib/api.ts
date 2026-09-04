@@ -7,6 +7,7 @@ export interface User {
   name?: string | null;
   email: string;
   role?: UserRole;
+  avatarUrl?: string | null;
   teamName?: string;
   createdAt?: string;
   updatedAt?: string;

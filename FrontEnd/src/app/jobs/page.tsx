@@ -98,18 +98,18 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
     const w = activeWorkers[0];
     return (
       <div className="flex items-center gap-2 group/single relative">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-xs shrink-0 ${getAvatarStyle(w.name)}`}>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm shrink-0 ${getAvatarStyle(w.name)}`}>
           {getInitials(w.name)}
         </div>
         <div className="min-w-0">
-          <div className="text-xs font-bold text-slate-800 truncate max-w-[130px] flex items-center gap-1">
+          <div className="text-xs font-bold text-slate-800 truncate max-w-[130px] flex items-center gap-1.5">
             <span>{w.name}</span>
             {w.isCreator && (
-              <span className="text-[8px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold shrink-0">Owner</span>
+              <span className="inline-flex items-center text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-md font-bold shrink-0 leading-tight">Own</span>
             )}
           </div>
           <div className="text-[10px] text-slate-400 font-medium truncate max-w-[130px]">
-            {w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter')}
+            {w.action === 'Created Requisition' ? 'Requisition Owner' : (w.action || (w.role === 'ADMIN' ? 'Administrator' : 'Recruiter'))}
           </div>
         </div>
       </div>
@@ -169,7 +169,7 @@ function WorkedByMembers({ workers = [], isCompact = false }: { workers: JobWork
                 <div className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span className="truncate">{w.name}</span>
                   {w.isCreator && (
-                    <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-semibold shrink-0">Owner</span>
+                    <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded font-semibold shrink-0">Owner</span>
                   )}
                 </div>
                 <div className="text-[10px] text-slate-400 truncate flex items-center gap-1">
@@ -581,15 +581,16 @@ export default function JobsPage() {
             <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="mt-4 text-sm text-slate-500 font-medium">Fetching your requisitions...</p>
           </div>
-        ) : viewMode === 'table' ? (
+        ) : filtered.length > 0 ? (
+          viewMode === 'table' ? (
           <div className="bg-white border border-slate-200/90 rounded-3xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-slate-200 bg-[#F1F5F9] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="px-6 py-4">Position Title</th>
-                    <th className="px-4 py-4">Assigned Team</th>
-                    <th className="px-4 py-4 hidden lg:table-cell">Comp Range</th>
+                    <th className="px-4 py-4">Assigned TA</th>
+                    <th className="px-4 py-4 hidden lg:table-cell">Compensation</th>
                     <th className="px-4 py-4 text-center">Work Mode</th>
                     <th className="px-4 py-4 text-center">Applicants</th>
                     <th className="px-4 py-4 text-center">Top Match</th>
@@ -610,10 +611,16 @@ export default function JobsPage() {
                         <WorkedByMembers workers={j.workedBy} />
                       </td>
                       <td className="px-4 py-4 hidden lg:table-cell">
-                        <span className="text-xs font-semibold text-slate-700">{j.salary}</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600">
+                          <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          {j.salary}
+                        </span>
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${modeColors[j.mode] || modeColors.Remote}`}>
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${modeColors[j.mode] || modeColors.Remote}`}>
+                          {j.mode === 'Remote' && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />}
+                          {j.mode === 'Hybrid' && <span className="w-1.5 h-1.5 rounded-full bg-purple-500 inline-block" />}
+                          {j.mode === 'Onsite' && <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />}
                           {j.mode}
                         </span>
                       </td>
@@ -639,10 +646,10 @@ export default function JobsPage() {
                             onChange={(e) => handleStatusChange(j.id, e.target.value as 'Active' | 'Draft' | 'Closed')}
                             className={`text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer appearance-none pr-6 transition-all focus:outline-none focus:ring-2 focus:ring-brand-orange/30 shadow-2xs ${
                               j.status === 'Active'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                                 : j.status === 'Draft'
-                                ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-                                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                                ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                : 'bg-slate-100 text-slate-600 border-slate-300'
                             }`}
                           >
                             <option value="Active">● Active</option>
@@ -681,10 +688,10 @@ export default function JobsPage() {
                         onChange={(e) => handleStatusChange(j.id, e.target.value as 'Active' | 'Draft' | 'Closed')}
                         className={`text-xs font-bold px-2.5 py-1 rounded-full border cursor-pointer appearance-none pr-6 transition-all focus:outline-none focus:ring-2 focus:ring-brand-orange/30 shadow-2xs ${
                           j.status === 'Active'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                             : j.status === 'Draft'
-                            ? 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-                            : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
+                            ? 'bg-amber-50 text-amber-700 border-amber-300'
+                            : 'bg-slate-100 text-slate-600 border-slate-300'
                         }`}
                       >
                         <option value="Active">● Active</option>
@@ -730,21 +737,33 @@ export default function JobsPage() {
               </div>
             ))}
           </div>
-        )}
-
-        {!isLoading && filtered.length === 0 && (
-          <div className="bg-white border border-slate-200/90 rounded-3xl text-center py-20 shadow-sm mt-4">
-            <div className="w-12 h-12 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        )
+        ) : (
+          <div className="bg-white border border-slate-200/90 rounded-3xl text-center py-20 shadow-sm mt-4 px-6">
+            <div className="w-14 h-14 rounded-2xl bg-brand-orange-pale text-brand-orange flex items-center justify-center mx-auto mb-4 border border-brand-orange-border">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-base font-bold text-[#1E293B] mb-1">No requisitions found</h3>
-            <p className="text-slate-500 text-xs">
+            <h3 className="text-lg font-bold text-[#1E293B] mb-1">
+              {allJobs.length === 0 ? 'No job requisitions created yet' : 'No matching requisitions found'}
+            </h3>
+            <p className="text-slate-500 text-xs max-w-md mx-auto mb-6">
               {search || filter !== 'All'
-                ? 'Try adjusting your search criteria or filter tags.'
-                : 'Get started by creating your first job evaluation requisition.'}
+                ? 'Try adjusting your search criteria or active filter tags.'
+                : 'Get started by creating your first job requisition. You can upload a Job Description PDF or paste requirements.'}
             </p>
+            {allJobs.length === 0 && (
+              <Link
+                href="/jobs/create"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-xl transition-all shadow-orange"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                </svg>
+                Post Your First Job Requisition
+              </Link>
+            )}
           </div>
         )}
       </main>

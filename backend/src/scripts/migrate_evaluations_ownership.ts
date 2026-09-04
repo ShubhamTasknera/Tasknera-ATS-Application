@@ -61,7 +61,7 @@ async function migrateExistingEvaluations() {
       created_by: app.job.created_by
     };
 
-    const evalPayload = evaluateCandidateAgainstRequirements(candidateRecord, jobData, requirements);
+    const evalPayload = await evaluateCandidateAgainstRequirements(candidateRecord, jobData, requirements);
 
     const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? (app.match_score || 75);
     const complianceStr = evalPayload.mandatoryCompliance

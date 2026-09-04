@@ -213,11 +213,20 @@ export function mapDbCandidateToRecord(c: any, defaultJobId?: string): Candidate
  */
 export const getAllCandidates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const currentUserId = req.user?.userId || req.user?.id;
+    const isAdmin = req.user?.role === 'ADMIN';
+
     let dbCandidates: CandidateRecord[] = [];
+    if (!isAdmin && !currentUserId) {
+      res.status(200).json({ success: true, count: 0, candidates: [] });
+      return;
+    }
+
     try {
-      // Candidate pool is common to all team members across the organization
       const poolWhere: any = {};
-      if (req.user?.organizationId) {
+      if (!isAdmin) {
+        poolWhere.created_by = currentUserId;
+      } else if (req.user?.organizationId) {
         poolWhere.user = { organizationId: req.user.organizationId };
       }
       const candidatesFromDb = await prisma.candidate.findMany({
@@ -240,13 +249,19 @@ export const getAllCandidates = async (req: AuthRequest, res: Response): Promise
       console.warn('[Talent Pool Candidates] Database query error:', dbErr);
     }
 
-    // Combine memory candidates across all jobs and pool matching this workspace
+    // Combine memory candidates across all jobs and pool matching this user/workspace
     const combinedMap = new Map<string, CandidateRecord>();
     for (const c of dbCandidates) {
       combinedMap.set(c.id, c);
     }
     for (const [jId, list] of CANDIDATE_STORE.entries()) {
       for (const c of list) {
+        if (!isAdmin) {
+          const ownerId = c.uploadedBy || c.createdBy;
+          if (!ownerId || ownerId !== currentUserId) {
+            continue;
+          }
+        }
         if (!combinedMap.has(c.id)) {
           combinedMap.set(c.id, c);
         }
@@ -298,11 +313,25 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
     }
 
     const isJobUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId);
-    if (req.user && req.user.role !== 'ADMIN' && isJobUuid) {
-      const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
-      if (checkJob && checkJob.created_by && checkJob.created_by !== req.user.userId) {
-        res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
-        return;
+    const currentUserId = req.user?.userId || req.user?.id;
+    const isAdmin = req.user?.role === 'ADMIN';
+
+    if (req.user && !isAdmin) {
+      if (isJobUuid) {
+        const checkJob = await prisma.job.findUnique({ where: { id: jobId }, select: { created_by: true } });
+        if (checkJob && checkJob.created_by && checkJob.created_by !== currentUserId) {
+          res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
+          return;
+        }
+      } else {
+        const gJob = GLOBAL_JOB_STORE.get(jobId);
+        if (gJob) {
+          const jobOwner = gJob.created_by || gJob.createdBy;
+          if (jobOwner && jobOwner !== currentUserId) {
+            res.status(403).json({ error: 'Forbidden: Access restricted to the requisition owner.' });
+            return;
+          }
+        }
       }
     }
 
@@ -370,15 +399,17 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
     }
 
-    // 2. Check memory store
+    // 2. Check memory store (scoped to current user if not ADMIN)
     let memCandidates = CANDIDATE_STORE.get(jobId);
     if (!memCandidates) {
-      if (DEFAULT_INITIAL_CANDIDATES[jobId]) {
-        memCandidates = [...DEFAULT_INITIAL_CANDIDATES[jobId]];
-      } else {
-        memCandidates = [];
-      }
+      memCandidates = [];
       CANDIDATE_STORE.set(jobId, memCandidates);
+    }
+    if (!isAdmin) {
+      memCandidates = memCandidates.filter(c => {
+        const owner = c.uploadedBy || c.createdBy;
+        return Boolean(owner && owner === currentUserId);
+      });
     }
 
     // Combine unique candidates (DB + Memory)
@@ -403,19 +434,21 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       }
     }
 
-    // Enrich candidates with evaluations from DB or compute if missing
-    let targetJob: any = null;
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+    // Enrich candidates with evaluations from DB or memory store (supports custom non-UUID IDs)
+    let targetJob: any = await getJobFromStoreOrDb(jobId);
+    if (!targetJob && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
       targetJob = await prisma.job.findUnique({
         where: { id: jobId },
         include: { requirements: true }
       }).catch(() => null);
     }
-    const jobTitle = targetJob?.position || 'Job Requisition';
-    const jobClient = targetJob?.client || 'Enterprise Client';
+    const jobTitle = targetJob?.position || targetJob?.title || 'Job Requisition';
+    const jobClient = targetJob?.client || targetJob?.company || 'Enterprise Client';
     const reqs = (targetJob?.requirements && targetJob.requirements.length > 0)
       ? targetJob.requirements
-      : getStandardRequirementsForPosition(jobTitle, jobClient);
+      : ((targetJob?.extractedRequirements && targetJob.extractedRequirements.length > 0)
+        ? targetJob.extractedRequirements
+        : getStandardRequirementsForPosition(jobTitle, jobClient));
 
     const enrichedList = await Promise.all(resultList.map(async (c) => {
       let finalScore = (c as any).matchScore ?? (c as any).atsScore;
@@ -423,23 +456,13 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
       let decision = (c as any).decision || (c as any).recommendation;
       let compliance = (c as any).mandatoryCompliance;
 
-      // Look up DB evaluation if candidate has UUID
-      if (finalScore === undefined && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(c.id)) {
-        const dbEval = await prisma.evaluation.findFirst({
-          where: { candidateId: c.id },
-          orderBy: { createdAt: 'desc' }
-        }).catch(() => null);
+      // Check if existing evaluation has already run under the AI semantic engine (v5.0.0) for this specific job
+      const evalJobTitle = (c as any).evaluation?.jobTitle || (c as any).evaluation?.position;
+      const hasAiEvaluation = (c as any).evaluation?.scoringConfigVersion === '5.0.0-ai-semantic-matcher' &&
+        (!evalJobTitle || evalJobTitle.toLowerCase() === jobTitle.toLowerCase());
 
-        if (dbEval) {
-          finalScore = dbEval.atsScore ?? dbEval.score;
-          matchLevel = dbEval.matchLevel;
-          decision = dbEval.decision;
-          compliance = dbEval.mandatoryCompliance;
-        }
-      }
-
-      // If still undefined, run deterministic evaluation
-      if (finalScore === undefined && reqs.length > 0) {
+      // If not yet evaluated by AI engine, run fresh AI evaluation against job requirements
+      if ((!hasAiEvaluation || finalScore === undefined || req.query.fresh === 'true') && reqs.length > 0) {
         const jobData = {
           id: targetJob?.id || jobId,
           position: jobTitle,
@@ -447,13 +470,26 @@ export const getCandidatesForJob = async (req: AuthRequest, res: Response): Prom
           client: jobClient,
           company: jobClient,
         };
-        const evalPayload = evaluateCandidateAgainstRequirements(c, jobData, reqs);
+        const evalPayload = await evaluateCandidateAgainstRequirements(c, jobData, reqs);
         finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
         matchLevel = evalPayload.matchLevel;
         decision = evalPayload.recommendation || (finalScore >= 80 ? 'SUBMIT' : finalScore >= 60 ? 'REVIEW' : 'DO NOT SUBMIT');
         compliance = evalPayload.mandatoryCompliance
           ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`
           : 'N/A';
+        
+        // Update in-memory candidate cache so next request is fast
+        (c as any).matchScore = finalScore;
+        (c as any).atsScore = finalScore;
+        (c as any).matchLevel = matchLevel;
+        (c as any).decision = decision;
+        (c as any).recommendation = decision;
+        (c as any).mandatoryCompliance = compliance;
+        (c as any).evaluation = {
+          ...evalPayload,
+          jobTitle,
+          scoringConfigVersion: '5.0.0-ai-semantic-matcher'
+        };
       }
 
       return {
@@ -1166,6 +1202,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
         }
 
 
+        const actualUser = (req as any).user?.userId || (req as any).user?.id;
+        const uploaderId = actualUser || defaultUserId || undefined;
         const newRecord: CandidateRecord = {
           id: dbCandidateId || candidateId,
           jobId,
@@ -1174,6 +1212,8 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
           fileSize,
           fileHash,
           uploadedAt: new Date().toISOString(),
+          uploadedBy: uploaderId,
+          createdBy: uploaderId,
         };
 
         // Cache globally for duplicate detection across jobs
@@ -1334,7 +1374,7 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                   created_by: targetJob?.created_by || defaultUserId
                 };
 
-                const evalPayload = evaluateCandidateAgainstRequirements(newRecord, jobData, reqs);
+                const evalPayload = await evaluateCandidateAgainstRequirements(newRecord, jobData, reqs);
                 const finalScore = evalPayload.overallScore ?? evalPayload.overallMatch ?? 0;
                 const complianceStr = evalPayload.mandatoryCompliance
                   ? `${evalPayload.mandatoryCompliance.met}/${evalPayload.mandatoryCompliance.total}`

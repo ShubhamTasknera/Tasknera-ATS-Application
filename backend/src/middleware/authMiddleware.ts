@@ -6,6 +6,7 @@ export type UserRole = 'ADMIN' | 'MEMBER' | 'TEAM_LEADER';
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
+    id?: string;
     email: string;
     role?: UserRole;
     organizationId?: string;

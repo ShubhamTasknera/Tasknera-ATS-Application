@@ -12,6 +12,8 @@ import RequirementTable from '@/components/evaluation/RequirementTable';
 import {
   computeComprehensiveMatchScore,
   ComprehensiveMatchResult,
+  isJunkRequirement,
+  safeWordMatch,
 } from '@/utils/requirementUtils';
 import { RequirementStatus, ConfidenceLevel } from '@/types';
 
@@ -869,44 +871,81 @@ export default function JobCandidatesPage() {
       );
 
 
-      // Build requirement evaluation structure for RequirementTable
-      const requirementEvals = (job?.requirements && job.requirements.length > 0)
-        ? job.requirements.map(req => {
+      // Build requirement evaluation structure for RequirementTable (filtering out junk/commercial lines)
+      const validRequirements = (job?.requirements || []).filter(req => req.requirement && !isJunkRequirement(req.requirement));
+
+      const requirementEvals = (validRequirements.length > 0)
+        ? validRequirements.map(req => {
           const reqLower = req.requirement.toLowerCase();
-          const cleanTokens = reqLower
-            .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
-            .split(/[\s,;/]+/)
-            .map((w: string) => w.trim())
-            .filter((w: string) => w.length > 2);
+          const reqCategory = (req.category || '').toLowerCase();
+          const isMandatory = Boolean(req.is_mandatory);
 
-          const hasSkill = effectiveCandidateSkills.some(cs => {
-            const csLow = cs.toLowerCase();
-            return reqLower.includes(csLow) || csLow.includes(reqLower) || cleanTokens.some((tok: string) => csLow.includes(tok));
-          }) || (c.rawText && cleanTokens.some((tok: string) => c.rawText.toLowerCase().includes(tok)));
+          // Check if experience requirement
+          const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
+          const isExpReq = Boolean(yearsPattern) || reqCategory.includes('exp') || reqLower.includes('experience');
 
-          const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.PARTIALLY_MET;
+          let hasSkill = false;
+          let matchPercent = 0;
+
+          if (isExpReq) {
+            const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
+            const candExp = c.totalExperienceYears || parseFloat(String(c.totalExperience || '0').replace(/[^0-9.]/g, '')) || 0;
+            if (candExp >= requiredYears) {
+              hasSkill = true;
+              matchPercent = 100;
+            } else if (candExp >= requiredYears * 0.75) {
+              hasSkill = true;
+              matchPercent = 70;
+            } else {
+              hasSkill = false;
+              matchPercent = 0;
+            }
+          } else {
+            // Technical / skill matching
+            const cleanTokens = reqLower
+              .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
+              .split(/[\s,;/]+/)
+              .map((w: string) => w.trim().toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, ''))
+              .filter((w: string) => w.length >= 3 && !['years', 'work', 'skills', 'tools', 'high', 'level'].includes(w));
+
+            hasSkill = effectiveCandidateSkills.some(cs => {
+              const csLow = cs.toLowerCase();
+              return csLow === reqLower ||
+                     safeWordMatch(csLow, reqLower) ||
+                     cleanTokens.some((tok: string) => csLow === tok);
+            }) || cleanTokens.some((tok: string) => {
+              return effectiveCandidateSkills.some(cs => cs.toLowerCase() === tok) ||
+                     safeWordMatch(tok, c.rawText || '');
+            });
+
+            matchPercent = hasSkill ? 100 : 0;
+          }
+
+          const status = hasSkill ? RequirementStatus.FULLY_MET : RequirementStatus.NOT_MET;
           return {
             id: req.id,
             requirement: {
               id: req.id,
               text: req.requirement,
               category: req.category || 'Technical Skill',
-              isMandatory: Boolean(req.is_mandatory),
+              isMandatory,
               weight: req.weight || 1.0,
             },
             status,
             confidence: ConfidenceLevel.HIGH,
-            pointsAwarded: hasSkill ? 10 : 5,
+            pointsAwarded: hasSkill ? (matchPercent >= 100 ? 10 : 7) : 0,
             maxPoints: 10,
-            matchPercentage: hasSkill ? 100 : 50,
-            hasEvidence: Boolean(req.source_evidence || hasSkill),
+            matchPercentage: matchPercent,
+            hasEvidence: Boolean(hasSkill),
             evidence: [
               {
                 id: `ev-${req.id}`,
                 type: 'Explicit',
                 source: 'Candidate Profile & CV Text',
-                text: hasSkill ? `Candidate profile lists skill / background matching "${req.requirement}".` : `Partial alignment for "${req.requirement}".`,
-                matchStrength: hasSkill ? 95 : 55,
+                text: hasSkill
+                  ? `Verified match: Candidate profile & CV document alignment for "${req.requirement}".`
+                  : `Not met: Candidate does not demonstrate required criteria for "${req.requirement}".`,
+                matchStrength: matchPercent,
               },
             ],
           };

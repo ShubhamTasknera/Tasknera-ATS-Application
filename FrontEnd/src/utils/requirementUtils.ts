@@ -526,42 +526,103 @@ export interface ComprehensiveMatchResult {
 }
 
 /**
- * Task 5 Deterministic 7-Pillar Comprehensive Match Calculator
+ * Detect junk / non-requirement sentences (recruiter commercials, company blurbs, exclusions, perks)
  */
+export const isJunkRequirement = (text: string): boolean => {
+  if (!text || typeof text !== 'string') return true;
+  const t = text.trim();
+  if (t.length < 5) return true;
+
+  // 1. Recruiter billing, commission, CTC, agency commercials
+  if (/(?:fixed\s+ctc|freelance\s+recruiter|total\s+billing|billing\s+payables?|replacement\s+guarantee|placement\s+fee|incentive\s*[-:]|recruiter\s+margin|invoice\s+submission|payment\s+terms|commercials)/i.test(t)) {
+    return true;
+  }
+
+  // 2. Company pitch, marketing, background blurbs
+  if (/(?:bootstrapped\s+company|customers?\s+in\s+\d+\s+countries|chance\s+to\s+build\s+the\s+sales\s+motion|we(?:'re|\s+are)\s+looking\s+for\s+someone\s+climbing|founded\s+in\s+\d+|our\s+mission\s+is|about\s+(?:the\s+)?company|why\s+join\s+us|a\s+profitable\s+bootstrapped)/i.test(t)) {
+    return true;
+  }
+
+  // 3. Exclusions / negative requirements ("What we're not asking for", "An MBA. Five-plus years...")
+  if (/(?:what\s+we(?:'re|\s+are)\s+not\s+asking|not\s+asking\s+for|what\s+you\s+don't\s+need|who\s+this\s+is\s+not\s+for|an\s+mba\.?\s+five-plus\s+years|big-logo\s+cv|don't\s+apply\s+if)/i.test(t)) {
+    return true;
+  }
+
+  // 4. Perks, benefits, compensation packages
+  if (/(?:what\s+you\s+get|what\s+we\s+offer|perks\s+and\s+benefits|health\s+insurance|unlimited\s+pto|esops?|equity\s+grant|gym\s+membership|free\s+lunch)/i.test(t)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Safely tests if needle appears as a distinct word/token inside haystack.
+ * Automatically cleans special characters and wraps in try-catch to prevent any RegExp runtime errors.
+ */
+export const safeWordMatch = (needle: string, haystack: string): boolean => {
+  if (!needle || !haystack) return false;
+  // Clean needle to strip leading/trailing non-alphanumeric punctuation
+  const cleanNeedle = needle.toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, '').trim();
+  if (cleanNeedle.length < 2) return false;
+
+  try {
+    const escaped = cleanNeedle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(`(?:^|[^a-zA-Z0-9+#.-])${escaped}(?:$|[^a-zA-Z0-9+#.-])`, 'i');
+    return rx.test(haystack);
+  } catch {
+    return haystack.toLowerCase().includes(cleanNeedle);
+  }
+};
+
 export const computeComprehensiveMatchScore = (
   candidate: {
-    skills?: string[];
+    skills: string[];
     totalExperience?: string | number;
     totalExperienceYears?: number;
-    education?: any[];
+    education?: { degree?: string; field?: string; institution?: string }[];
     rawText?: string;
     summary?: string;
     currentTitle?: string;
-    experience?: any[];
   },
   job: {
+    position: string;
     jd_text?: string;
-    jdText?: string;
-    position?: string;
-    requirements?: Array<{ requirement: string; category?: string; weight?: number; is_mandatory?: boolean }>;
+    requirements?: {
+      id?: string;
+      requirement?: string;
+      category?: string;
+      is_mandatory?: boolean;
+      weight?: number;
+    }[];
   }
-): ComprehensiveMatchResult => {
-  const jdFullText = job.jd_text || job.jdText || job.position || '';
-  const requirements = job.requirements || [];
-  const rawText = candidate.rawText || `${candidate.currentTitle || ''} ${candidate.summary || ''} ${(candidate.skills || []).join(' ')}`;
-  const candSkills = (candidate.skills || []).map(s => s.toLowerCase());
+): {
+  overallScore: number;
+  matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT';
+  mandatoryRequirementFailed: boolean;
+  breakdown: MatchScoreBreakdown;
+  summary: string;
+} => {
+  const rawText = candidate.rawText || '';
+  const jdFullText = job.jd_text || job.position || '';
+  const candSkills = (candidate.skills || []).map(s => (s || '').toLowerCase().trim()).filter(Boolean);
 
+  // Parse candidate career years
   let totalCareerYears = 0;
-  if (typeof candidate.totalExperienceYears === 'number') {
+  if (typeof candidate.totalExperienceYears === 'number' && !isNaN(candidate.totalExperienceYears)) {
     totalCareerYears = candidate.totalExperienceYears;
-  } else {
-    const expMatch = (String(candidate.totalExperience || '')).match(/(\d+(?:\.\d+)?)/);
-    if (expMatch) totalCareerYears = parseFloat(expMatch[1]);
+  } else if (candidate.totalExperience) {
+    const parsed = parseFloat(String(candidate.totalExperience).replace(/[^0-9.]/g, ''));
+    if (!isNaN(parsed)) totalCareerYears = parsed;
   }
 
+  // Filter out junk / commercial / exclusion requirements from evaluation
+  const rawRequirements = (job.requirements && job.requirements.length > 0) ? job.requirements : [];
+  const requirements = rawRequirements.filter(r => r.requirement && !isJunkRequirement(r.requirement));
+
+  let mandatoryRequirementFailed = false;
   let mandatoryCount = 0;
   let mandatoryMetCount = 0;
-  let mandatoryRequirementFailed = false;
 
   let totalTechWeight = 0;
   let earnedTechWeight = 0;
@@ -586,34 +647,37 @@ export const computeComprehensiveMatchScore = (
     const yearsPattern = reqLower.match(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/i);
     if (yearsPattern || reqCategory.includes('exp') || reqLower.includes('experience')) {
       const requiredYears = yearsPattern ? parseFloat(yearsPattern[1]) : 3.0;
-      
-      // Check if candidate matches domain or general experience
+
+      // Extract domain keywords from experience requirement
       const expKeywords = reqLower
         .replace(/(\d+\+?\s*years?|experience|minimum|required|hands-on|relevant|professional|industry|proven|in|with|of|for|and|to)/gi, ' ')
         .split(/[\s,;/]+/)
         .map(w => w.trim().toLowerCase())
-        .filter(w => w.length > 2);
+        .filter(w => w.length > 3 && !['years', 'year', 'work', 'role', 'team', 'candidate', 'ability'].includes(w));
 
       let domainMatch = true;
       if (expKeywords.length > 0) {
         domainMatch = expKeywords.some(kw =>
-          rawText.toLowerCase().includes(kw) ||
-          candSkills.some(s => s.includes(kw))
+          candSkills.some(s => s === kw || s.includes(kw)) ||
+          safeWordMatch(kw, rawText)
         );
       }
 
-      const candidateRelevantExp = domainMatch ? totalCareerYears : (totalCareerYears > 0 ? totalCareerYears * 0.7 : 0);
+      const candidateRelevantExp = domainMatch ? totalCareerYears : (totalCareerYears > 0 ? totalCareerYears * 0.5 : 0);
       totalExpWeight += weight;
 
       if (candidateRelevantExp >= requiredYears) {
         earnedExpWeight += (1.0 * weight);
         if (isMandatory) mandatoryMetCount++;
-      } else if (candidateRelevantExp >= requiredYears * 0.6 || totalCareerYears >= requiredYears) {
-        earnedExpWeight += (0.8 * weight);
+      } else if (candidateRelevantExp >= requiredYears * 0.75) {
+        earnedExpWeight += (0.7 * weight);
         if (isMandatory) mandatoryMetCount++;
       } else {
-        earnedExpWeight += (0.4 * weight);
-        if (isMandatory) mandatoryRequirementFailed = true;
+        // Severe experience deficiency (e.g. 0.4y vs 3y required) -> Earn 0 points and fail mandatory
+        earnedExpWeight += 0;
+        if (isMandatory || requiredYears >= 2.0) {
+          mandatoryRequirementFailed = true;
+        }
       }
       continue;
     }
@@ -626,29 +690,31 @@ export const computeComprehensiveMatchScore = (
       reqCategory.includes('certif') ||
       reqCategory.includes('function')
     ) {
-      const cleanTech = reqText.replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in|and|of|for|to)/gi, ' ').trim();
+      const cleanTech = reqText
+        .replace(/(proficient|proficiency|experience|hands-on|strong|deep|knowledge|architectural|familiarity|with|in|and|of|for|to)/gi, ' ')
+        .trim();
       const techTokens = cleanTech
         .split(/[,/&+\n]+/)
-        .map(t => t.trim().toLowerCase())
-        .filter(t => t.length > 1);
+        .map(t => t.trim().toLowerCase().replace(/^[^a-zA-Z0-9+#.-]+|[^a-zA-Z0-9+#.-]+$/g, ''))
+        .filter(t => t.length >= 3 && !['years', 'tools', 'skills', 'good', 'must', 'work', 'high', 'level'].includes(t));
 
       totalTechWeight += weight;
 
-      // Check if candidate matches any key token in this requirement or if candidate skills appear in req
+      // Strict skill matching: Exact skill match, or token match against extracted candidate skills, or safe word boundary in raw text
       const isMatched = candSkills.some(s => {
-        if (!s || s.length < 3) return false;
+        if (!s || s.length < 2) return false;
         return (
-          reqLower.includes(s) ||
-          techTokens.some(tok => tok.includes(s) || s.includes(tok)) ||
-          (rawText.toLowerCase().includes(s) && reqLower.includes(s))
+          reqLower === s ||
+          safeWordMatch(s, reqLower) ||
+          techTokens.some(tok => tok === s)
         );
       }) || techTokens.some(tok => {
         if (!tok || tok.length < 3) return false;
         return (
-          candSkills.some(s => s === tok || s.includes(tok) || tok.includes(s)) ||
-          rawText.toLowerCase().includes(tok)
+          candSkills.includes(tok) ||
+          safeWordMatch(tok, rawText)
         );
-      }) || (techTokens.length === 0 && rawText.length > 50);
+      });
 
       if (isMatched) {
         matchedSkillsList.push(reqText);
@@ -668,17 +734,20 @@ export const computeComprehensiveMatchScore = (
   }
 
   // 2. Technical Skills Score (25%)
-  let techScore = 80;
+  let techScore = 0;
   if (totalTechWeight > 0) {
     techScore = Math.round((earnedTechWeight / totalTechWeight) * 100);
-  } else {
-    techScore = calculateSkillsScore(candidate.skills || [], ['React', 'TypeScript', 'Node.js', 'SQL']).score;
+  } else if (requirements.length === 0) {
+    // Fallback only if no requirements at all: check match with JD keywords
+    techScore = 50;
   }
 
   // 3. Relevant Experience Score (20%)
-  let expScore = Math.min(100, Math.max(20, Math.round(totalCareerYears * 20)));
+  let expScore = 0;
   if (totalExpWeight > 0) {
     expScore = Math.round((earnedExpWeight / totalExpWeight) * 100);
+  } else {
+    expScore = Math.min(100, Math.round(totalCareerYears * 20));
   }
 
   // 4. Education & Certifications Score (5%)
@@ -688,9 +757,23 @@ export const computeComprehensiveMatchScore = (
   const keywordsResult = calculateKeywordOverlapScore(rawText, jdFullText);
   const semanticScore = keywordsResult.score;
 
-  // 6. Responsibilities (10%) & Domain Fit (5%)
-  const respScore = 85;
-  const domainScore = 90;
+  // 6. Domain & Role Fit Alignment (Check if role matches, e.g. Software Engineer vs Sales)
+  const jobTitleLower = (job.position || '').toLowerCase();
+  const candTitleLower = (candidate.currentTitle || '').toLowerCase();
+  const isSalesJob = /\b(sales|account\s+executive|business\s+development|bdr|sdr|revops|account\s+manager)\b/i.test(jobTitleLower);
+  const isEngCandidate = /\b(software|developer|engineer|full\s*stack|frontend|backend|programmer|web\s+developer)\b/i.test(candTitleLower) ||
+                         candSkills.some(s => ['react', 'javascript', 'typescript', 'node.js', 'html', 'css', 'python', 'java'].includes(s));
+  const hasSalesSkills = candSkills.some(s => ['sales', 'b2b', 'crm', 'pipeline', 'cold calling', 'account executive', 'lead generation'].includes(s));
+
+  let domainScore = 80;
+  let respScore = 80;
+
+  if (isSalesJob && isEngCandidate && !hasSalesSkills) {
+    // Severe role mismatch: Software engineer applying to Sales AE job
+    domainScore = 10;
+    respScore = 10;
+    mandatoryRequirementFailed = true;
+  }
 
   // 7-Pillar Composite Calculation (Task 5 Architecture)
   const weightedTotal =
@@ -702,12 +785,17 @@ export const computeComprehensiveMatchScore = (
     (semanticScore * 0.05) +
     (domainScore * 0.05);
 
-  const overallScore = Math.min(100, Math.max(0, Math.round(weightedTotal)));
+  let overallScore = Math.min(100, Math.max(0, Math.round(weightedTotal)));
+
+  // If mandatory requirement failed or severe experience failure, cap overall score so it cannot be accepted
+  if (mandatoryRequirementFailed) {
+    overallScore = Math.min(overallScore, 44);
+  }
 
   let matchLevel: 'STRONG MATCH' | 'GOOD MATCH' | 'MODERATE MATCH' | 'LOW FIT' = 'MODERATE MATCH';
-  if (overallScore >= 75 && !mandatoryRequirementFailed) matchLevel = 'STRONG MATCH';
-  else if (overallScore >= 60 && !mandatoryRequirementFailed) matchLevel = 'GOOD MATCH';
-  else if (overallScore >= 40) matchLevel = 'MODERATE MATCH';
+  if (overallScore >= 70 && !mandatoryRequirementFailed) matchLevel = 'STRONG MATCH';
+  else if (overallScore >= 55 && !mandatoryRequirementFailed) matchLevel = 'GOOD MATCH';
+  else if (overallScore >= 45 && !mandatoryRequirementFailed) matchLevel = 'MODERATE MATCH';
   else matchLevel = 'LOW FIT';
 
   const breakdown: MatchScoreBreakdown = {

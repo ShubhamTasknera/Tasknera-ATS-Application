@@ -281,16 +281,11 @@ const RELATED_PARTIAL_MAPPINGS: Array<{
 
 // Generic filler words and stop words to avoid spurious matching
 export const GENERIC_STOP_WORDS = new Set([
-  'data', 'cloud', 'system', 'systems', 'management', 'analysis', 'development',
-  'technology', 'technologies', 'testing', 'software', 'reporting', 'engineer',
-  'engineering', 'platform', 'platforms', 'application', 'applications', 'services',
-  'solutions', 'tools', 'tool', 'business', 'process', 'processes', 'operations',
-  'skills', 'experience', 'hands-on', 'proficient', 'proficiency', 'knowledge',
-  'familiarity', 'strong', 'deep', 'solid', 'proven', 'demonstrated', 'ability',
-  'working', 'with', 'in', 'and', 'or', 'for', 'the', 'of', 'to', 'using',
-  'designing', 'building', 'developing', 'managing', 'implementing', 'role',
-  'good', 'excellent', 'preferred', 'required', 'must', 'have', 'minimum',
-  'years', 'yrs', 'yr', 'year', 'work', 'background', 'industry', 'overview'
+  'with', 'in', 'and', 'or', 'for', 'the', 'of', 'to', 'using', 'from',
+  'role', 'good', 'excellent', 'preferred', 'required', 'must', 'have', 'minimum',
+  'years', 'yrs', 'yr', 'year', 'work', 'overview',
+  'hands-on', 'proficient', 'proficiency', 'knowledge', 'familiarity', 'strong',
+  'deep', 'solid', 'proven', 'demonstrated', 'ability', 'working'
 ]);
 
 // Backward compatibility alias
