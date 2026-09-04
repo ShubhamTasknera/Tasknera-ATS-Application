@@ -1621,7 +1621,7 @@ export default function JobCandidatesPage() {
                     <th className="px-6 py-3.5">Candidate Profile</th>
                     <th className="px-6 py-3.5">Experience & History</th>
                     <th className="px-6 py-3.5 hidden lg:table-cell">Current Role</th>
-                    <th className="px-6 py-3.5 text-center">ATS Match Score</th>
+                    <th className="px-6 py-3.5 text-center">ATS Score & Decision</th>
                     <th className="px-6 py-3.5 text-center">Status</th>
                     <th className="px-6 py-3.5 text-right">Action</th>
                   </tr>
@@ -1648,17 +1648,6 @@ export default function JobCandidatesPage() {
                                 >
                                   {c.name || c.fileName || 'Unnamed Candidate'}
                                 </button>
-                                {c.matchScore !== undefined && c.matchScore !== null && (
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black font-mono border ${
-                                    c.matchScore >= 75
-                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                      : c.matchScore >= 60
-                                      ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                      : 'bg-rose-100 text-rose-800 border-rose-200'
-                                  }`}>
-                                    {Math.round(c.matchScore)}%
-                                  </span>
-                                )}
                               </div>
                               <div className="text-xs text-slate-500 truncate max-w-[200px] font-medium mt-0.5">
                                 {c.location || c.email || 'Verified Candidate'}
@@ -1697,28 +1686,34 @@ export default function JobCandidatesPage() {
                           <div className="text-slate-500 text-[11px] font-medium mt-0.5">{c.currentCompany || '—'}</div>
                         </td>
 
-                        {/* ATS Match Score */}
+                        {/* ATS Score & Direct Accept/Reject Decision */}
                         <td className="px-6 py-4 text-center">
                           {(() => {
                             const score = Math.round(c.matchScore ?? (c as any).atsScore ?? 0);
-                            const isStrong = score >= 75;
-                            const isGood = score >= 60;
+                            const isAccept = score >= 70;
+                            const isReject = score < 50;
                             return (
-                              <div className="inline-flex flex-col items-center gap-1">
+                              <div className="inline-flex flex-col items-center gap-1.5">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black font-mono border shadow-2xs ${
-                                  isStrong
+                                  isAccept
                                     ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                    : isGood
-                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                    : 'bg-rose-50 text-rose-800 border-rose-300'
+                                    : isReject
+                                    ? 'bg-rose-50 text-rose-800 border-rose-300'
+                                    : 'bg-amber-50 text-amber-800 border-amber-300'
                                 }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    isStrong ? 'bg-emerald-500' : isGood ? 'bg-amber-500' : 'bg-rose-500'
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    isAccept ? 'bg-emerald-500' : isReject ? 'bg-rose-500' : 'bg-amber-500'
                                   }`} />
-                                  ⚡ {score}% ATS
+                                  {score}% ATS
                                 </span>
-                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                  {c.matchLevel || (isStrong ? 'Strong Fit' : isGood ? 'Good Fit' : 'Low Fit')}
+                                <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                                  isAccept
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : isReject
+                                    ? 'bg-rose-100 text-rose-900 border-rose-300'
+                                    : 'bg-amber-100 text-amber-900 border-amber-300'
+                                }`}>
+                                  {isAccept ? '✓ ACCEPT' : isReject ? '✕ REJECT' : '⏳ REVIEW'}
                                 </span>
                               </div>
                             );
@@ -1741,21 +1736,11 @@ export default function JobCandidatesPage() {
                                 setSelectedCandidate(c);
                                 setActiveModalTab('match');
                               }}
-                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                              className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                             >
-                              <span>Inspect Rubric</span>
+                              <span>View Profile</span>
                               <span className="text-slate-400">→</span>
                             </button>
-                            {c.id && (
-                              <Link
-                                href={`/evaluations/${c.id}?jobId=${jobId}`}
-                                className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer hidden xl:inline-flex items-center gap-1"
-                                title="Open Full Candidate Evaluation Scorecard"
-                              >
-                                <span>Scorecard</span>
-                                <span>↗</span>
-                              </Link>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -1835,14 +1820,30 @@ export default function JobCandidatesPage() {
                   </div>
 
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-xs">
-                      <span className="text-xs text-slate-400 font-medium">ATS Match:</span>
-                      <span className={`text-sm font-black font-mono ${
-                        (selectedCandidate.matchScore ?? 0) >= 75 ? 'text-emerald-400' : (selectedCandidate.matchScore ?? 0) >= 60 ? 'text-amber-400' : 'text-rose-400'
-                      }`}>
-                        {Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0)}%
-                      </span>
-                    </div>
+                    {(() => {
+                      const modalScore = Math.round(selectedCandidate.matchScore ?? selectedCandidate.atsScore ?? 0);
+                      const isModalAccept = modalScore >= 70;
+                      const isModalReject = modalScore < 50;
+                      return (
+                        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-xs">
+                          <span className="text-xs text-slate-400 font-medium">ATS Score:</span>
+                          <span className={`text-sm font-black font-mono ${
+                            isModalAccept ? 'text-emerald-400' : isModalReject ? 'text-rose-400' : 'text-amber-400'
+                          }`}>
+                            {modalScore}%
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                            isModalAccept
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : isModalReject
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          }`}>
+                            {isModalAccept ? '✓ ACCEPT' : isModalReject ? '✕ REJECT' : '⏳ REVIEW'}
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     <button
                       onClick={() => setShowCandidateMeta(prev => !prev)}

@@ -7,9 +7,66 @@ import { AuthRequest } from '../middleware/authMiddleware';
 /**
  * Standard requirement helper for fallback jobs or unseeded requisitions
  */
+import { getJobFromStoreOrDb } from './jobController';
+
+/**
+ * Standard requirement helper for fallback jobs or unseeded requisitions across multiple domains
+ */
 export function getStandardRequirementsForPosition(positionTitle: string, clientName?: string) {
   const titleLower = (positionTitle || '').toLowerCase();
 
+  // 1. Sales & Business Development Roles
+  if (
+    titleLower.includes('sale') ||
+    titleLower.includes('business development') ||
+    titleLower.includes('bde') ||
+    titleLower.includes('bdr') ||
+    titleLower.includes('sdr') ||
+    titleLower.includes('account executive') ||
+    titleLower.includes('inside sales') ||
+    titleLower.includes('client acquisition') ||
+    titleLower.includes('relationship manager')
+  ) {
+    return [
+      { id: 'req-sales-1', requirement: '3+ years experience in direct B2B sales, account executive, or business development roles with documented quota achievement', category: 'Experience', is_mandatory: true, weight: 2.0 },
+      { id: 'req-sales-2', requirement: 'Demonstrated track record of lead generation, outbound prospecting, and sales pipeline management', category: 'Functional Skill', is_mandatory: true, weight: 1.8 },
+      { id: 'req-sales-3', requirement: 'Hands-on experience with CRM systems (Salesforce, HubSpot, or Zoho) and sales outreach workflows', category: 'Tool', is_mandatory: true, weight: 1.5 },
+      { id: 'req-sales-4', requirement: 'Commercial negotiation, client presentation, proposal drafting, and contract closing experience', category: 'Functional Skill', is_mandatory: true, weight: 1.5 },
+      { id: 'req-sales-5', requirement: 'Bachelor degree in Business, Marketing, Communications, or relevant professional field', category: 'Education', is_mandatory: false, weight: 1.0 }
+    ];
+  }
+
+  // 2. Marketing & Growth Roles
+  if (titleLower.includes('marketing') || titleLower.includes('growth') || titleLower.includes('seo') || titleLower.includes('content')) {
+    return [
+      { id: 'req-mkt-1', requirement: '3+ years hands-on digital marketing, growth campaigns, or content strategy experience', category: 'Experience', is_mandatory: true, weight: 2.0 },
+      { id: 'req-mkt-2', requirement: 'Proficiency in SEO/SEM, Google Analytics, performance marketing, and campaign optimization', category: 'Functional Skill', is_mandatory: true, weight: 1.8 },
+      { id: 'req-mkt-3', requirement: 'Demonstrated experience in audience segmentation, conversion funnels, and lead generation', category: 'Functional Skill', is_mandatory: true, weight: 1.5 },
+      { id: 'req-mkt-4', requirement: 'Bachelor degree in Marketing, Communications, Business, or equivalent', category: 'Education', is_mandatory: false, weight: 1.0 }
+    ];
+  }
+
+  // 3. Human Resources & Talent Acquisition
+  if (titleLower.includes('hr') || titleLower.includes('human resources') || titleLower.includes('recruiter') || titleLower.includes('talent acquisition')) {
+    return [
+      { id: 'req-hr-1', requirement: '3+ years full life-cycle talent acquisition, recruiting, or HR operations experience', category: 'Experience', is_mandatory: true, weight: 2.0 },
+      { id: 'req-hr-2', requirement: 'Hands-on expertise with ATS platforms, candidate sourcing (LinkedIn Recruiter), and pipeline management', category: 'Functional Skill', is_mandatory: true, weight: 1.8 },
+      { id: 'req-hr-3', requirement: 'In-depth understanding of employment regulations, interview coordination, and onboarding', category: 'Functional Skill', is_mandatory: true, weight: 1.5 },
+      { id: 'req-hr-4', requirement: 'Degree in Human Resources, Psychology, Business Administration, or equivalent', category: 'Education', is_mandatory: false, weight: 1.0 }
+    ];
+  }
+
+  // 4. Finance & Accounting Roles
+  if (titleLower.includes('finance') || titleLower.includes('accountant') || titleLower.includes('audit') || titleLower.includes('tax')) {
+    return [
+      { id: 'req-fin-1', requirement: '3+ years accounting or financial reporting experience in corporate environment', category: 'Experience', is_mandatory: true, weight: 2.0 },
+      { id: 'req-fin-2', requirement: 'Proficiency in general ledger, P&L reporting, balance sheet reconciliations, and GAAP standards', category: 'Functional Skill', is_mandatory: true, weight: 1.8 },
+      { id: 'req-fin-3', requirement: 'Hands-on experience with accounting ERP software (Tally, QuickBooks, SAP FICO, NetSuite)', category: 'Tool', is_mandatory: true, weight: 1.5 },
+      { id: 'req-fin-4', requirement: 'Bachelor degree in Commerce, Accounting, Finance, or CA / CPA certification', category: 'Education', is_mandatory: false, weight: 1.0 }
+    ];
+  }
+
+  // 5. Frontend Engineering Roles
   if (titleLower.includes('frontend') || titleLower.includes('react') || titleLower.includes('ui') || titleLower.includes('web')) {
     return [
       { id: 'req-fe-1', requirement: '3+ years experience with React, TypeScript, and modern state management', category: 'Experience', is_mandatory: true, weight: 2.0 },
@@ -20,6 +77,7 @@ export function getStandardRequirementsForPosition(positionTitle: string, client
     ];
   }
 
+  // 6. Backend Engineering Roles
   if (titleLower.includes('backend') || titleLower.includes('node') || titleLower.includes('python') || titleLower.includes('java') || titleLower.includes('golang')) {
     return [
       { id: 'req-be-1', requirement: '3+ years hands-on backend development and API architecture experience', category: 'Experience', is_mandatory: true, weight: 2.0 },
@@ -30,6 +88,7 @@ export function getStandardRequirementsForPosition(positionTitle: string, client
     ];
   }
 
+  // 7. SAP / Enterprise ERP Roles
   if (titleLower.includes('sap') || titleLower.includes('erp') || titleLower.includes('fico') || titleLower.includes('s/4hana')) {
     return [
       { id: 'req-sap-1', requirement: '5+ years experience in SAP CO / FICO module configuration and implementation', category: 'Experience', is_mandatory: true, weight: 2.0 },
@@ -40,10 +99,10 @@ export function getStandardRequirementsForPosition(positionTitle: string, client
     ];
   }
 
-  // General Software Engineering / Tech Role Fallback
+  // General Software Engineering Fallback (ONLY for technical engineering roles)
   return [
-    { id: 'req-gen-1', requirement: '2+ years professional industry experience in software development or technical domain', category: 'Experience', is_mandatory: true, weight: 2.0 },
-    { id: 'req-gen-2', requirement: 'Demonstrated proficiency in core required technologies and tools', category: 'Technical Skill', is_mandatory: true, weight: 1.5 },
+    { id: 'req-gen-1', requirement: '2+ years professional industry experience in software development or technical engineering', category: 'Experience', is_mandatory: true, weight: 2.0 },
+    { id: 'req-gen-2', requirement: 'Demonstrated proficiency in core required technologies and tools for this role', category: 'Technical Skill', is_mandatory: true, weight: 1.5 },
     { id: 'req-gen-3', requirement: 'Proven experience collaborating on production systems and business workflows', category: 'Experience', is_mandatory: true, weight: 1.5 },
     { id: 'req-gen-4', requirement: 'Strong problem-solving skills, debugging ability, and technical documentation', category: 'Soft Skill', is_mandatory: false, weight: 1.0 },
     { id: 'req-gen-5', requirement: 'Higher education degree or equivalent relevant professional background', category: 'Education', is_mandatory: false, weight: 1.0 }
@@ -57,30 +116,50 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
   let jobData: any = null;
   let requirements: any[] = [];
 
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId);
-  if (isUuid) {
-    try {
-      const dbJob = await prisma.job.findUnique({
-        where: { id: jobId },
-        include: { requirements: true }
-      });
+  // 1. Check in-memory GLOBAL_JOB_STORE first (ensures custom/client IDs work immediately)
+  const storeJob = await getJobFromStoreOrDb(jobId);
+  if (storeJob) {
+    jobData = {
+      id: storeJob.id,
+      position: storeJob.position || storeJob.title || fallbackPosition,
+      title: storeJob.position || storeJob.title || fallbackPosition,
+      client: storeJob.client || storeJob.company || fallbackClient,
+      company: storeJob.client || storeJob.company || fallbackClient,
+      jd_text: storeJob.jd_text || undefined,
+      created_by: storeJob.created_by,
+    };
+    if (storeJob.requirements && storeJob.requirements.length > 0) {
+      requirements = storeJob.requirements;
+    }
+  }
 
-      if (dbJob) {
-        jobData = {
-          id: dbJob.id,
-          position: dbJob.position,
-          title: dbJob.position,
-          client: dbJob.client,
-          company: dbJob.client,
-          jd_text: dbJob.jd_text || undefined,
-          created_by: dbJob.created_by,
-        };
-        if (dbJob.requirements && dbJob.requirements.length > 0) {
-          requirements = dbJob.requirements;
+  // 2. Try DB if UUID and not found yet
+  if (!jobData) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId);
+    if (isUuid) {
+      try {
+        const dbJob = await prisma.job.findUnique({
+          where: { id: jobId },
+          include: { requirements: true }
+        });
+
+        if (dbJob) {
+          jobData = {
+            id: dbJob.id,
+            position: dbJob.position,
+            title: dbJob.position,
+            client: dbJob.client,
+            company: dbJob.client,
+            jd_text: dbJob.jd_text || undefined,
+            created_by: dbJob.created_by,
+          };
+          if (dbJob.requirements && dbJob.requirements.length > 0) {
+            requirements = dbJob.requirements;
+          }
         }
+      } catch (e) {
+        console.warn('[Evaluation Controller] Job DB fetch error:', e);
       }
-    } catch (e) {
-      console.warn('[Evaluation Controller] Job DB fetch error:', e);
     }
   }
 
@@ -101,7 +180,6 @@ async function getJobAndRequirements(jobId: string, fallbackPosition?: string, f
   return { jobData, requirements };
 }
 
-/**
 /**
  * Get detailed evaluation for a single candidate against a job (or by evaluation ID)
  * GET /api/evaluations/:id

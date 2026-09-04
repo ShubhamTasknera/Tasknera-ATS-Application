@@ -36,6 +36,13 @@ export interface RequirementEvaluationResult {
   failureReason?: string;
   verificationNote?: string;
   evidenceType?: EvidenceConfidence;
+  // Controlled AI Fields
+  aiMatchState?: 'MATCH' | 'NO_MATCH' | 'UNCERTAIN';
+  aiEvidence?: string;
+  aiConfidence?: 'HIGH' | 'MEDIUM' | 'LOW';
+  aiMatchType?: string;
+  isInferred?: boolean;
+  sourceEvidence?: string;
 }
 
 export interface CandidateEvaluationPayload {
@@ -50,6 +57,11 @@ export interface CandidateEvaluationPayload {
   jobId: string;
   jobTitle: string;
   jobClient: string;
+  rawScore?: number;
+  baseDeterministicScore?: number;
+  aiSemanticAdjustment?: number;
+  aiAssistanceEnabled?: boolean;
+  inferredRequirementsCount?: number;
   overallMatch: number;
   atsScore: number;
   overallScore: number;
@@ -178,6 +190,11 @@ export function evaluateCandidateAgainstRequirements(
     jobId: job.id,
     jobTitle: job.position || job.title || 'Job Position',
     jobClient: job.client || job.company || 'Client',
+    rawScore: result.rawScore,
+    baseDeterministicScore: result.rawScore,
+    aiSemanticAdjustment: 0.0,
+    aiAssistanceEnabled: true,
+    inferredRequirementsCount: 0,
     overallMatch: Math.round(result.overallScore),
     atsScore: Math.round(result.overallScore),
     overallScore: result.overallScore,

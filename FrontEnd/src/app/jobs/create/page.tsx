@@ -105,10 +105,19 @@ export default function CreateJobPage() {
         });
       }
 
-      const resData = await response.json();
+      let resData: any = {};
+      try {
+        resData = await response.json();
+      } catch {
+        setIsScanning(false);
+        setErrorMsg('Server returned an unreadable response. Please check your network and try again.');
+        return;
+      }
 
       if (!response.ok || !resData.success) {
-        throw new Error(resData.error || 'Failed to parse document on backend server.');
+        setIsScanning(false);
+        setErrorMsg(resData.error || 'Unable to extract readable text from this document. Text extraction was insufficient.');
+        return;
       }
 
       setScanStep('Validating metadata & extracting individual criteria...');
@@ -188,6 +197,13 @@ export default function CreateJobPage() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.size === 0) {
+      setUploadedFile(file);
+      setIsScanning(false);
+      setErrorMsg(`"${file.name}" is an empty file (0.0 KB). Please select a valid document with readable content.`);
+      return;
+    }
 
     setUploadedFile(file);
     sendToBackendParseApi(file);

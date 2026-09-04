@@ -3,7 +3,6 @@ import prisma from '../config/prisma';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { extractTextFromBuffer, parseJobDescription } from '../services/jdParsingService';
 import { extractDocumentTextViaPython } from '../services/pythonDocumentClient';
-import { parseJdWithAi } from '../services/jdAiService';
 import { CANDIDATE_STORE } from './candidateController';
 
 // Standard 36-character UUID format regex
@@ -42,14 +41,10 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
         method = pythonRes.extractionMethod;
         ocrUsed = pythonRes.ocrUsed;
       } else {
-        console.log('[JD Parsing Pipeline] Python service fallback; running internal extractor...');
-        const fallbackRes = await extractTextFromBuffer(req.file.buffer, mimeType, fileName);
-        rawText = fallbackRes.text;
-        layoutText = fallbackRes.text;
-        normalizedText = fallbackRes.text;
-        pageCount = fallbackRes.pageCount;
-        method = fallbackRes.method;
-        ocrUsed = fallbackRes.ocrUsed;
+        res.status(503).json({
+          error: `Document extraction service unavailable or insufficient text: ${pythonRes?.error || 'Extraction failed'}. Please ensure the Python document processor is running and retry.`
+        });
+        return;
       }
     } else if (req.body && req.body.text && typeof req.body.text === 'string') {
       rawText = req.body.text;
@@ -73,85 +68,48 @@ export const parseJobDescriptionController = async (req: AuthRequest, res: Respo
     // 1. Run deterministic parser
     let result = parseJobDescription(textToParse, fileName, mimeType, pageCount, method, ocrUsed);
 
-    // 2. Run Gemini AI Parser if API key is provided
-    try {
-      const aiResult = await parseJdWithAi(textToParse);
-      if (aiResult) {
-        console.log('[JD Parsing Pipeline] AI Semantic model successfully enriched extraction.');
-        if (aiResult.companyName) {
-          result.data.companyName = aiResult.companyName;
-          result.data.metadata.client = aiResult.companyName;
-          result.data.metadata.companyName = aiResult.companyName;
-          result.data.job.company = aiResult.companyName;
-          result.data.job.client = aiResult.companyName;
-        }
-        if (aiResult.positionTitle) {
-          result.data.positionTitle = aiResult.positionTitle;
-          result.data.metadata.position = aiResult.positionTitle;
-          result.data.metadata.positionTitle = aiResult.positionTitle;
-          result.data.job.positionTitle = aiResult.positionTitle;
-          result.data.job.jobTitle = aiResult.positionTitle;
-        }
-        if (aiResult.location) {
-          result.data.location = aiResult.location;
-          result.data.metadata.location = aiResult.location;
-          result.data.job.location = aiResult.location;
-        }
-        if (aiResult.workMode) {
-          result.data.workMode = aiResult.workMode;
-          result.data.metadata.workMode = aiResult.workMode;
-          result.data.job.workMode = aiResult.workMode;
-        }
-        if (aiResult.salary) {
-          result.data.salary = aiResult.salary;
-          result.data.metadata.salary = aiResult.salary;
-          result.data.metadata.budget = aiResult.salary;
-          result.data.job.salary = aiResult.salary;
-          result.data.job.budget = aiResult.salary;
-        }
-        if (Array.isArray(aiResult.mandatoryRequirements) && aiResult.mandatoryRequirements.length > 0) {
-          const aiMandatoryList = aiResult.mandatoryRequirements.map((r, idx) => ({
-            requirement: r.requirement,
-            category: r.category || 'Experience',
-            type: 'SKILL' as const,
-            weight: 1.5,
-            isMandatory: true,
-            mandatory: true,
-            evidenceRequired: true,
-            recruiterConfirmed: false,
-            sourceEvidence: r.sourceEvidence || r.requirement,
-            sourceSection: 'Mandatory Requirements',
-            confidence: 'HIGH' as const,
-            needsVerification: false
-          }));
+    // 2. Controlled AI Layer: AI-Assisted JD Requirement Completion
+    // If the JD does not explicitly contain structured sections, infer supported requirements
+    // strictly from the JD text with is_inferred=true, without hallucinating.
+    const totalExplicitReqs = (result.data.mandatoryRequirements?.length || 0) + (result.data.preferredRequirements?.length || 0);
+    if (totalExplicitReqs < 4) {
+      console.log(`[JD Parsing Pipeline] JD has few explicit requirements (${totalExplicitReqs}). Triggering Controlled AI completion...`);
+      try {
+        const { completeJdRequirementsControlled } = await import('../services/jdAiService');
+        const inferredReqs = await completeJdRequirementsControlled(textToParse);
+        if (inferredReqs && inferredReqs.length > 0) {
+          console.log(`[JD Parsing Pipeline] Inferred ${inferredReqs.length} supported requirements from JD narrative.`);
+          for (const inf of inferredReqs) {
+            if (inf.is_mandatory) {
+              result.data.mandatoryRequirements.push(inf.requirement);
+            } else {
+              result.data.preferredRequirements.push(inf.requirement);
+            }
 
-          const aiPreferredList = (aiResult.preferredRequirements || []).map((r, idx) => ({
-            requirement: r.requirement,
-            category: r.category || 'Technical Skill',
-            type: 'SKILL' as const,
-            weight: 1.0,
-            isMandatory: false,
-            mandatory: false,
-            evidenceRequired: true,
-            recruiterConfirmed: false,
-            sourceEvidence: r.sourceEvidence || r.requirement,
-            sourceSection: 'Preferred Requirements',
-            confidence: 'HIGH' as const,
-            needsVerification: false
-          }));
-
-          result.data.mandatoryRequirements = aiMandatoryList.map(r => r.requirement);
-          result.data.preferredRequirements = aiPreferredList.map(r => r.requirement);
-          result.data.requirements = [...aiMandatoryList, ...aiPreferredList];
-          result.data.job.mandatoryRequirements = aiMandatoryList.map(r => r.requirement);
-          result.data.job.preferredRequirements = aiPreferredList.map(r => r.requirement);
-          result.data.validation.counts.mandatoryCount = aiMandatoryList.length;
-          result.data.validation.counts.preferredCount = aiPreferredList.length;
-          result.data.validation.counts.totalRequirementsCount = result.data.requirements.length;
+            result.data.requirements.push({
+              requirement: inf.requirement,
+              category: inf.category,
+              type: inf.category === 'Experience' ? 'EXPERIENCE' : (inf.category === 'Education' ? 'EDUCATION' : 'SKILL'),
+              weight: inf.weight,
+              isMandatory: inf.is_mandatory,
+              mandatory: inf.is_mandatory,
+              evidenceRequired: true,
+              recruiterConfirmed: false,
+              needsVerification: false,
+              sourceEvidence: inf.source_evidence,
+              sourceSection: 'JD Narrative (AI-Inferred)',
+              confidence: inf.confidence
+            });
+          }
+          // Recalculate validation counts
+          result.data.validation.counts.mandatoryCount = result.data.mandatoryRequirements.length;
+          result.data.validation.counts.preferredCount = result.data.preferredRequirements.length;
+          result.data.validation.status = 'COMPLETE';
+          result.data.validation.message = `Extracted ${result.data.mandatoryRequirements.length} mandatory and ${result.data.preferredRequirements.length} inferred/preferred requirements.`;
         }
+      } catch (aiErr: any) {
+        console.warn('[JD Parsing Pipeline] Controlled AI completion skipped:', aiErr.message);
       }
-    } catch (aiErr) {
-      console.warn('[JD Parsing Pipeline] AI parsing error, falling back to deterministic extraction:', aiErr);
     }
 
     console.log('\n========================================');
@@ -223,25 +181,59 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
       : [];
 
     // Save job in PostgreSQL via Prisma with optional nested requirements
-    const job = await prisma.job.create({
-      data: {
+    let job: any = null;
+    const fallbackId = `job-${Date.now()}`;
+    const normalizedReqs = requirementsData.map((r, idx) => ({
+      id: `req-${fallbackId}-${idx + 1}`,
+      ...r,
+      is_mandatory: r.is_mandatory,
+      job_id: fallbackId,
+      created_at: new Date()
+    }));
+
+    try {
+      job = await prisma.job.create({
+        data: {
+          client: client.trim(),
+          position: position.trim(),
+          location: location ? String(location).trim() : null,
+          work_mode: work_mode ? String(work_mode).trim() : null,
+          salary: salary ? String(salary).trim() : null,
+          jd_text: jd_text ? String(jd_text).trim() : null,
+          jd_file_url: jd_file_url ? String(jd_file_url).trim() : null,
+          status: jobStatus,
+          created_by: req.user.userId,
+          requirements: {
+            create: requirementsData
+          }
+        },
+        include: {
+          requirements: true
+        }
+      });
+    } catch (dbErr: any) {
+      console.warn('[Create Job] Database unavailable, persisting to GLOBAL_JOB_STORE fallback:', dbErr?.message || dbErr);
+      job = {
+        id: fallbackId,
         client: client.trim(),
         position: position.trim(),
-        location: location ? String(location).trim() : null,
-        work_mode: work_mode ? String(work_mode).trim() : null,
-        salary: salary ? String(salary).trim() : null,
-        jd_text: jd_text ? String(jd_text).trim() : null,
-        jd_file_url: jd_file_url ? String(jd_file_url).trim() : null,
+        location: location ? String(location).trim() : 'Location Not Specified',
+        work_mode: work_mode ? String(work_mode).trim() : 'Hybrid',
+        salary: salary ? String(salary).trim() : undefined,
+        jd_text: jd_text ? String(jd_text).trim() : undefined,
+        jd_file_url: jd_file_url ? String(jd_file_url).trim() : undefined,
         status: jobStatus,
         created_by: req.user.userId,
-        requirements: {
-          create: requirementsData
-        }
-      },
-      include: {
-        requirements: true
-      }
-    });
+        created_at: new Date(),
+        requirements: normalizedReqs
+      };
+    }
+
+    // Always ensure job is in memory store
+    GLOBAL_JOB_STORE.set(job.id, job);
+    if (fallbackId !== job.id) {
+      GLOBAL_JOB_STORE.set(fallbackId, job);
+    }
 
     res.status(201).json({
       message: 'Job created successfully',
@@ -252,6 +244,36 @@ export const createJob = async (req: AuthRequest, res: Response): Promise<void> 
     res.status(500).json({ error: 'Server error while creating job', details: error.message || String(error) });
   }
 };
+
+/**
+ * Universal helper to retrieve a job and its requirements from GLOBAL_JOB_STORE or Prisma
+ */
+export async function getJobFromStoreOrDb(jobId: string): Promise<any | null> {
+  if (!jobId) return null;
+  const cleanId = String(jobId).trim();
+  if (GLOBAL_JOB_STORE.has(cleanId)) {
+    return GLOBAL_JOB_STORE.get(cleanId);
+  }
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanId);
+  if (isUuid) {
+    try {
+      const dbJob = await prisma.job.findUnique({
+        where: { id: cleanId },
+        include: { requirements: true, user: true }
+      });
+      if (dbJob) {
+        GLOBAL_JOB_STORE.set(cleanId, dbJob);
+        return dbJob;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  for (const [key, val] of GLOBAL_JOB_STORE.entries()) {
+    if (key === cleanId || val.id === cleanId) return val;
+  }
+  return null;
+}
 
 // @desc    Get all Jobs (with optional filters)
 // @route   GET /api/jobs

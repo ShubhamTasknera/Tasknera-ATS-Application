@@ -430,10 +430,10 @@ export function calculateExperienceMonths(startDateStr: string | null | undefine
 
 export function formatNumericExperience(totalMonths: number): string {
   if (totalMonths <= 0) return '0 yrs';
-  const years = parseFloat((totalMonths / 12).toFixed(1));
   if (totalMonths < 12) {
-    return `${years} yrs (${totalMonths} ${totalMonths === 1 ? 'month' : 'months'})`;
+    return `${totalMonths} ${totalMonths === 1 ? 'month' : 'months'}`;
   }
+  const years = parseFloat((totalMonths / 12).toFixed(1));
   const remainderMonths = totalMonths % 12;
   if (remainderMonths === 0) {
     return `${years} yrs`;
@@ -1278,13 +1278,13 @@ export function extractStructuredCandidateFromText(
       }
     }
 
-    // Span calculation between earliest start and latest end year
-    let spanMonths = 0;
-    if (earliestStartYear < 9999 && latestEndYear >= earliestStartYear) {
-      spanMonths = (latestEndYear - earliestStartYear + 1) * 12;
+    // If sumMonths was calculated from explicit role dates/durations, use that directly.
+    // Year span calculation is ONLY a fallback when individual role dates lacked month granularity.
+    let calculatedMonths = sumMonths;
+    if (calculatedMonths === 0 && earliestStartYear < 9999 && latestEndYear >= earliestStartYear) {
+      calculatedMonths = latestEndYear === earliestStartYear ? 6 : Math.max(6, (latestEndYear - earliestStartYear) * 12);
     }
 
-    const calculatedMonths = Math.max(sumMonths, spanMonths);
     if (calculatedMonths > 0 && (!totalExperience || totalExperienceMonths < calculatedMonths)) {
       totalExperienceMonths = calculatedMonths;
       totalExperienceYears = parseFloat((calculatedMonths / 12).toFixed(1));

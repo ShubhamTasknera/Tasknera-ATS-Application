@@ -1,4 +1,23 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+/**
+ * Controlled AI Integration: AI-Assisted JD Requirement Completion Service
+ * - Extracts requirements reasonably supported by JD text without hallucination.
+ * - Retains source evidence, category, confidence, and is_inferred flag.
+ * - Inferred requirements are NEVER marked as mandatory knockouts.
+ * - 100% Graceful Fallback: If AI is unavailable or times out, returns null/empty array.
+ */
+
+import http from 'http';
+
+export interface ControlledAiRequirement {
+  id: string;
+  requirement: string;
+  category: string;
+  source_evidence: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  is_inferred: boolean;
+  is_mandatory: boolean;
+  weight: number;
+}
 
 export interface AiParsedJd {
   companyName: string | null;
@@ -18,124 +37,106 @@ export interface AiParsedJd {
     sourceEvidence?: string;
   }>;
   responsibilities: string[];
+  inferredRequirements?: ControlledAiRequirement[];
 }
 
-/**
- * Clean all AI prompt symbols, brackets, bullets, checkboxes, and LaTeX tokens from text
- */
 export const sanitizeAiText = (str: string | null | undefined): string => {
   if (!str) return '';
-  return str
-    // Convert LaTeX math symbols
-    .replace(/\$\\le\$/gi, '≤')
-    .replace(/\\le\b/gi, '≤')
-    .replace(/\$\\ge\$/gi, '≥')
-    .replace(/\\ge\b/gi, '≥')
-    .replace(/\$\\sim\$/gi, '~')
-    // Strip emojis
-    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{1F300}-\u{1F9FF}]/gu, '')
-    // Strip checkboxes: [ ], [x], [X], [✓], [✔], ( ), (x)
-    .replace(/^\[\s*[xX✓✔]?\s*\]\s*/, '')
-    .replace(/^\(\s*[xX✓✔]?\s*\)\s*/, '')
-    // Strip leading bullets, numbers, hyphens, and decorative symbols
-    .replace(/^[\s•●*▪▫➢✓✔o\d.)\-_—–:|]+\s*/, '')
-    // Strip duplicate checkboxes inside string if any
-    .replace(/\[\s*[xX✓✔]?\s*\]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return str.replace(/\s+/g, ' ').trim();
 };
 
-/**
- * Parses a Job Description using Google Gemini AI if GEMINI_API_KEY / GOOGLE_API_KEY is available
- */
-export const parseJdWithAi = async (rawText: string): Promise<AiParsedJd | null> => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) {
-    return null;
+const PYTHON_SERVICE_PORT = parseInt(process.env.PYTHON_PORT || '8000', 10);
+const PYTHON_SERVICE_HOST = process.env.PYTHON_HOST || '127.0.0.1';
+const AI_TIMEOUT_MS = 2500;
+
+export const completeJdRequirementsControlled = async (jdText: string): Promise<ControlledAiRequirement[]> => {
+  if (!jdText || jdText.trim().length < 20) {
+    return [];
   }
 
+  return new Promise((resolve) => {
+    try {
+      const payload = JSON.stringify({ jd_text: jdText });
+      const req = http.request(
+        {
+          host: PYTHON_SERVICE_HOST,
+          port: PYTHON_SERVICE_PORT,
+          path: '/parse-jd-ai',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          },
+          timeout: AI_TIMEOUT_MS
+        },
+        (res) => {
+          let data = '';
+          res.on('data', (chunk) => {
+            data += chunk;
+          });
+          res.on('end', () => {
+            try {
+              if (res.statusCode === 200) {
+                const parsed = JSON.parse(data);
+                resolve(parsed.requirements || []);
+              } else {
+                console.warn(`[Controlled AI] JD completion returned status ${res.statusCode}. Falling back gracefully.`);
+                resolve([]);
+              }
+            } catch (err) {
+              console.warn('[Controlled AI] Parse error on JD completion response. Falling back gracefully.');
+              resolve([]);
+            }
+          });
+        }
+      );
+
+      req.on('error', (err) => {
+        console.warn(`[Controlled AI] Service unavailable (${err.message}). Graceful fallback to deterministic parsing.`);
+        resolve([]);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        console.warn('[Controlled AI] JD completion timed out. Graceful fallback to deterministic parsing.');
+        resolve([]);
+      });
+
+      req.write(payload);
+      req.end();
+    } catch (err: any) {
+      console.warn(`[Controlled AI] Unexpected error (${err.message}). Falling back to deterministic parsing.`);
+      resolve([]);
+    }
+  });
+};
+
+export const parseJdWithAi = async (rawText: string): Promise<AiParsedJd | null> => {
   try {
-    console.log('[AI JD Parser] Initializing Google Gemini for semantic JD comprehension...');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const inferred = await completeJdRequirementsControlled(rawText);
+    if (!inferred || inferred.length === 0) return null;
 
-    const prompt = `You are an expert AI recruitment parser for an ATS (Applicant Tracking System).
-Analyze the following Job Description text and extract structured job information.
-
-CRITICAL INSTRUCTIONS:
-1. Strip all symbols, checkboxes (like [ ], [x]), bullet icons (like •, ●), emojis (🚫, 📋, ⚡), LaTeX math tokens ($\le$, \\le), and recruiter prompt wrappers.
-2. Extract the true "companyName" and full clean "positionTitle".
-3. Differentiate between STRICT MANDATORY criteria (hard knock-out requirements / dealbreakers / must-haves) and PREFERRED criteria (nice-to-haves).
-4. Do NOT include interview processes, recruiter search strings, boolean strings, or questionnaire questions in the requirements list.
-5. Provide a valid, clean JSON object matching this schema:
-
-{
-  "companyName": "string or null",
-  "positionTitle": "string or null",
-  "location": "string or null",
-  "workMode": "Remote" | "Hybrid" | "Onsite" | null,
-  "salary": "string or null",
-  "experience": "string or null",
-  "mandatoryRequirements": [
-    {
-      "requirement": "Clean text of the mandatory criteria without symbols or checkboxes",
-      "category": "Experience" | "Technical Skill" | "Education" | "Certification" | "Integration" | "Methodology" | "Soft Skill" | "Domain",
-      "sourceEvidence": "Original text snippet"
-    }
-  ],
-  "preferredRequirements": [
-    {
-      "requirement": "Clean text of preferred criteria",
-      "category": "Experience" | "Technical Skill" | "Education" | "Certification" | "Integration" | "Methodology" | "Soft Skill" | "Domain",
-      "sourceEvidence": "Original text snippet"
-    }
-  ],
-  "responsibilities": [
-    "Clean responsibility 1"
-  ]
-}
-
-Return ONLY the raw JSON string (no markdown formatting, no code blocks).
-
-JOB DESCRIPTION TEXT:
-${rawText}
-`;
-
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text().trim();
-
-    // Clean JSON response (strip ```json and ``` if present)
-    const jsonStr = responseText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-    const parsedData = JSON.parse(jsonStr) as AiParsedJd;
-
-    // Post-sanitize fields
-    if (parsedData.mandatoryRequirements) {
-      parsedData.mandatoryRequirements = parsedData.mandatoryRequirements.map(r => ({
-        requirement: sanitizeAiText(r.requirement),
-        category: r.category || 'Technical Skill',
-        sourceEvidence: sanitizeAiText(r.sourceEvidence || r.requirement)
-      })).filter(r => r.requirement.length > 5);
-    }
-
-    if (parsedData.preferredRequirements) {
-      parsedData.preferredRequirements = parsedData.preferredRequirements.map(r => ({
-        requirement: sanitizeAiText(r.requirement),
-        category: r.category || 'Technical Skill',
-        sourceEvidence: sanitizeAiText(r.sourceEvidence || r.requirement)
-      })).filter(r => r.requirement.length > 5);
-    }
-
-    if (parsedData.positionTitle) {
-      parsedData.positionTitle = sanitizeAiText(parsedData.positionTitle);
-    }
-    if (parsedData.companyName) {
-      parsedData.companyName = sanitizeAiText(parsedData.companyName);
-    }
-
-    console.log(`[AI JD Parser] Successfully parsed with Gemini: Position="${parsedData.positionTitle}", Mandatory=${parsedData.mandatoryRequirements?.length}, Preferred=${parsedData.preferredRequirements?.length}`);
-    return parsedData;
-  } catch (err: any) {
-    console.warn('[AI JD Parser] Gemini extraction encountered an error; falling back to deterministic parser:', err.message || err);
+    return {
+      companyName: null,
+      positionTitle: null,
+      location: null,
+      workMode: null,
+      salary: null,
+      experience: null,
+      mandatoryRequirements: inferred.filter(r => r.is_mandatory).map(r => ({
+        requirement: r.requirement,
+        category: r.category,
+        sourceEvidence: r.source_evidence
+      })),
+      preferredRequirements: inferred.filter(r => !r.is_mandatory).map(r => ({
+        requirement: r.requirement,
+        category: r.category,
+        sourceEvidence: r.source_evidence
+      })),
+      responsibilities: inferred.filter(r => r.category === 'Responsibility').map(r => r.requirement),
+      inferredRequirements: inferred
+    };
+  } catch {
     return null;
   }
 };

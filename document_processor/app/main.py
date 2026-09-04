@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.parse import router as parse_router
+from app.routes.evaluate import router as evaluate_router
 
 app = FastAPI(
-    title="ATS Tasknera Document Processing Service",
-    description="Python microservice for PDF (PyMuPDF), DOCX, TXT document extraction and OCR fallback",
-    version="1.0.0"
+    title="TaskNera Deterministic ATS & Document Processing Service",
+    description="Deterministic ATS Scoring Engine v2.1 with PyMuPDF, spaCy, RapidFuzz, and local embeddings",
+    version="2.1.0"
 )
 
 app.add_middleware(
@@ -17,13 +18,16 @@ app.add_middleware(
 )
 
 app.include_router(parse_router)
+app.include_router(evaluate_router)
 
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
-        "service": "document_processor",
-        "engine": "PyMuPDF (fitz) + python-docx + Tesseract OCR"
+        "service": "tasknera_ats_engine",
+        "rules_version": "2.1.0",
+        "engine": "Deterministic ATS (spaCy + RapidFuzz + PyMuPDF + SentenceTransformers)",
+        "llm_calls_permitted": False
     }
 
 if __name__ == "__main__":

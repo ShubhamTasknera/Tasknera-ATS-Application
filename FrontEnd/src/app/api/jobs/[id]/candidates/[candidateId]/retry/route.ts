@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { jobCandidatesStore } from '../../upload/route';
+import { jobCandidatesStore } from '@/lib/jobStore';
 
 export const dynamic = 'force-dynamic';
 

@@ -2,24 +2,30 @@
  * ATS Scoring Engine - Production Evidence-Based Requirement ↔ CV Matching Engine
  * 
  * Strict Requirement-Driven Architecture:
- * 1. Independent Requirement Evaluation with 4 Standard Statuses:
- *    - MATCHED (1.0 = 100%)
- *    - PARTIAL (0.5 = 50%)
- *    - NOT_MATCHED (0.0 = 0%)
- *    - UNKNOWN (0.0 = 0%)
+ * 1. Independent Requirement Evaluation with Standard Statuses:
+ *    - MATCHED / FULLY_MET (1.0 = 100%)
+ *    - PARTIAL / PARTIALLY_MET (0.4 = 40%)
+ *    - NEEDS_VERIFICATION (0.2 = 20%)
+ *    - NOT_MATCHED / NOT_MET (0.0 = 0%)
+ *    - UNKNOWN / NOT_FOUND (0.0 = 0%)
  * 2. Strict Technology Boundaries & Intelligent Normalization:
  *    - JS ≈ JavaScript, PostgreSQL ≈ Postgres, Kubernetes ≈ K8s, AWS ≈ Amazon Web Services, ML ≈ Machine Learning, NLP ≈ Natural Language Processing, LLM ≈ Large Language Model.
- *    - Non-equivalent: LangChain ≠ LangGraph, Python ≠ FastAPI, Docker ≠ Kubernetes, Classical ML ≠ Generative AI/RAG.
- * 3. Evidence-Backed Matching: Every evaluation captures exact candidate evidence and source section.
- * 4. Experience & Tenure Calculation: Evaluates actual professional role dates, excluding courses/training.
- * 5. Mandatory Requirement Gating & Score Caps:
- *    - Failing mandatory requirements sets mandatoryRequirementFailed = true and caps match tier.
- *    - When 0 mandatory requirements are defined in JD, evaluates smoothly without false failure flags.
+ *    - Non-equivalent: LangChain ≠ LangGraph, Python ≠ FastAPI, Docker ≠ Kubernetes, Classical ML ≠ Generative AI/RAG, Oracle ≠ SAP.
+ * 3. Generic Keyword False-Positive Filtering:
+ *    - Generic words ('data', 'cloud', 'system', 'management', 'analysis', etc.) never match specialized JD requirements alone.
+ * 4. Evidence-Backed Specific Experience & Tenure Calculation:
+ *    - Specific technology tenure is calculated strictly from roles/projects where the technology was documented.
+ *    - General career tenure cannot substitute for specific technology experience (e.g. 8 years general ≠ 5 years AWS).
+ * 5. Mandatory Requirement Gating & Deterministic Score Capping:
+ *    - ANY mandatory requirement marked NOT_MET / NOT_MATCHED / NOT_FOUND / PARTIAL caps overall score at <= 40%.
+ *    - rawScore = evidence-based weighted score.
+ *    - if mandatoryFailure: finalScore = min(rawScore, 40); else finalScore = rawScore.
  * 6. Pure Weighted Scoring: Final ATS Score = sum(status_score * weight) / sum(weight) * 100.
  * 7. Fully Deterministic: No Math.random(), no hardcoded candidate logic, 100% reproducible.
  */
 
 import { CandidateRecord } from '../controllers/candidateController';
+import { calculateExperienceMonths } from './cvParsingService';
 
 export type MatchStatus = 'MATCHED' | 'PARTIAL' | 'NOT_MATCHED' | 'UNKNOWN';
 
@@ -46,9 +52,21 @@ export type MatchTier =
 
 export const STATUS_SCORE_MAP: Record<MatchStatus, number> = {
   MATCHED: 1.0,
-  PARTIAL: 0.5,
+  PARTIAL: 0.4,
   NOT_MATCHED: 0.0,
   UNKNOWN: 0.0,
+};
+
+export const STATUS_CONTRIBUTION_MAP: Record<string, number> = {
+  MATCHED: 1.0,
+  FULLY_MET: 1.0,
+  PARTIAL: 0.4,
+  PARTIALLY_MET: 0.4,
+  NEEDS_VERIFICATION: 0.2,
+  UNKNOWN: 0.0,
+  NOT_MATCHED: 0.0,
+  NOT_MET: 0.0,
+  NOT_FOUND: 0.0,
 };
 
 export interface MandatoryFailureDetail {
@@ -65,7 +83,7 @@ export interface RequirementEvaluationResult {
   isMandatory: boolean; // Compatibility
   weight: number;
   status: MatchStatus;
-  statusScore: number; // 0.0, 0.5, 1.0
+  statusScore: number; // 0.0, 0.4, 1.0
   score: number; // 0 - 100
   candidateEvidence: string;
   evidence: string; // Compatibility
@@ -99,7 +117,9 @@ export interface ATSScoringResult {
   evaluationId: string;
   candidateId: string;
   jobId: string;
-  overallScore: number; // 0 - 100
+  rawScore: number; // 0 - 100 uncapped evidence-based weighted score
+  overallScore: number; // 0 - 100 final gated score (capped <= 40 if mandatory failure)
+  finalScore: number; // Compatibility alias
   matchLevel: MatchTier;
   mandatoryRequirementFailed: boolean;
   mandatoryComplianceScore: number;
@@ -119,6 +139,12 @@ export interface ATSScoringResult {
   warnings: string[];
   scoringConfigVersion: string;
   evaluatedAt: string;
+  debugAudit?: {
+    rawWeightedScore: number;
+    mandatoryCapped: boolean;
+    appliedCap: number;
+    calculatedAt: string;
+  };
 }
 
 // ============================================================================
@@ -170,7 +196,21 @@ const EXACT_SYNONYM_GROUPS: string[][] = [
   ['ptc windchill', 'windchill', 'ptc windchill pdmlink', 'windchill pdmlink', 'ptc plm'],
   ['windchill customization', 'windchill development', 'windchill client architecture', 'wca', 'form processors', 'action models', 'data utilities'],
   ['java', 'j2ee', 'core java', 'java/j2ee', 'jee'],
+  ['spring boot', 'springboot', 'spring framework'],
+  ['microservices', 'micro-services', 'microservice architecture'],
+  ['langgraph', 'multi-agent systems', 'multi agent systems', 'agentic ai workflows', 'agentic ai', 'multi-agent', 'agentic workflows'],
   ['info*engine', 'infoengine', 'info engine', 'info*engine tasks'],
+  ['terraform', 'hashicorp terraform'],
+  ['sap', 'sap erp', 'sap ecc', 'sap s/4hana', 's/4hana'],
+  ['sap mm', 'sap materials management', 'materials management (mm)'],
+  ['postgresql', 'postgres', 'pgsql', 'relational databases', 'rdbms', 'sql', 'mysql', 'sql databases'],
+  ['lead generation', 'prospecting', 'pipeline generation', 'outbound sales', 'outbound prospecting', 'sales prospecting'],
+  ['pipeline management', 'sales pipeline', 'deal pipeline', 'crm pipeline'],
+  ['contract negotiation', 'commercial negotiation', 'closing deals', 'deal closing', 'contract closing', 'deal negotiation', 'negotiating contracts'],
+  ['quota attainment', 'quota achievement', 'meeting quota', 'exceeding quota', 'sales targets', 'revenue targets', 'quota'],
+  ['crm', 'crm platforms', 'crm systems', 'salesforce', 'hubspot', 'zoho', 'crm software'],
+  ['backend services', 'backend development', 'api architecture', 'server-side development', 'backend engineering'],
+  ['oracle', 'oracle erp', 'oracle financials', 'oracle cloud'],
 ];
 
 // Map of canonical term -> all synonymous forms
@@ -239,15 +279,22 @@ const RELATED_PARTIAL_MAPPINGS: Array<{
   },
 ];
 
-// Generic filler words to avoid spurious matching
-const GENERIC_FILLER_WORDS = new Set([
-  'experience', 'hands-on', 'proficient', 'proficiency', 'knowledge', 'understanding',
+// Generic filler words and stop words to avoid spurious matching
+export const GENERIC_STOP_WORDS = new Set([
+  'data', 'cloud', 'system', 'systems', 'management', 'analysis', 'development',
+  'technology', 'technologies', 'testing', 'software', 'reporting', 'engineer',
+  'engineering', 'platform', 'platforms', 'application', 'applications', 'services',
+  'solutions', 'tools', 'tool', 'business', 'process', 'processes', 'operations',
+  'skills', 'experience', 'hands-on', 'proficient', 'proficiency', 'knowledge',
   'familiarity', 'strong', 'deep', 'solid', 'proven', 'demonstrated', 'ability',
-  'working', 'with', 'in', 'and', 'or', 'for', 'the', 'of', 'to', 'using', 'designing',
-  'building', 'developing', 'managing', 'implementing', 'engineering', 'role', 'tools',
-  'technologies', 'platform', 'framework', 'architecture', 'system', 'skills', 'good',
-  'excellent', 'preferred', 'required', 'must', 'have', 'minimum', 'years', 'yrs'
+  'working', 'with', 'in', 'and', 'or', 'for', 'the', 'of', 'to', 'using',
+  'designing', 'building', 'developing', 'managing', 'implementing', 'role',
+  'good', 'excellent', 'preferred', 'required', 'must', 'have', 'minimum',
+  'years', 'yrs', 'yr', 'year', 'work', 'background', 'industry', 'overview'
 ]);
+
+// Backward compatibility alias
+export const GENERIC_FILLER_WORDS = GENERIC_STOP_WORDS;
 
 // ============================================================================
 // 2. CONTEXTUAL NEGATION DETECTION
@@ -289,6 +336,7 @@ export interface SkillMatchResult {
 /**
  * Searches the candidate's CV for exact or synonymous matches for a skill requirement.
  * Also checks related/partial technology mappings when exact match is missing.
+ * Strictly prevents generic stop words (e.g. "data", "cloud", "engineer") from false-matching.
  */
 export function matchSkillRequirement(
   candidate: CandidateRecord,
@@ -301,9 +349,21 @@ export function matchSkillRequirement(
   const candProjects = candidate.projects || [];
   const candCerts = candidate.certifications || [];
 
+  // Detect if requirement specifies alternatives (OR / EITHER / /)
+  const isOrRequirement = /\b(?:or|either)\b/i.test(requirementText) || requirementText.includes('/');
+
+  // Decompose compound phrases from original requirementText before stripping conjunctions
+  const rawSubParts = requirementText
+    .split(/[,:;&\/+]|\b(?:and|or)\b/i)
+    .map(p => p
+      .replace(/\b(proficient|proficiency|experience|hands-on|strong|deep|knowledge|familiarity|with|in|required|preferred|must have|working knowledge of|expertise in|demonstrated|solid|proven|similar|related|other|equivalent|frameworks?|tools?|technologies|libraries?|building|apis?|track record of|track record|ability to|background in|understanding of|skills? in|concepts?|architecture|commercial|direct)\b/gi, ' ')
+      .replace(/[()]/g, ' ')
+      .trim())
+    .filter(p => p.length >= 2 && !GENERIC_STOP_WORDS.has(p.toLowerCase()));
+
   // Extract core keywords by stripping filler words with proper word boundaries
   const cleanReq = requirementText
-    .replace(/\b(proficient|proficiency|experience|hands-on|strong|deep|knowledge|familiarity|with|in|and|or|required|preferred|must have|working knowledge of|expertise in)\b/gi, ' ')
+    .replace(/\b(proficient|proficiency|experience|hands-on|strong|deep|knowledge|familiarity|with|in|and|or|required|preferred|must have|working knowledge of|expertise in|demonstrated|solid|proven|track record of|track record|ability to|background in|understanding of|skills? in|commercial|direct)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -329,43 +389,198 @@ export function matchSkillRequirement(
     };
   }
 
-  // 2. Identify synonymous search terms for this requirement
-  const searchTerms = new Set<string>([reqLower]);
+  // 2. Specialized Platform Context Check (e.g. PTC Windchill)
+  const requiresWindchill = reqLower.includes('windchill');
+  if (requiresWindchill) {
+    const rawCvLower = (candidate.rawText || '').toLowerCase();
+    const hasAnyWindchill = rawCvLower.includes('windchill') ||
+                            candSkills.some(s => s.toLowerCase().includes('windchill')) ||
+                            candExps.some(e => `${e.title || ''} ${e.description || ''}`.toLowerCase().includes('windchill'));
+    if (!hasAnyWindchill) {
+      return {
+        status: 'NOT_MATCHED',
+        evidence: `No documented PTC Windchill experience found in CV skills, roles, or projects.`,
+        source: 'Candidate Record',
+        confidence: 'EXPLICIT',
+        failureReason: `No documented experience with PTC Windchill.`
+      };
+    }
+
+    // If requirement specifies Customization / Development
+    const isCustomizationReq = reqLower.includes('customization') || reqLower.includes('development') || reqLower.includes('form processor') || reqLower.includes('action model');
+    if (isCustomizationReq) {
+      const isEndUserOnly = /\b(end-user|end user|cad support|drafter|drafting|cad technician|user issues)\b/i.test(rawCvLower) &&
+                            !/\b(customization|developer|development|api|plugins|wca|form processor|action model|data utilit|java code)\b/i.test(rawCvLower);
+      if (isEndUserOnly) {
+        return {
+          status: 'PARTIAL',
+          evidence: `Candidate documents user-level/support usage of Windchill, but lacks verified core development or customization experience.`,
+          source: 'Experience History',
+          confidence: 'STRONG_SEMANTIC',
+          failureReason: `Lacks verified PTC Windchill core customization or development experience.`
+        };
+      }
+    }
+  }
+
+  // 3. Multi-Skill / Compound Requirement Component Evaluation
+  // If the requirement contains multiple distinct technical components (e.g. "Core Java, J2EE, Servlets, JSP, XML, JSON"):
+  // Evaluate each component individually to prevent a single keyword from falsely producing a 100% MATCHED score.
+  if (rawSubParts.length > 1) {
+    const matchedParts: Array<{ part: string; evidence: string; source: string }> = [];
+    const missingParts: string[] = [];
+
+    for (const part of rawSubParts) {
+      const pClean = part.trim();
+      const pLower = pClean.toLowerCase();
+      if (!pLower || GENERIC_STOP_WORDS.has(pLower)) continue;
+
+      const partSearchTerms = new Set<string>();
+      partSearchTerms.add(pLower);
+      const subSyns = SYNONYM_MAP.get(pLower);
+      if (subSyns) {
+        for (const s of subSyns) partSearchTerms.add(s);
+      }
+      for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
+        const canEscaped = canonical.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+        if (new RegExp(`\\b${canEscaped}\\b`, 'i').test(pLower)) {
+          partSearchTerms.add(canonical);
+          for (const s of synSet) partSearchTerms.add(s);
+        }
+      }
+
+      let partFound = false;
+      let partEvidence = '';
+      let partSource = '';
+
+      // Check candidate skills
+      for (const skill of candSkills) {
+        const sLower = skill.toLowerCase().trim();
+        for (const term of partSearchTerms) {
+          const termRegex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+          if (sLower === term || termRegex.test(sLower)) {
+            partFound = true;
+            partEvidence = `Listed in verified skills: "${skill}"`;
+            partSource = 'Skills Inventory';
+            break;
+          }
+        }
+        if (partFound) break;
+      }
+
+      // Check experience roles
+      if (!partFound) {
+        for (const exp of candExps) {
+          const roleTech = Array.isArray((exp as any).technologies) ? (exp as any).technologies.join(' ') : '';
+          const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''} ${roleTech}`;
+          for (const term of partSearchTerms) {
+            const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+            if (regex.test(roleText)) {
+              partFound = true;
+              const sentences = roleText.split(/(?<=[.!?\n])\s+/);
+              partEvidence = (sentences.find(s => regex.test(s)) || roleText.substring(0, 100)).trim();
+              partSource = `Experience: ${exp.title || 'Role'} at ${exp.company || 'Company'}`;
+              break;
+            }
+          }
+          if (partFound) break;
+        }
+      }
+
+      // Check projects
+      if (!partFound) {
+        for (const proj of candProjects) {
+          const projText = `${proj.name || ''} ${proj.description || ''} ${(proj.technologies || []).join(' ')}`;
+          for (const term of partSearchTerms) {
+            const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+            if (regex.test(projText)) {
+              partFound = true;
+              partEvidence = `${proj.name ? `${proj.name}: ` : ''}${proj.description || projText.substring(0, 100)}`.trim();
+              partSource = `Project: ${proj.name || 'Technical Project'}`;
+              break;
+            }
+          }
+          if (partFound) break;
+        }
+      }
+
+      if (partFound) {
+        matchedParts.push({ part: pClean, evidence: partEvidence, source: partSource });
+      } else {
+        missingParts.push(pClean);
+      }
+    }
+
+    const totalEvaluated = matchedParts.length + missingParts.length;
+    if (totalEvaluated > 0) {
+      const matchRatio = matchedParts.length / totalEvaluated;
+      if ((isOrRequirement && matchedParts.length > 0) || matchRatio >= 0.5) {
+        return {
+          status: 'MATCHED',
+          evidence: `Verified coverage across core technologies: ${matchedParts.map(m => m.part).join(', ')}.`,
+          source: matchedParts[0]?.source || 'Candidate CV Record',
+          confidence: 'EXPLICIT'
+        };
+      } else if (matchedParts.length > 0) {
+        return {
+          status: 'PARTIAL',
+          evidence: `Partial skill coverage: Documents ${matchedParts.map(m => m.part).join(', ')}, but lacks verified evidence for: ${missingParts.join(', ')}.`,
+          source: matchedParts[0]?.source || 'Candidate CV Record',
+          confidence: 'STRONG_SEMANTIC',
+          failureReason: `Missing required technical component(s): ${missingParts.join(', ')}.`
+        };
+      } else {
+        return {
+          status: 'NOT_MATCHED',
+          evidence: `No documented evidence for required technologies (${missingParts.join(', ')}) found in CV.`,
+          source: 'Candidate CV Record',
+          confidence: 'EXPLICIT',
+          failureReason: `No documented evidence for "${cleanReq}".`
+        };
+      }
+    }
+  }
+
+  // 4. Single-Skill / Unit Search Terms
+  const searchTerms = new Set<string>();
+
+  const addSearchTerm = (term: string) => {
+    const t = term.trim().toLowerCase();
+    if (!t || t.length < 2) return;
+    if (GENERIC_STOP_WORDS.has(t)) {
+      const allWords = reqLower.split(/\s+/).filter(Boolean);
+      if (!allWords.every(w => GENERIC_STOP_WORDS.has(w))) {
+        return;
+      }
+    }
+    searchTerms.add(t);
+  };
+
+  addSearchTerm(reqLower);
+
   const mappedSynonyms = SYNONYM_MAP.get(reqLower);
   if (mappedSynonyms) {
-    for (const syn of mappedSynonyms) searchTerms.add(syn);
+    for (const syn of mappedSynonyms) addSearchTerm(syn);
   }
 
-  // Check multi-word phrase components
+  // Check multi-word phrase components against known technology synonyms
   for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
-    if (reqLower.includes(canonical) || Array.from(synSet).some(s => reqLower.includes(s))) {
-      for (const syn of synSet) searchTerms.add(syn);
-    }
-  }
-
-  // Decompose compound phrases (split by &, /, +, commas, or 'and')
-  const compoundSubParts = reqLower.split(/[\&,\/\+]|\b(?:and)\b/).map(p => p.trim()).filter(p => p.length >= 2);
-  for (const part of compoundSubParts) {
-    searchTerms.add(part);
-    const subSyns = SYNONYM_MAP.get(part);
-    if (subSyns) {
-      for (const s of subSyns) searchTerms.add(s);
-    }
-    for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
-      if (part.includes(canonical) || Array.from(synSet).some(s => part.includes(s))) {
-        for (const syn of synSet) searchTerms.add(syn);
-      }
+    const canEscaped = canonical.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&');
+    if (new RegExp(`\\b${canEscaped}\\b`, 'i').test(reqLower)) {
+      addSearchTerm(canonical);
+      for (const syn of synSet) addSearchTerm(syn);
     }
   }
 
   // 3. Search structured sections for EXACT / SYNONYMOUS Match
   // Section A: Work Experience Roles (Highest Confidence)
   for (const exp of candExps) {
-    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''}`;
+    const roleTech = Array.isArray((exp as any).technologies) ? (exp as any).technologies.join(' ') : '';
+    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''} ${roleTech}`;
     for (const term of searchTerms) {
-      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
+      if (GENERIC_STOP_WORDS.has(term)) continue;
+      const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
       if (regex.test(roleText)) {
-        // Extract relevant sentence
         const sentences = roleText.split(/(?<=[.!?\n])\s+/);
         const matchSentence = sentences.find(s => regex.test(s)) || roleText.substring(0, 150);
         return {
@@ -382,7 +597,8 @@ export function matchSkillRequirement(
   for (const proj of candProjects) {
     const projText = `${proj.name || ''} ${proj.description || ''} ${(proj.technologies || []).join(' ')}`;
     for (const term of searchTerms) {
-      const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
+      if (GENERIC_STOP_WORDS.has(term)) continue;
+      const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
       if (regex.test(projText)) {
         return {
           status: 'MATCHED',
@@ -398,7 +614,9 @@ export function matchSkillRequirement(
   for (const skill of candSkills) {
     const sLower = skill.toLowerCase().trim();
     for (const term of searchTerms) {
-      if (sLower === term || (term.length > 3 && (sLower === term || sLower.split(/[\s,;/]+/).includes(term)))) {
+      if (GENERIC_STOP_WORDS.has(term)) continue;
+      const termRegex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+      if (sLower === term || termRegex.test(sLower)) {
         return {
           status: 'MATCHED',
           evidence: `Explicitly listed in verified technical skills: "${skill}"`,
@@ -409,9 +627,10 @@ export function matchSkillRequirement(
     }
   }
 
-  // Section D: Raw Text Full Search with Exact Word Boundaries
+  // Section D: Raw Text Full Search with Exact Word Boundaries (avoiding generic word false positives)
   for (const term of searchTerms) {
-    const regex = new RegExp(`(?:^|[^a-zA-Z0-9_])${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}(?:[^a-zA-Z0-9_]|$)`, 'i');
+    if (GENERIC_STOP_WORDS.has(term) || term.length < 3) continue;
+    const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
     if (regex.test(rawText)) {
       const sentences = rawText.split(/(?<=[.!?\n])\s+/);
       const matchSentence = sentences.find(s => regex.test(s));
@@ -431,7 +650,6 @@ export function matchSkillRequirement(
     if (mapping.target.test(reqLower)) {
       for (const rel of mapping.related) {
         if (rel.regex.test(rawText) || candSkills.some(s => rel.regex.test(s))) {
-          // Find sentence
           const sentences = rawText.split(/(?<=[.!?\n])\s+/);
           const foundSentence = sentences.find(s => rel.regex.test(s)) || `Demonstrated experience with ${rel.name}.`;
           return {
@@ -446,7 +664,7 @@ export function matchSkillRequirement(
     }
   }
 
-  // 5. Default: NOT MATCHED
+  // 5. Default: NOT MATCHED (0.0 contribution)
   return {
     status: 'NOT_MATCHED',
     evidence: `No credible evidence for "${cleanReq}" found in CV skills, experience, or projects.`,
@@ -472,7 +690,7 @@ export interface ExperienceMatchResult {
 }
 
 /**
- * Calculates candidate professional years from employment dates and role history.
+ * Calculates candidate professional total career years from employment dates and role history.
  * Excludes training, short courses, and academic internships unless specified.
  */
 export function calculateProfessionalTenure(candidate: CandidateRecord): number {
@@ -486,45 +704,49 @@ export function calculateProfessionalTenure(candidate: CandidateRecord): number 
   const currentYear = new Date().getFullYear();
 
   for (const exp of candExps) {
-    const title = (exp.title || '').toLowerCase();
-    // Exclude explicit student internships / trainee roles from core professional tenure
-    if (title.includes('intern') || title.includes('trainee') || title.includes('student')) {
-      continue;
-    }
-
     let roleYears = 0;
     if (exp.duration) {
       const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
-      if (yrMatch) roleYears = parseFloat(yrMatch[1]);
-      else {
+      if (yrMatch) {
+        roleYears = parseFloat(yrMatch[1]);
+      } else {
         const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
         if (moMatch) roleYears = parseFloat(moMatch[1]) / 12;
       }
     }
 
     if (roleYears === 0 && exp.startDate) {
-      const startYear = parseInt(exp.startDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '0', 10);
-      let endYear = startYear;
-      if (exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)) {
-        endYear = currentYear;
-      } else if (exp.endDate) {
-        endYear = parseInt(exp.endDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || `${startYear}`, 10);
-      }
+      const m = calculateExperienceMonths(exp.startDate, exp.endDate);
+      if (m > 0) {
+        roleYears = parseFloat((m / 12).toFixed(2));
+      } else {
+        const startYear = parseInt(exp.startDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '0', 10);
+        let endYear = startYear;
+        if (exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)) {
+          endYear = currentYear;
+        } else if (exp.endDate) {
+          endYear = parseInt(exp.endDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || `${startYear}`, 10);
+        }
 
-      if (startYear > 0 && endYear >= startYear) {
-        roleYears = Math.max(0.5, endYear - startYear);
+        if (startYear > 0 && endYear >= startYear) {
+          roleYears = endYear === startYear ? 0.33 : Math.max(0.33, endYear - startYear);
+        }
       }
     }
 
-    totalYears += (roleYears || 1.0);
+    totalYears += roleYears;
   }
 
-  // Cross-verify with totalExperience field
-  const rawTotalMatch = (candidate.totalExperience || '').match(/(\d+(?:\.\d+)?)/);
-  if (rawTotalMatch) {
-    const fieldYears = parseFloat(rawTotalMatch[1]);
-    if (totalYears === 0 || Math.abs(totalYears - fieldYears) > 5) {
-      totalYears = fieldYears;
+  // Parse totalExperience safely distinguishing years vs months
+  if (totalYears === 0 && candidate.totalExperience) {
+    const yrMatch = candidate.totalExperience.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+    if (yrMatch) {
+      totalYears = parseFloat(yrMatch[1]);
+    } else {
+      const moMatch = candidate.totalExperience.match(/(\d+)\s*(?:months?|mos?)/i);
+      if (moMatch) {
+        totalYears = parseFloat(moMatch[1]) / 12;
+      }
     }
   }
 
@@ -532,14 +754,134 @@ export function calculateProfessionalTenure(candidate: CandidateRecord): number 
 }
 
 /**
+ * Calculates candidate specific experience tenure (in years) for a requested technology or domain.
+ * Evaluates professional role history and projects where that specific technology was used.
+ * Returns 0 if no evidence exists for that technology in candidate's experience.
+ */
+export function calculateSpecificTenure(
+  candidate: CandidateRecord,
+  technologyKeywords: string[]
+): { specificYears: number; matchingRoles: string[]; evidenceSnippets: string[] } {
+  const candExps = candidate.experience || [];
+  const candProjects = candidate.projects || [];
+
+  const targetTerms = new Set<string>();
+  for (const kw of technologyKeywords) {
+    const k = kw.trim().toLowerCase();
+    if (!k || GENERIC_STOP_WORDS.has(k)) continue;
+    targetTerms.add(k);
+    const syns = SYNONYM_MAP.get(k);
+    if (syns) {
+      for (const s of syns) targetTerms.add(s);
+    }
+    for (const [canonical, synSet] of SYNONYM_MAP.entries()) {
+      if (new RegExp(`\\b${canonical.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i').test(k)) {
+        targetTerms.add(canonical);
+        for (const s of synSet) targetTerms.add(s);
+      }
+    }
+  }
+
+  if (targetTerms.size === 0) {
+    return { specificYears: 0, matchingRoles: [], evidenceSnippets: [] };
+  }
+
+  let specificYears = 0;
+  const matchingRoles: string[] = [];
+  const evidenceSnippets: string[] = [];
+  const currentYear = new Date().getFullYear();
+
+  for (const exp of candExps) {
+    const roleTech = Array.isArray((exp as any).technologies) ? (exp as any).technologies.join(' ') : '';
+    const roleText = `${exp.title || ''} ${exp.company || ''} ${exp.description || ''} ${roleTech}`.toLowerCase();
+    
+    let hasTech = false;
+    let matchedTerm = '';
+    for (const term of targetTerms) {
+      const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(roleText)) {
+        hasTech = true;
+        matchedTerm = term;
+        break;
+      }
+    }
+
+    if (hasTech) {
+      let roleYears = 0;
+      if (exp.duration) {
+        const yrMatch = exp.duration.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
+        if (yrMatch) roleYears = parseFloat(yrMatch[1]);
+        else {
+          const moMatch = exp.duration.match(/(\d+)\s*(?:months?|mos?)/i);
+          if (moMatch) roleYears = parseFloat(moMatch[1]) / 12;
+        }
+      }
+
+      if (roleYears === 0 && exp.startDate) {
+        const m = calculateExperienceMonths(exp.startDate, exp.endDate);
+        if (m > 0) {
+          roleYears = parseFloat((m / 12).toFixed(2));
+        } else {
+          const startYear = parseInt(exp.startDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || '0', 10);
+          let endYear = startYear;
+          if (exp.endDate && /present|current|now|ongoing/i.test(exp.endDate)) {
+            endYear = currentYear;
+          } else if (exp.endDate) {
+            endYear = parseInt(exp.endDate.match(/\b(19\d\d|20\d\d)\b/)?.[1] || `${startYear}`, 10);
+          }
+
+          if (startYear > 0 && endYear >= startYear) {
+            roleYears = endYear === startYear ? 0.33 : Math.max(0.33, endYear - startYear);
+          }
+        }
+      }
+
+      const verifiedDuration = roleYears;
+      if (verifiedDuration > 0) {
+        specificYears += verifiedDuration;
+        matchingRoles.push(`${exp.title || 'Role'} at ${exp.company || 'Company'} (${parseFloat(verifiedDuration.toFixed(1))}y, ${matchedTerm})`);
+        evidenceSnippets.push(`${exp.title || 'Role'}: ${exp.description ? exp.description.substring(0, 100) : matchedTerm}`);
+      }
+    }
+  }
+
+  // If not found in roles, check if found in projects
+  if (specificYears === 0 && candProjects.length > 0) {
+    for (const proj of candProjects) {
+      const projText = `${proj.name || ''} ${proj.description || ''} ${(proj.technologies || []).join(' ')}`.toLowerCase();
+      let hasTech = false;
+      let matchedTerm = '';
+      for (const term of targetTerms) {
+        const regex = new RegExp(`\\b${term.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+        if (regex.test(projText)) {
+          hasTech = true;
+          matchedTerm = term;
+          break;
+        }
+      }
+      if (hasTech) {
+        specificYears += 0.5; // Project credit without formal role duration
+        matchingRoles.push(`Project: ${proj.name || 'Project'} (0.5y, ${matchedTerm})`);
+      }
+    }
+  }
+
+  return {
+    specificYears: Math.round(specificYears * 10) / 10,
+    matchingRoles,
+    evidenceSnippets
+  };
+}
+
+/**
  * Evaluates experience requirement (supports single thresholds like "4+ years" and ranges like "4-6 years").
+ * Distinguishes general career tenure from technology-specific experience.
  */
 export function evaluateExperienceRequirement(
   candidate: CandidateRecord,
   requirementText: string
 ): ExperienceMatchResult {
   const reqLower = requirementText.toLowerCase();
-  const candYears = calculateProfessionalTenure(candidate);
 
   // Range matching: "4-6 years", "4 to 6 yrs", "4 – 6 years"
   const rangeMatch = reqLower.match(/(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/i);
@@ -556,15 +898,68 @@ export function evaluateExperienceRequirement(
     minYears = parseFloat(singleMatch[1]);
   }
 
+  // Check if this is an OVERALL / TOTAL CAREER experience requirement vs specific technology
+  const isOverallExp = /\b(overall|total|career|professional|industry|general)\s*(?:experience|tenure|years?)\b/i.test(reqLower) ||
+                       /^overall\b/i.test(reqLower) ||
+                       /^total\b/i.test(reqLower);
+
+  // Extract non-temporal, non-generic words to see if a specific technology is required
+  const cleanedTechText = reqLower
+    .replace(/(\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?)/gi, ' ')
+    .replace(/(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)/gi, ' ')
+    .replace(/\b(minimum|at least|demonstrated|hands-on|experience|proven|solid|deep|strong|working|professional|industry|total|overall|relevant|in|of|with|as|a|an|the|and|or|it|plm|software|engineering|technology)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Decompose into potential technology keywords
+  const candidateTechWords = cleanedTechText
+    .split(/[\s,;/]+/)
+    .filter(w => w.length >= 2 && !GENERIC_STOP_WORDS.has(w));
+
+  const isSpecificTechExperience = !isOverallExp && candidateTechWords.length > 0;
+
+  let candYears = 0;
+  let evidenceText = '';
+  let sourceText = '';
+
+  if (isSpecificTechExperience) {
+    // Specific technology experience evaluation
+    const techName = candidateTechWords.join(' ');
+    const specificData = calculateSpecificTenure(candidate, candidateTechWords);
+    candYears = specificData.specificYears;
+
+    if (candYears === 0) {
+      const totalCareer = calculateProfessionalTenure(candidate);
+      const gap = minYears;
+      return {
+        status: 'NOT_MATCHED',
+        evidence: `Candidate has 0 documented years of experience with "${techName}". Total career tenure (${totalCareer}y) cannot substitute for required specific technology experience.`,
+        source: 'Role-Specific Employment History',
+        confidence: 'EXPLICIT',
+        candidateYears: 0,
+        requiredYears: minYears,
+        gap,
+        failureReason: `0 years documented experience with ${techName} (required: ${minYears}+ years).`
+      };
+    }
+
+    evidenceText = `Candidate documents ${candYears} years of verified experience with "${techName}" (${specificData.matchingRoles.join('; ')}).`;
+    sourceText = `Role-Specific Technology History (${specificData.matchingRoles.length} roles)`;
+  } else {
+    // General professional tenure evaluation
+    candYears = calculateProfessionalTenure(candidate);
+    evidenceText = `Candidate documents ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : '+'} years).`;
+    sourceText = 'Employment History Tenure';
+  }
+
   const gap = Math.max(0, Math.round((minYears - candYears) * 10) / 10);
 
   if (candYears >= minYears) {
     if (maxYears && candYears > maxYears + 4) {
-      // Significantly exceeds upper range -> Overqualified but full score
       return {
         status: 'MATCHED',
-        evidence: `Candidate has ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : ''} years, profile is senior/over-qualified).`,
-        source: 'Employment History Tenure',
+        evidence: `${evidenceText} (Profile is senior/exceeds range).`,
+        source: sourceText,
         confidence: 'EXPLICIT',
         candidateYears: candYears,
         requiredYears: minYears,
@@ -573,36 +968,34 @@ export function evaluateExperienceRequirement(
     }
     return {
       status: 'MATCHED',
-      evidence: `Candidate documents ${candYears} years of verified professional experience (meets required ${minYears}${maxYears ? `–${maxYears}` : '+'} years).`,
-      source: 'Employment History Tenure',
+      evidence: evidenceText,
+      source: sourceText,
       confidence: 'EXPLICIT',
       candidateYears: candYears,
       requiredYears: minYears,
       gap: 0
     };
-  } else if (candYears >= minYears * 0.7) {
-    // Within 70-99% of required experience -> PARTIAL
+  } else if (candYears >= minYears * 0.7 && candYears > 0) {
     return {
       status: 'PARTIAL',
-      evidence: `Candidate documents ${candYears} years of experience vs ${minYears}+ years required (${gap}y gap).`,
-      source: 'Employment History Tenure',
+      evidence: `Candidate documents ${candYears} years vs ${minYears}+ years required (${gap}y gap). ${evidenceText}`,
+      source: sourceText,
       confidence: 'STRONG_SEMANTIC',
       candidateYears: candYears,
       requiredYears: minYears,
       gap,
-      failureReason: `Candidate has ${candYears} years experience, slightly below the ${minYears}+ years requirement.`
+      failureReason: `Candidate has ${candYears} years experience, below the ${minYears}+ years requirement.`
     };
   } else {
-    // Significantly below requirement -> NOT MATCHED
     return {
       status: 'NOT_MATCHED',
-      evidence: `Candidate documents only ${candYears} years of experience vs ${minYears}+ years required (${gap}y deficit).`,
-      source: 'Employment History Tenure',
+      evidence: `Candidate documents only ${candYears} years vs ${minYears}+ years required (${gap}y deficit).`,
+      source: sourceText,
       confidence: 'EXPLICIT',
       candidateYears: candYears,
       requiredYears: minYears,
       gap,
-      failureReason: `Insufficient professional experience (${candYears}y vs ${minYears}+ years required).`
+      failureReason: `Insufficient experience (${candYears}y vs ${minYears}+ years required).`
     };
   }
 }
@@ -613,9 +1006,6 @@ export function evaluateExperienceRequirement(
 
 const NCR_LOCATIONS = new Set(['gurugram', 'gurgaon', 'noida', 'delhi', 'new delhi', 'ncr', 'greater noida', 'ghaziabad', 'faridabad']);
 const BANGALORE_LOCATIONS = new Set(['bangalore', 'bengaluru', 'blr']);
-const MUMBAI_LOCATIONS = new Set(['mumbai', 'navi mumbai', 'thane']);
-const PUNE_LOCATIONS = new Set(['pune']);
-const HYDERABAD_LOCATIONS = new Set(['hyderabad', 'secunderabad', 'hyd']);
 
 export function evaluateLocationRequirement(
   candidate: CandidateRecord,
@@ -683,7 +1073,7 @@ export function evaluateLocationRequirement(
     .replace(/(location|preferred|required|only|locals|candidates|based|in|at|onsite|hybrid|remote)/gi, ' ')
     .split(/[\s,;/]+/)
     .map(w => w.trim())
-    .filter(w => w.length > 2);
+    .filter(w => w.length > 2 && !GENERIC_STOP_WORDS.has(w));
 
   const matchedCity = cityKeywords.find(city => candLoc.includes(city));
   if (matchedCity) {
@@ -715,7 +1105,6 @@ export function evaluateNoticePeriodRequirement(
   const noticeText = `${screeningNotes} ${rawText}`;
   const isImmediateReq = reqLower.includes('immediate') || reqLower.includes('15 days') || reqLower.includes('joiner');
 
-  // Check explicit mentions
   if (noticeText.includes('immediate') || noticeText.includes('serving notice') || noticeText.includes('0 days') || noticeText.includes('available immediately')) {
     return {
       status: 'MATCHED',
@@ -754,7 +1143,6 @@ export function evaluateNoticePeriodRequirement(
     }
   }
 
-  // Not mentioned in CV
   return {
     status: 'UNKNOWN',
     evidence: 'Candidate notice period or availability is not stated in CV.',
@@ -831,6 +1219,45 @@ export function evaluateEducationRequirement(
   };
 }
 
+export type FunctionalDomain = 'TECHNICAL' | 'SALES_BUSINESS' | 'MARKETING' | 'HR' | 'FINANCE' | 'GENERAL';
+
+export function classifyJobDomain(jobTitle: string, jdText?: string): FunctionalDomain {
+  const combined = `${jobTitle} ${jdText || ''}`.toLowerCase();
+  if (/\b(sale|sales|business development|bde|bdr|sdr|account executive|inside sales|relationship manager|client acquisition|tele sales)\b/i.test(jobTitle.toLowerCase())) {
+    return 'SALES_BUSINESS';
+  }
+  if (/\b(marketing|seo|sem|growth|content|social media|copywriter|brand)\b/i.test(jobTitle.toLowerCase())) {
+    return 'MARKETING';
+  }
+  if (/\b(hr|human resources|recruiter|talent acquisition|people operations|payroll)\b/i.test(jobTitle.toLowerCase())) {
+    return 'HR';
+  }
+  if (/\b(accountant|accounting|finance|financial analyst|audit|tax|bookkeeper)\b/i.test(jobTitle.toLowerCase())) {
+    return 'FINANCE';
+  }
+  if (/\b(software|developer|engineer|fullstack|frontend|backend|devops|cloud|data engineer|qa|tester|architect|programmer|java|python|react|windchill|sap|cad)\b/i.test(jobTitle.toLowerCase())) {
+    return 'TECHNICAL';
+  }
+  return 'GENERAL';
+}
+
+export function classifyCandidateDomain(candidate: CandidateRecord): FunctionalDomain {
+  const titles = [
+    candidate.currentTitle || '',
+    ...(candidate.experience || []).map(e => e.title || '')
+  ].join(' ').toLowerCase();
+
+  const isTechTitles = /\b(software|developer|engineer|programmer|coder|frontend|backend|fullstack|devops|qa|data engineer|architect|web developer|app developer|system engineer)\b/i.test(titles);
+  const isSalesTitles = /\b(sale|sales|business development|bde|bdr|sdr|account executive|inside sales|relationship manager)\b/i.test(titles);
+  const isHrTitles = /\b(recruiter|talent acquisition|human resources|hr executive|hr manager|people partner)\b/i.test(titles);
+
+  if (isTechTitles && !isSalesTitles) return 'TECHNICAL';
+  if (isSalesTitles && !isTechTitles) return 'SALES_BUSINESS';
+  if (isHrTitles && !isTechTitles && !isSalesTitles) return 'HR';
+
+  return 'GENERAL';
+}
+
 // ============================================================================
 // 7. CORE DETERMINISTIC SCORING ENGINE ENTRY POINT
 // ============================================================================
@@ -859,7 +1286,7 @@ export function calculateATSScore(
   let mandatoryTotal = 0;
   let mandatoryMetCount = 0;
 
-  // Track pillar weighted components
+  // Track pillar weighted components strictly based on evidence
   const pillarPoints: Record<'tech' | 'exp' | 'edu' | 'genai' | 'other', { earned: number; total: number }> = {
     tech: { earned: 0, total: 0 },
     exp: { earned: 0, total: 0 },
@@ -868,12 +1295,48 @@ export function calculateATSScore(
     other: { earned: 0, total: 0 },
   };
 
-  // Safe fallback if JD has 0 requirements configured
+  // Cross-Domain Validation & Guard: Check for fundamental Role/Industry mismatch
+  const jobPosition = job.position || job.title || '';
+  const jobDomain = classifyJobDomain(jobPosition, job.jd_text);
+  const candDomain = classifyCandidateDomain(candidate);
+
+  const isTechnicalApplyingToSales = jobDomain === 'SALES_BUSINESS' && candDomain === 'TECHNICAL';
+  const isSalesApplyingToTechnical = jobDomain === 'TECHNICAL' && candDomain === 'SALES_BUSINESS';
+
+  let hasDomainMismatch = false;
+  let domainMismatchReason = '';
+
+  if (isTechnicalApplyingToSales) {
+    const hasSalesExp = candidate.experience?.some(ex => /\b(sale|sales|business development|account executive|bde|bdr|inside sales)\b/i.test(ex.title || ''));
+    if (!hasSalesExp) {
+      hasDomainMismatch = true;
+      domainMismatchReason = 'CRITICAL ROLE DOMAIN MISMATCH: Requisition is in Sales & Business Development, but candidate has a Software Engineering/Technical Development background with zero verified B2B sales or quota-carrying experience.';
+      mandatoryFailures.push({
+        requirement: 'Role Domain Alignment: Sales & Business Development',
+        reason: domainMismatchReason,
+        category: 'Domain Mismatch'
+      });
+      warnings.push(domainMismatchReason);
+    }
+  } else if (isSalesApplyingToTechnical) {
+    const hasTechExp = candidate.experience?.some(ex => /\b(software|developer|engineer|programmer|coder|architect)\b/i.test(ex.title || ''));
+    if (!hasTechExp) {
+      hasDomainMismatch = true;
+      domainMismatchReason = 'CRITICAL ROLE DOMAIN MISMATCH: Requisition requires Software Engineering technical expertise, but candidate has a Sales/Business Development background with zero verified software development or coding experience.';
+      mandatoryFailures.push({
+        requirement: 'Role Domain Alignment: Software Engineering',
+        reason: domainMismatchReason,
+        category: 'Domain Mismatch'
+      });
+      warnings.push(domainMismatchReason);
+    }
+  }
+
   const effectiveReqs = (Array.isArray(requirements) && requirements.length > 0)
     ? requirements
     : [
-        { id: 'req-default-1', requirement: job.position || 'Software Engineering Experience', category: 'Experience', weight: 2.0, is_mandatory: true },
-        { id: 'req-default-2', requirement: 'Core Technical Skills', category: 'Technical Skill', weight: 2.0, is_mandatory: false }
+        { id: 'req-default-1', requirement: job.position || 'Professional Experience', category: 'Experience', weight: 2.0, is_mandatory: true },
+        { id: 'req-default-2', requirement: 'Core Required Competencies', category: 'Functional Skill', weight: 2.0, is_mandatory: false }
       ];
 
   for (const req of effectiveReqs) {
@@ -893,8 +1356,11 @@ export function calculateATSScore(
 
     let evalResult: SkillMatchResult;
 
-    // 1. Experience Requirements
-    if (catLower.includes('experience') || /\b\d+\+?\s*(?:years?|yrs?)\b/i.test(reqLower) || reqLower.includes('experience')) {
+    const hasYearsExplicit = /\b\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)\b/i.test(reqLower) || /\b\d+\s*(?:-|to|–)\s*\d+\s*(?:years?|yrs?)\b/i.test(reqLower);
+    const isCategoryExperience = (catLower === 'experience' || catLower.startsWith('exp')) && !catLower.includes('skill');
+
+    // 1. Experience Requirements: ONLY if category is experience OR requirement text explicitly specifies years (e.g. "5+ years")
+    if (isCategoryExperience || hasYearsExplicit) {
       const expRes = evaluateExperienceRequirement(candidate, reqText);
       evalResult = {
         status: expRes.status,
@@ -937,11 +1403,11 @@ export function calculateATSScore(
       }
     }
 
-    const statusScore = STATUS_SCORE_MAP[evalResult.status];
+    const statusScore = STATUS_SCORE_MAP[evalResult.status] ?? 0.0;
     const score = Math.round(statusScore * 100);
     earnedScoreSum += statusScore * weight;
 
-    // Track mandatory status & failures
+    // Track mandatory compliance: ONLY fully MATCHED satisfies mandatory requirement
     if (isMandatory) {
       if (evalResult.status === 'MATCHED') {
         mandatoryMetCount++;
@@ -960,7 +1426,7 @@ export function calculateATSScore(
     } else if (evalResult.status === 'PARTIAL') {
       gaps.push(`${reqText}: Partially satisfied (${evalResult.evidence})`);
     } else if (evalResult.status === 'NOT_MATCHED') {
-      gaps.push(`${reqText}: Not matched (${evalResult.failureReason || 'No evidence in CV'})`);
+      gaps.push(`${reqText}: Not matched (${evalResult.failureReason || 'No credible evidence in CV'})`);
     }
 
     reqResults.push({
@@ -982,62 +1448,59 @@ export function calculateATSScore(
     });
   }
 
-  // Pure Weighted Score Calculation (0 - 100)
+  // 1. Raw evidence-based weighted score (0 - 100)
   const rawFinalScore = totalWeight > 0 ? (earnedScoreSum / totalWeight) * 100 : 0;
-  const overallScore = Math.min(100, Math.max(0, Math.round(rawFinalScore)));
+  const rawScore = Math.min(100, Math.max(0, Math.round(rawFinalScore)));
 
-  // Mandatory Requirement Gate
-  const hasMandatoryFailure = mandatoryTotal > 0 && mandatoryFailures.length > 0;
-  const mandatoryComplianceScore = mandatoryTotal > 0 ? Math.round((mandatoryMetCount / mandatoryTotal) * 100) : 100;
+  // 2. Mandatory Gating & Cross-Domain Disqualification
+  const hasMandatoryFailure = (mandatoryTotal > 0 && mandatoryFailures.length > 0) || hasDomainMismatch;
+  const mandatoryComplianceScore = mandatoryTotal > 0 ? Math.round((mandatoryMetCount / mandatoryTotal) * 100) : (hasDomainMismatch ? 0 : 100);
 
-  // Determine Base Match Tier by Score Thresholds
-  // Default:
-  // 90–100 → EXCELLENT MATCH
-  // 75–89  → STRONG MATCH
-  // 60–74  → MODERATE MATCH
-  // 40–59  → LOW MATCH
-  // 0–39   → MINIMAL MATCH
-  let baseTier: MatchTier = 'MINIMAL MATCH';
-  if (overallScore >= 90) baseTier = 'EXCELLENT MATCH';
-  else if (overallScore >= 75) baseTier = 'STRONG MATCH';
-  else if (overallScore >= 60) baseTier = 'MODERATE MATCH';
-  else if (overallScore >= 40) baseTier = 'LOW MATCH';
-  else baseTier = 'MINIMAL MATCH';
-
-  // Apply Score Caps / Downgrade for Mandatory Failures (Section 13 & 14)
-  let finalMatchLevel: MatchTier = baseTier;
-  if (hasMandatoryFailure) {
-    if (mandatoryFailures.length === 1) {
-      // 1 mandatory failure caps at MODERATE MATCH
-      if (baseTier === 'EXCELLENT MATCH' || baseTier === 'STRONG MATCH') {
-        finalMatchLevel = 'MODERATE MATCH';
-      }
-    } else if (mandatoryFailures.length >= 2) {
-      // 2+ mandatory failures caps at LOW MATCH
-      if (baseTier === 'EXCELLENT MATCH' || baseTier === 'STRONG MATCH' || baseTier === 'MODERATE MATCH') {
-        finalMatchLevel = 'LOW MATCH';
-      }
-    }
+  let overallScore = rawScore;
+  if (hasDomainMismatch) {
+    // Cross-domain mismatch: Technical applicant on Sales role (or vice-versa)
+    overallScore = Math.min(rawScore, 12);
+  } else if (mandatoryFailures.length >= 3) {
+    overallScore = Math.min(rawScore, 15);
+  } else if (mandatoryFailures.length >= 2) {
+    overallScore = Math.min(rawScore, 25);
+  } else if (hasMandatoryFailure) {
+    overallScore = Math.min(rawScore, 40);
   }
 
-  // Calculate Pillar Scores Strictly from Evidence
-  const computePillarPct = (p: { earned: number; total: number }, fallbackDefault: number): number => {
-    return p.total > 0 ? Math.round((p.earned / p.total) * 100) : fallbackDefault;
+  // 3. Determine Final Match Tier deterministically
+  let finalMatchLevel: MatchTier = 'MINIMAL MATCH';
+  if (hasDomainMismatch || mandatoryFailures.length >= 3 || overallScore < 20) {
+    finalMatchLevel = 'MINIMAL MATCH';
+  } else if (hasMandatoryFailure || overallScore < 45) {
+    finalMatchLevel = overallScore >= 30 ? 'LOW MATCH' : 'MINIMAL MATCH';
+  } else {
+    if (overallScore >= 85) finalMatchLevel = 'EXCELLENT MATCH';
+    else if (overallScore >= 70) finalMatchLevel = 'STRONG MATCH';
+    else if (overallScore >= 50) finalMatchLevel = 'MODERATE MATCH';
+    else if (overallScore >= 35) finalMatchLevel = 'LOW MATCH';
+    else finalMatchLevel = 'MINIMAL MATCH';
+  }
+
+  // 4. Calculate Pillar Scores Strictly from Evidence (NO artificial fallbacks to overallScore)
+  const computePillarPct = (p: { earned: number; total: number }): number => {
+    return p.total > 0 ? Math.round((p.earned / p.total) * 100) : 0;
   };
 
-  const techPct = computePillarPct(pillarPoints.tech, overallScore);
-  const expPct = computePillarPct(pillarPoints.exp, Math.min(100, calculateProfessionalTenure(candidate) * 20));
-  const eduPct = computePillarPct(pillarPoints.edu, (candidate.education && candidate.education.length > 0) ? 100 : 0);
-  const genaiPct = computePillarPct(pillarPoints.genai, techPct);
+  const techPct = computePillarPct(pillarPoints.tech);
+  const expPct = computePillarPct(pillarPoints.exp);
+  const eduPct = computePillarPct(pillarPoints.edu);
+  const genaiPct = computePillarPct(pillarPoints.genai);
 
-  // Semantic Relevance: Contextual overlap between candidate text and job domain
-  const jdKeywords = (job.position || '').split(/\s+/).filter(w => w.length > 3 && !GENERIC_FILLER_WORDS.has(w.toLowerCase()));
+  // Semantic Relevance: Contextual overlap between candidate text and distinctive job domain keywords
+  const jdKeywords = (job.position || '').split(/\s+/).filter(w => w.length > 3 && !GENERIC_STOP_WORDS.has(w.toLowerCase()));
   const candTextLower = (candidate.rawText || '').toLowerCase();
   let overlap = 0;
   for (const kw of jdKeywords) {
-    if (candTextLower.includes(kw.toLowerCase())) overlap++;
+    const kwRegex = new RegExp(`\\b${kw.toLowerCase().replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, '\\$&')}\\b`, 'i');
+    if (kwRegex.test(candTextLower)) overlap++;
   }
-  const semanticRelevance = jdKeywords.length > 0 ? Math.round((overlap / jdKeywords.length) * 100) : overallScore;
+  const semanticRelevance = jdKeywords.length > 0 ? Math.round((overlap / jdKeywords.length) * 100) : 0;
 
   const pillarScores: PillarScores = {
     technicalSkills: techPct,
@@ -1057,7 +1520,9 @@ export function calculateATSScore(
     evaluationId: `eval-${candidate.id}-${Date.now()}`,
     candidateId: candidate.id,
     jobId: job.id,
+    rawScore,
     overallScore,
+    finalScore: overallScore,
     matchLevel: finalMatchLevel,
     mandatoryRequirementFailed: hasMandatoryFailure,
     mandatoryComplianceScore,
@@ -1075,7 +1540,13 @@ export function calculateATSScore(
     strengths: Array.from(new Set(strengths)),
     gaps: Array.from(new Set(gaps)),
     warnings,
-    scoringConfigVersion: '3.0.0-evidence-based',
-    evaluatedAt: new Date().toISOString()
+    scoringConfigVersion: '4.0.0-evidence-deterministic',
+    evaluatedAt: new Date().toISOString(),
+    debugAudit: {
+      rawWeightedScore: rawScore,
+      mandatoryCapped: hasMandatoryFailure && rawScore > 40,
+      appliedCap: 40,
+      calculatedAt: new Date().toISOString()
+    }
   };
 }

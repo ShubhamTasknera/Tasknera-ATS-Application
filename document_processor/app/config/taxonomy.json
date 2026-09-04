@@ -1,0 +1,79 @@
+{
+  "version": "2.1.0",
+  "last_updated": "2026-09-04",
+  "non_equivalences": [
+    ["java", "javascript"],
+    ["c", "c++"],
+    ["c", "c#"],
+    ["c++", "c#"],
+    ["python", "pytorch"],
+    ["react", "react native"],
+    ["sql", "nosql"],
+    ["apache kafka", "apache spark"],
+    ["angular", "angularjs"],
+    ["vue", "vuepress"],
+    ["objective-c", "swift"],
+    ["r", "rust"]
+  ],
+  "synonyms": {
+    "node.js": ["nodejs", "node", "node js", "node.js runtime"],
+    "react": ["reactjs", "react.js", "react js"],
+    "react native": ["react-native", "rn"],
+    "typescript": ["ts", "typescript lang"],
+    "javascript": ["js", "ecmascript", "es6", "es6+"],
+    "python": ["python3", "python 3", "py"],
+    "golang": ["go", "go lang", "golang developer"],
+    "postgresql": ["postgres", "psql", "postgre", "postgresql database"],
+    "mongodb": ["mongo", "mongodb database"],
+    "mysql": ["my-sql", "mariadb"],
+    "kubernetes": ["k8s", "kube", "k8s cluster"],
+    "docker": ["containerization", "containers", "docker container"],
+    "amazon web services": ["aws", "amazon cloud", "aws cloud"],
+    "google cloud platform": ["gcp", "google cloud"],
+    "microsoft azure": ["azure", "azure cloud", "ms azure"],
+    "ci/cd": ["continuous integration", "continuous deployment", "ci cd", "cicd"],
+    "terraform": ["tf", "hashicorp terraform"],
+    "graphql": ["gql", "graphql api"],
+    "rest api": ["restful api", "rest apis", "restful web services", "rest service"],
+    "microservices": ["microservice architecture", "micro-services", "distributed systems"],
+    "fastapi": ["fast-api", "fastapi framework"],
+    "django": ["django framework", "django rest framework", "drf"],
+    "spring boot": ["springboot", "spring-boot", "spring framework"],
+    "vue.js": ["vue", "vuejs", "vue 3", "vue 2"],
+    "angular": ["angular 2+", "angular io"],
+    "next.js": ["nextjs", "next.js framework"],
+    "tailwind css": ["tailwind", "tailwindcss"],
+    "redux": ["redux toolkit", "rtk"],
+    "redis": ["redis cache", "redis in-memory"],
+    "elasticsearch": ["elastic search", "elk", "elk stack"],
+    "machine learning": ["ml", "applied ml"],
+    "deep learning": ["dl", "neural networks"],
+    "natural language processing": ["nlp", "text mining"],
+    "agile": ["scrum", "kanban", "sprint planning"],
+    "test driven development": ["tdd", "unit testing", "integration testing"]
+  },
+  "skills": {
+    "languages": [
+      "Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "C", "Go", "Golang",
+      "Rust", "PHP", "Ruby", "Swift", "Kotlin", "Scala", "R", "Dart", "SQL", "HTML5",
+      "CSS3", "Bash", "Shell"
+    ],
+    "frameworks": [
+      "React", "React Native", "Next.js", "Vue.js", "Angular", "Node.js", "Express.js",
+      "FastAPI", "Django", "Flask", "Spring Boot", ".NET", "ASP.NET", "Tailwind CSS",
+      "Bootstrap", "Redux", "GraphQL", "PyTorch", "TensorFlow"
+    ],
+    "cloud_and_devops": [
+      "AWS", "Azure", "GCP", "Google Cloud", "Docker", "Kubernetes", "Terraform",
+      "CI/CD", "GitHub Actions", "GitLab CI", "Jenkins", "Ansible", "Linux"
+    ],
+    "databases": [
+      "PostgreSQL", "MySQL", "MongoDB", "Redis", "SQLite", "Supabase", "Firebase",
+      "DynamoDB", "Elasticsearch", "Cassandra", "Oracle"
+    ],
+    "architecture": [
+      "Microservices", "REST APIs", "Event-Driven Architecture", "System Design",
+      "Distributed Systems", "Cloud Architecture"
+    ]
+  }
+}

@@ -174,13 +174,35 @@ export const extractDocumentTextViaPython = async (
                 return safeResolve(json);
               }
             }
-            console.log(`[Document Processor] Python returned status ${res.statusCode} or empty text for ${filename}. Running local Node.js parser...`);
-            const fallbackRes = await extractDocumentTextLocally(buffer, filename, mimeType);
-            safeResolve(fallbackRes);
-          } catch {
-            console.log(`[Document Processor] Python JSON parse failed for ${filename}. Running local Node.js parser...`);
-            const fallbackRes = await extractDocumentTextLocally(buffer, filename, mimeType);
-            safeResolve(fallbackRes);
+            console.error(`[Document Processor] Python returned status ${res.statusCode} or empty text for ${filename}. Failing visibly per single-parser constraint.`);
+            safeResolve({
+              success: false,
+              fileName: filename,
+              fileType: mimeType,
+              pageCount: 0,
+              extractionMethod: 'failed',
+              ocrUsed: false,
+              textQuality: 'FAILED',
+              characterCount: 0,
+              wordCount: 0,
+              text: '',
+              error: `Document extraction service returned status ${res.statusCode} with unreadable text.`
+            });
+          } catch (jsonErr: any) {
+            console.error(`[Document Processor] Python JSON parse failed for ${filename}:`, jsonErr);
+            safeResolve({
+              success: false,
+              fileName: filename,
+              fileType: mimeType,
+              pageCount: 0,
+              extractionMethod: 'failed',
+              ocrUsed: false,
+              textQuality: 'FAILED',
+              characterCount: 0,
+              wordCount: 0,
+              text: '',
+              error: `Failed to parse extraction service response: ${jsonErr.message}`
+            });
           }
         });
       }
@@ -188,15 +210,37 @@ export const extractDocumentTextViaPython = async (
 
     req.on('timeout', async () => {
       req.destroy();
-      console.log(`[Document Processor] Python service timed out (${REQUEST_TIMEOUT_MS}ms). Running instant local Node.js parser for ${filename}...`);
-      const fallbackRes = await extractDocumentTextLocally(buffer, filename, mimeType);
-      safeResolve(fallbackRes);
+      console.error(`[Document Processor] Python service timed out (${REQUEST_TIMEOUT_MS}ms) for ${filename}. Failing visibly.`);
+      safeResolve({
+        success: false,
+        fileName: filename,
+        fileType: mimeType,
+        pageCount: 0,
+        extractionMethod: 'timeout',
+        ocrUsed: false,
+        textQuality: 'FAILED',
+        characterCount: 0,
+        wordCount: 0,
+        text: '',
+        error: `Document extraction service timed out after ${REQUEST_TIMEOUT_MS}ms. Please retry.`
+      });
     });
 
     req.on('error', async (err) => {
-      console.log(`[Document Processor] Python service unavailable (${err.message}). Running instant local Node.js parser for ${filename}...`);
-      const fallbackRes = await extractDocumentTextLocally(buffer, filename, mimeType);
-      safeResolve(fallbackRes);
+      console.error(`[Document Processor] Python service unavailable (${err.message}) for ${filename}. Failing visibly.`);
+      safeResolve({
+        success: false,
+        fileName: filename,
+        fileType: mimeType,
+        pageCount: 0,
+        extractionMethod: 'service_unavailable',
+        ocrUsed: false,
+        textQuality: 'FAILED',
+        characterCount: 0,
+        wordCount: 0,
+        text: '',
+        error: `Document extraction service is offline (${err.message}). Single extraction pipeline requires Python service.`
+      });
     });
 
     req.write(payload);

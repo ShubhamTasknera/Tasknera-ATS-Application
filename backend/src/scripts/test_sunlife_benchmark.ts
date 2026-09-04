@@ -294,8 +294,8 @@ const riteshVerma: any = {
 const candidates: Array<{ cand: any; expectedMatch: string; expectedMandatory: boolean }> = [
   { cand: ananyaRao, expectedMatch: 'EXCELLENT MATCH', expectedMandatory: true },
   { cand: karanMalhotra, expectedMatch: 'EXCELLENT MATCH', expectedMandatory: true },
-  { cand: meeraIyer, expectedMatch: 'MODERATE MATCH', expectedMandatory: false },
-  { cand: riteshVerma, expectedMatch: 'MODERATE MATCH', expectedMandatory: false }
+  { cand: meeraIyer, expectedMatch: 'LOW MATCH', expectedMandatory: false },
+  { cand: riteshVerma, expectedMatch: 'LOW MATCH', expectedMandatory: false }
 ];
 
 let allPassed = true;

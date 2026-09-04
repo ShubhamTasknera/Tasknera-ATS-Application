@@ -1461,9 +1461,20 @@ export default function CandidatesPage() {
                                   </div>
                                   <div className="mt-2 flex items-center gap-2">
                                     {scoreVal !== null ? (
-                                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-black border ${scoreBadgeColor}`}>
-                                        {scoreVal}% • {item.matchLevel}
-                                      </span>
+                                      <>
+                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-black border ${scoreBadgeColor}`}>
+                                          {scoreVal}% ATS
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                                          scoreVal >= 70
+                                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                            : scoreVal < 50
+                                            ? 'bg-rose-100 text-rose-900 border-rose-300'
+                                            : 'bg-amber-100 text-amber-900 border-amber-300'
+                                        }`}>
+                                          {scoreVal >= 70 ? '✓ ACCEPT' : scoreVal < 50 ? '✕ REJECT' : '⏳ REVIEW'}
+                                        </span>
+                                      </>
                                     ) : (
                                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
                                         Pending Evaluation
@@ -1479,7 +1490,7 @@ export default function CandidatesPage() {
                                   href={`/jobs/${item.jobId}/candidates?candidateId=${selectedCandidate.id}`}
                                   className="px-4 py-2 bg-slate-100 hover:bg-brand-orange hover:text-white text-slate-700 text-xs font-bold rounded-xl transition-all border border-slate-200 hover:border-transparent flex-shrink-0 cursor-pointer"
                                 >
-                                  View Evaluation →
+                                  View Candidate →
                                 </Link>
                               </div>
                             );

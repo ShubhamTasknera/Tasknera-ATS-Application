@@ -42,6 +42,7 @@ interface JobDetails {
   salary?: string;
   status?: string;
   requirementsCount?: number;
+  requirements?: any[];
 }
 
 const MAX_BATCH_FILES = 15;
@@ -356,6 +357,11 @@ export default function BatchCVUploadPage() {
 
       const formData = new FormData();
       formData.append('files', item.file);
+      if (job?.position) formData.append('jobPosition', job.position);
+      if (job?.client) formData.append('jobClient', job.client);
+      if (job?.requirements && Array.isArray(job.requirements)) {
+        formData.append('requirements', JSON.stringify(job.requirements));
+      }
 
       // Transition to Parsing state right as request reaches backend
       setTimeout(() => {

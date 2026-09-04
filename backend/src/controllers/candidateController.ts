@@ -11,6 +11,7 @@ import {
 } from '../services/cvParsingService';
 import { evaluateCandidateAgainstRequirements } from '../services/evaluationService';
 import { getStandardRequirementsForPosition } from './evaluationController';
+import { getJobFromStoreOrDb, GLOBAL_JOB_STORE } from './jobController';
 
 export interface CandidateRecord extends CandidateParsedProfile {
   id: string;
@@ -1285,19 +1286,42 @@ export const uploadCandidateCVs = async (req: Request, res: Response): Promise<v
                  // Automatically evaluate candidate against job requirements upon upload to requisition
           if (jobId && jobId !== 'pool') {
             try {
-              let targetJob: any = null;
-              if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+              let targetJob: any = await getJobFromStoreOrDb(jobId);
+              if (!targetJob && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
                 targetJob = await prisma.job.findUnique({
                   where: { id: jobId },
                   include: { requirements: true, user: true }
                 }).catch(() => null);
               }
 
-              const jobTitle = targetJob?.position || 'Software Engineer';
-              const jobClient = targetJob?.client || 'Enterprise Client';
+              const reqJobPosition = (req.body?.jobPosition || req.body?.position || '').trim();
+              const reqJobClient = (req.body?.jobClient || req.body?.client || '').trim();
+
+              let customReqs: any[] = [];
+              if (req.body?.requirements) {
+                try {
+                  const parsed = typeof req.body.requirements === 'string' ? JSON.parse(req.body.requirements) : req.body.requirements;
+                  if (Array.isArray(parsed) && parsed.length > 0) customReqs = parsed;
+                } catch {}
+              }
+
+              const jobTitle = targetJob?.position || targetJob?.title || reqJobPosition || 'Job Requisition';
+              const jobClient = targetJob?.client || targetJob?.company || reqJobClient || 'Client Organization';
               let reqs: any[] = (targetJob?.requirements && targetJob.requirements.length > 0)
                 ? targetJob.requirements
-                : getStandardRequirementsForPosition(jobTitle, jobClient);
+                : (customReqs.length > 0 ? customReqs : getStandardRequirementsForPosition(jobTitle, jobClient));
+
+              if (!targetJob && (reqJobPosition || customReqs.length > 0)) {
+                targetJob = {
+                  id: jobId,
+                  position: jobTitle,
+                  title: jobTitle,
+                  client: jobClient,
+                  company: jobClient,
+                  requirements: reqs
+                };
+                GLOBAL_JOB_STORE.set(jobId, targetJob);
+              }
 
               if (reqs.length > 0) {
                 const jobData = {

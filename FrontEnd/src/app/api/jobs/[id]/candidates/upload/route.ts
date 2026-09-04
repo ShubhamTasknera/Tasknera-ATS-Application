@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { jobCandidatesStore } from '@/lib/jobStore';
 
 export const dynamic = 'force-dynamic';
-
-// In-memory candidate registry per job
-export const jobCandidatesStore: Record<string, any[]> = {};
 
 function formatCandidateNameFromFilename(filename: string): string {
   if (!filename) return 'Karan Patel';
